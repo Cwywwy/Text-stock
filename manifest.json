@@ -1,0 +1,28 @@
+{
+  "created_at": "2026-09-04 02:50:51",
+  "bars_count": 5553,
+  "zip_bytes": 313343024,
+  "zip_sha256": "dca92dac05e69318c75aee04940b21e183354ed4defd5a4b54937ff3076fe521",
+  "parts": [
+    {
+      "file": "bars.zip.part00",
+      "bytes": 94371840,
+      "sha256": "1c355a30d6e00ce570367d7b36322fa15701e7e435e8996af95ef7d8796684d2"
+    },
+    {
+      "file": "bars.zip.part01",
+      "bytes": 94371840,
+      "sha256": "3b5730e8be865b1c20f9440f18000d5d45b7a9cc345f047e78db700a626cd8fd"
+    },
+    {
+      "file": "bars.zip.part02",
+      "bytes": 94371840,
+      "sha256": "587921cacfa11cd01f9d1179b6ae74ef1acc74c3655712a758767804da43392e"
+    },
+    {
+      "file": "bars.zip.part03",
+      "bytes": 30227504,
+      "sha256": "a96d46003e298a930f388f0b1ac4946872cf1af3536eb64f135df7d3b6d3589a"
+    }
+  ]
+}
