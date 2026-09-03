@@ -10,6 +10,14 @@ from __future__ import annotations
 import streamlit as st
 
 from stock_plan.strategy.registry import PARAM_DESC, STRATEGIES
+from stock_plan.ui.widgets import page_glossary
+
+STRATEGY_GLOSSARY = {
+    "参数": "策略里可以调的「旋钮」。比如止损倍数调小 = 卖得更果断；持仓天数调短 = 换股更勤快。",
+    "ATR 倍数": "按「几天的日常波动」来设买卖价和止损。ATR 是这支股票平均一天波动多少钱。",
+    "权重": "多个打分角度的重要程度，加起来通常为 1。比如趋势 0.6 + 基本面 0.4。",
+    "回测验证": "改完参数别急着用，先去「回测结果」页跑历史数据，确认没有越改越差。",
+}
 
 
 def _param_widget(key: str, value):
@@ -41,6 +49,7 @@ def _param_widget(key: str, value):
 def render():
     st.header("⚙️ 策略管理")
     st.caption("查看各策略的完整讲解并调整参数。参数按策略分别保存，应用到今日信号与回测。")
+    page_glossary(STRATEGY_GLOSSARY)
 
     name = st.selectbox("选择策略", list(STRATEGIES.keys()))
     strategy = STRATEGIES[name]()

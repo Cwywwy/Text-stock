@@ -55,13 +55,17 @@ def generate_signals(
     strategy: Strategy | None = None,
     top_n: int = 5,
     storage: Storage | None = None,
+    boards: list[str] | None = None,
+    exclude_st: bool = True,
 ) -> list[Signal]:
     """生成盘前信号。
 
     参数：
-        strategy: 策略实例，默认用内置趋势策略。
-        top_n:    返回的信号数量（默认 5）。
-        storage:  数据存储实例（便于测试注入）。
+        strategy:   策略实例，默认用内置趋势策略。
+        top_n:      返回的信号数量（默认 5）。
+        storage:    数据存储实例（便于测试注入）。
+        boards:     保留的板块列表（R5 板块自定义筛选）；None/全选 = 不过滤。
+        exclude_st: 是否剔除 ST/*ST 股票（默认 True）。
 
     返回：
         按 score 降序的 Signal 列表。
@@ -83,6 +87,12 @@ def generate_signals(
         fin = storage.load_fundamentals(code)
         if fin:
             fund_map[code] = fin
+
+    # 1.5 板块筛选 + 剔除 ST（R5 需求，在策略硬过滤之前执行）
+    from stock_plan.factors.board import filter_universe_ui
+
+    stock_list, bars_map = filter_universe_ui(stock_list, bars_map, boards, exclude_st)
+    fund_map = {c: f for c, f in fund_map.items() if c in bars_map}
 
     # 2. 硬过滤
     codes = strategy.filter_universe(stock_list, bars_map)

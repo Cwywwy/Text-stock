@@ -8,11 +8,20 @@ import streamlit as st
 
 from stock_plan.llm.analyzer import analyze_news, explain_signal, generate_strategy
 from stock_plan.llm.client import get_client
+from stock_plan.ui.widgets import page_glossary
+
+LLM_GLOSSARY = {
+    "LLM（大语言模型）": "像 ChatGPT 那样的 AI，能读懂新闻和信号并用自然语言给你解释。",
+    "API Key": "调用 AI 服务的「钥匙」，在本页配置。没配也能用——系统会自动切换成离线规则模式。",
+    "信号解释": "AI 用大白话说明「为什么选这只股票、买卖价怎么定」，帮助你理解而不是盲从。",
+    "离线规则模式": "没配 AI 时的备用方案：用固定模板生成说明，不需要联网。",
+}
 
 
 def render():
     st.header("🤖 LLM 智能分析")
     st.caption("用大模型解释选股信号、分析消息面、生成策略。未配置 API Key 时自动降级为离线规则模式。")
+    page_glossary(LLM_GLOSSARY)
 
     client = get_client()
     if client.mock:

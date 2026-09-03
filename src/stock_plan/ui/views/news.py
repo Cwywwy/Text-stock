@@ -17,11 +17,20 @@ from stock_plan.news.timeline import (
     get_stock_announcements,
     get_suspend_notices,
 )
+from stock_plan.ui.widgets import page_glossary
+
+NEWS_GLOSSARY = {
+    "舆情": "市场上大家在讨论、传播的消息面情绪，利好消息多偏暖，利空集中偏冷。",
+    "公告": "上市公司官方发布的信息（业绩、股东变动、重大合同等），权威但需要自己解读。",
+    "财经日历": "近期重要事件的时间表（如美联储议息、经济数据发布），大事件前后市场波动往往加大。",
+    "停牌": "股票暂时停止交易，可能是重大事项或风险警示。停牌期间买不进也卖不出。",
+}
 
 
 def render():
     st.header("📰 新闻舆情时间线")
     st.caption("聚合个股公告、市场要闻、财经日历、分红送转与停复牌信息，辅助盘前决策。")
+    page_glossary(NEWS_GLOSSARY)
 
     tab1, tab2, tab3, tab4 = st.tabs(["个股公告", "市场要闻", "财经日历", "分红/停牌"])
 

@@ -15,11 +15,20 @@ import streamlit as st
 
 from stock_plan.data.storage import Storage
 from stock_plan.simulator.paper import PaperTrader
+from stock_plan.ui.widgets import page_glossary
+
+PAPER_GLOSSARY = {
+    "模拟交易（纸面交易）": "用「假钱」按真实规则买卖：T+1、手续费、印花税、滑点全模拟，先练手再谈实盘。",
+    "T+1": "今天买的股票最早明天才能卖（A 股规则），防止当天来回折腾。",
+    "滑点": "实际成交价比看到的价格差一点，就像网购标价之外还有运费。",
+    "持仓成本": "买入价加上手续费等费用后，你的股票「实际」多少钱一股。",
+}
 
 
 def render():
     st.header("💼 模拟交易")
     st.caption("贴近实盘的纸面交易：T+1、手续费、印花税、滑点、涨跌停。")
+    page_glossary(PAPER_GLOSSARY)
 
     trader = PaperTrader()
     status = trader.status()

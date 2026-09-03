@@ -12,6 +12,18 @@ import streamlit as st
 
 from stock_plan.signal.generator import generate_signals
 from stock_plan.strategy.registry import create_strategy
+from stock_plan.ui.widgets import board_filter_ui, page_glossary
+
+# 本页名词速览（R2 亲民化）
+TODAY_GLOSSARY = {
+    "综合分": "给每只股票打的 总分（0-100），分数越高越值得买。由趋势、基本面等多个角度加权算出。",
+    "目标买入价": "建议的买入价格。可以挂限价单等股价到了再买，不追高。",
+    "目标卖出价": "建议的止盈价格。涨到这里就落袋为安。",
+    "止损价": "跌到这个价就认赔卖出，防止亏损扩大。纪律比预测更重要。",
+    "持仓天数": "建议拿多久。到期即使没涨没跌也建议换股，让资金效率更高。",
+    "板块": "股票所在的「市场分区」，如主板、创业板、科创板。下方可自由勾选。",
+    "ST": "被交易所标记「有退市风险」的股票，名字带 ST 两个字，新手建议避开。",
+}
 
 # 持仓周期配置：名称 → (hold_days, 说明)
 PERIODS = {
@@ -35,11 +47,15 @@ def _get_strategy(name: str, params: dict | None = None):
 
 
 @st.cache_data(ttl=600, show_spinner="正在生成信号…")
-def _cached_signals(strategy_name: str, top_n: int, params_json: str, config_json: str):
+def _cached_signals(
+    strategy_name: str, top_n: int, params_json: str, config_json: str,
+    boards_json: str = "[]", exclude_st: bool = True,
+):
     """带缓存的信号生成（10 分钟内不重复计算）。"""
     import json
 
     params = json.loads(params_json) if params_json else None
+    boards = json.loads(boards_json)
     if strategy_name == "自定义策略":
         from stock_plan.strategy.custom import CustomStrategy
 
@@ -49,7 +65,9 @@ def _cached_signals(strategy_name: str, top_n: int, params_json: str, config_jso
             strategy.params = {**strategy.params, **params}
     else:
         strategy = _get_strategy(strategy_name, params)
-    return generate_signals(strategy=strategy, top_n=top_n)
+    return generate_signals(
+        strategy=strategy, top_n=top_n, boards=boards, exclude_st=exclude_st
+    )
 
 
 def _signals_to_rows(signals):
@@ -135,6 +153,11 @@ def _render_signal_block(signals, period_label: str):
 def render():
     st.header("📋 今日信号")
     st.caption("基于最新缓存数据，按策略打分选出 Top 标的，输出目标买入/卖出价与止损位。")
+    page_glossary(TODAY_GLOSSARY)
+
+    # 板块筛选（R5：自定义股票板块 + 剔除 ST）
+    st.markdown("**选股范围**")
+    boards, exclude_st = board_filter_ui("today")
 
     # 策略选择
     from stock_plan.strategy.registry import STRATEGIES
@@ -177,6 +200,8 @@ def render():
                     strategy_name, top_n,
                     json.dumps(period_params, ensure_ascii=False),
                     json.dumps(config, ensure_ascii=False),
+                    json.dumps(boards, ensure_ascii=False),
+                    exclude_st,
                 )
                 if signals:
                     all_groups[label] = signals
@@ -195,6 +220,8 @@ def render():
                 strategy_name, top_n,
                 json.dumps(period_params, ensure_ascii=False),
                 json.dumps(config, ensure_ascii=False),
+                json.dumps(boards, ensure_ascii=False),
+                exclude_st,
             )
             if not signals:
                 st.warning("未生成信号。请先运行数据拉取脚本（fetch_all.py）确保有缓存数据。")

@@ -16,14 +16,29 @@ from stock_plan.backtest.engine import BacktestConfig, run_backtest
 from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.data.storage import Storage
 from stock_plan.strategy.custom import CustomStrategy, build_custom_factor_rows
+from stock_plan.ui.widgets import board_filter_ui, equity_curve_fig, page_glossary
+
+# 本页名词速览（R2 亲民化）
+BUILDER_GLOSSARY = {
+    "因子": "用来给股票打分的「考察角度」，比如趋势分（走势强不强）、基本面分（公司好不好）。",
+    "权重": "每个考察角度的重要程度。比如趋势 0.6、基本面 0.4，意思是六成看走势、四成看公司。",
+    "量比": "今天成交量 ÷ 最近 5 天平均成交量。大于 1 说明今天比平时活跃，1.5 以上叫「放量」。",
+    "成交额": "当天一共交易了多少钱（股数×价格）。成交额越大，说明这只股票越「好买好卖」（流动性好）。",
+    "流动性": "想买的时候买得到、想卖的时候卖得掉。成交额太低的股票容易「卖不出去」，建议设置下限。",
+    "RSI": "衡量股票最近是否「涨得太猛」（>70 超买，可能要回调）或「跌得太狠」(<30 超卖) 的温度计。",
+    "ATR": "这支股票平时一天大概波动多少钱。买卖价、止损价都按它的倍数来设，波动大的股票止损就设宽一点。",
+}
 
 
 @st.cache_data(ttl=600, show_spinner="正在运行自定义策略回测…")
 def _cached_custom_backtest(
     config_json: str, start: str, end: str, initial_cash: float,
     rebalance_freq: str, market_timing: bool,
+    boards_json: str = "[]", exclude_st: bool = True,
 ):
     """自定义策略回测（带缓存）。"""
+    import json
+
     config = json.loads(config_json)
     storage = Storage()
     stock_list = storage.load_stock_list()
@@ -36,6 +51,13 @@ def _cached_custom_backtest(
         fin = storage.load_fundamentals(code)
         if fin:
             fund_map[code] = fin
+
+    # 板块筛选 + 剔除 ST（R5 需求）
+    from stock_plan.factors.board import filter_universe_ui
+
+    boards = json.loads(boards_json)
+    stock_list, bars_map = filter_universe_ui(stock_list, bars_map, boards, exclude_st)
+    fund_map = {c: f for c, f in fund_map.items() if c in bars_map}
 
     strategy = CustomStrategy(config)
     bt_config = BacktestConfig(
@@ -54,6 +76,11 @@ def _cached_custom_backtest(
 def render():
     st.header("🧩 可视化策略拼装")
     st.caption("选择因子、权重与阈值，组合成自定义策略并回测验证。")
+    page_glossary(BUILDER_GLOSSARY)
+
+    # 选股范围（R5：板块筛选 + 剔除 ST）
+    st.subheader("0. 选股范围")
+    boards, exclude_st = board_filter_ui("vb")
 
     # ============ 策略配置 ============
     st.subheader("1. 策略配置")
@@ -72,22 +99,45 @@ def render():
     with col_t1:
         trend_fast = st.selectbox(
             "趋势条件 快线", ma_options, index=3,
-            help="趋势条件：快线 > 慢线。可自由组合，如 ma5>ma7、ma20>ma60。选择「关闭」则不启用趋势条件。",
+            help="术语叫「均线」。大白话：这支股票最近 N 天的平均成本。快线 > 慢线 = 最近买的人普遍在赚钱，趋势向上。可自由组合，如 ma5>ma7、ma20>ma60。选择「关闭」则不启用趋势条件。",
         )
     with col_t2:
         trend_slow = st.selectbox("趋势条件 慢线", ma_options, index=5)
     with col_d1:
         dev_ma = st.selectbox(
             "偏离基准均线", [5, 7, 10, 20, 30, 60], index=3,
-            help="偏离 = (收盘价 / 该均线 - 1)×100%。如仅看 ma20 偏离或 ma10 偏离。",
+            help="当前股价比 N 天平均成本高/低多少百分比。偏低（负数）= 回调到位，偏高太多 = 追高风险大。",
         )
     col3, col4, col5 = st.columns(3)
     with col3:
-        dev_min = st.slider("偏离下限（%）", -20, 0, -5)
+        dev_min = st.slider("偏离下限（%）", -20, 0, -5,
+                            help="股价比平均成本低超过这个数就减分/排除。比如 -5 = 比 20 天平均成本低 5% 以内最佳。")
     with col4:
-        dev_max = st.slider("偏离上限（%）", 0, 20, 5)
+        dev_max = st.slider("偏离上限（%）", 0, 20, 5,
+                            help="股价比平均成本高超过这个数说明涨太多（追高），会扣分。")
     with col5:
-        vol_ratio_max = st.slider("量比上限", 1.0, 5.0, 3.0, 0.1)
+        vol_ratio_max = st.slider("量比上限（防过热）", 1.0, 5.0, 3.0, 0.1,
+                                  help="量比 = 今天成交量 ÷ 近5天平均量。超过上限说明炒得太热（可能是一日行情），会扣分。")
+
+    # ---- 量价配置（R1 需求：流动性筛选 + 放量异动加分）----
+    st.markdown("**量价配置（成交量相关）**")
+    col_liq, col_vs, col_vb = st.columns(3)
+    with col_liq:
+        liquidity_min = st.slider(
+            "流动性下限：近20日平均成交额（亿元）", 0.5, 50.0, 0.5, 0.5,
+            help="成交额 = 每天成交的总金额。太低的股票「买得到卖不掉」。低于这个金额的直接排除。0.5亿 = 5000万，是系统的默认底线。",
+        )
+    with col_vs:
+        use_surge = st.checkbox("启用「放量异动」加分", value=False,
+                                help="放量 = 今天的成交量明显比平时大（比如 1.5 倍以上），常说明有资金关注。开启后，放量的股票会加分排到前面。")
+        vol_surge_min = st.slider("放量阈值（量比达到几倍算放量）", 1.0, 5.0, 1.5, 0.1,
+                                  disabled=not use_surge,
+                                  help="量比达到这个倍数就认定为「放量」。1.5 = 成交量是平时的 1.5 倍以上。")
+    with col_vb:
+        vol_surge_bonus = st.slider("放量加分数值", 5.0, 30.0, 10.0, 1.0,
+                                    disabled=not use_surge,
+                                    help="被认定为放量的股票，总分额外加多少分。加得越多，放量股票排得越靠前。")
+
     col6, col7, col_rsi_min = st.columns(3)
     with col6:
         rsi_min = st.slider("RSI 下限（低于排除）", 0, 50, 0)
@@ -100,21 +150,27 @@ def render():
     with col_mom:
         mom_min = st.slider(
             "近20日动量下限（%，低于排除）", -30, 30, -30, 1,
-            help="-30 约等于不启用；设置如 0 表示只买近20日不跌的股票。",
+            help="动量 = 最近 20 天总共涨/跌了百分之几。-30 约等于不启用；设置如 0 表示只买近20日不跌的股票。",
         )
     with col_brk:
-        require_breakout = st.checkbox("要求接近/创20日新高", value=False)
+        require_breakout = st.checkbox("要求接近/创20日新高", value=False,
+                                       help="只买股价接近或创出最近 20 天新高的股票（「突破」买法），没接近新高的排除。")
 
     st.markdown("**买卖参数（ATR 倍数）**")
+    st.caption("💡 ATR = 这支股票平时一天大概波动多少钱（元）。下面的倍数就是「按几天的波动幅度」来设买卖价和止损价。")
     col8, col9, col10, col_k = st.columns(4)
     with col8:
-        k = st.number_input("买入 ATR 倍数（收盘价+k×ATR）", 0.0, 3.0, 0.0, 0.1)
+        k = st.number_input("买入 ATR 倍数（收盘价+k×ATR）", 0.0, 3.0, 0.0, 0.1,
+                            help="目标买入价 = 最新收盘价 + k×ATR。0 = 按收盘价买；0.5 = 比现价高半个日常波动才买（突破确认）。")
     with col9:
-        m = st.number_input("止盈 ATR 倍数", 1.0, 10.0, 3.5, 0.5)
+        m = st.number_input("止盈 ATR 倍数（涨多少卖）", 1.0, 10.0, 3.5, 0.5,
+                            help="卖出价 = 买入价 + m×ATR。3.5 ≈ 涨了 3 天半的日常波动就落袋为安。")
     with col10:
-        n = st.number_input("止损 ATR 倍数", 1.0, 10.0, 3.5, 0.5)
+        n = st.number_input("止损 ATR 倍数（跌多少认赔）", 1.0, 10.0, 3.5, 0.5,
+                            help="止损价 = 买入价 − n×ATR。跌到这里无条件卖出，防止大亏。")
     with col_k:
-        hold = st.number_input("最大持仓天数", 5, 120, 30, step=5)
+        hold = st.number_input("最大持仓天数", 5, 120, 30, step=5,
+                               help="到期无论盈亏都换股，保证资金效率。短线 10 天内，中线 20~30 天。")
 
     config = {
         "name": name,
@@ -131,6 +187,10 @@ def render():
             "vol_ratio_max": float(vol_ratio_max),
             "mom_min": int(mom_min),
             "require_breakout": bool(require_breakout),
+            # 量价配置（R1）
+            "liquidity_min": float(liquidity_min),
+            "vol_surge_min": float(vol_surge_min) if use_surge else 0.0,
+            "vol_surge_bonus": float(vol_surge_bonus),
         },
         "params": {
             "atr_k_entry": float(k), "atr_m_exit": m, "atr_n_stop": n, "hold_days": int(hold)
@@ -162,6 +222,7 @@ def render():
                 json.dumps(config, ensure_ascii=False),
                 start.isoformat(), end.isoformat(), float(initial_cash),
                 rebalance_freq, bool(market_timing),
+                json.dumps(boards, ensure_ascii=False), exclude_st,
             )
             if not metrics:
                 st.warning("回测无数据。请先运行数据拉取脚本（fetch_all.py）确保有缓存数据。")
@@ -178,6 +239,13 @@ def render():
             cols[1].metric("盈亏比", f"{metrics.get('profit_loss', 0) or 0:.2f}")
             cols[2].metric("交易次数", f"{metrics.get('trade_count', 0)}")
             cols[3].metric("平均持仓", f"{metrics.get('avg_hold_days', 0):.1f} 天")
+
+            # 收益曲线（R3 需求：累计收益率 % + 回撤区域标注）
+            st.subheader("📈 收益曲线")
+            st.caption("蓝线 = 累计收益率（从第一天算起赚/亏百分之几）；红色阴影 = 中途回撤的深度。")
+            fig_ret = equity_curve_fig(result.equity_curve)
+            if fig_ret is not None:
+                st.plotly_chart(fig_ret, use_container_width=True)
 
             if result.trades is not None and not result.trades.empty:
                 st.dataframe(result.trades.tail(20), use_container_width=True, hide_index=True)

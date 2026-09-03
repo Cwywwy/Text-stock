@@ -138,6 +138,8 @@ def build_factor_rows(
         # 近 20 日最高收盘价（供突破策略使用）
         high20 = factored["close"].iloc[-20:].max() if len(factored) >= 20 else last["close"]
         high20_ratio = (last["close"] / high20 - 1) if high20 > 0 else 0.0
+        # 近 20 日平均成交额（元，供量价配置的流动性筛选使用）
+        avg_amount20 = float(bars["amount"].tail(20).mean()) if "amount" in bars.columns else float("nan")
         rows.append(
             {
                 "code": code,
@@ -147,6 +149,7 @@ def build_factor_rows(
                 "ma60": last["ma60"],
                 "rsi14": last["rsi14"],
                 "vol_ratio": last["vol_ratio"],
+                "avg_amount20": avg_amount20,
                 "high20_ratio": high20_ratio,
                 "value_score": fund.get("value_score", 50.0),
                 "growth_score": fund.get("growth_score", 50.0),
