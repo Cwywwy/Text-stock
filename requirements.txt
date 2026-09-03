@@ -1,0 +1,8 @@
+# Streamlit Community Cloud 部署依赖（与本地 .venv 验证版本一致）
+akshare==1.18.94
+numpy==2.5.2
+pandas==3.0.5
+plotly==7.0.0
+pyarrow==25.0.1
+streamlit==1.63.0
+openai==3.7.0

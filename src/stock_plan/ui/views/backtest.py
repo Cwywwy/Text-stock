@@ -304,9 +304,9 @@ def render():
             import json
 
             by_name = st.session_state.get("strategy_params_by_strategy", {})
-            saved = by_name.get(strategy_name)
-            if saved is None and strategy_name == "趋势跟随策略":
-                saved = st.session_state.get("strategy_params", {})
+            saved = by_name.get(strategy_name) or {}
+            if not saved and strategy_name == "趋势跟随策略":
+                saved = st.session_state.get("strategy_params") or {}
             metrics, report, result = _cached_backtest(
                 strategy_name,
                 start.isoformat(),
@@ -320,7 +320,7 @@ def render():
                 exclude_st,
             )
             if not metrics:
-                st.warning("回测无数据。请先运行数据拉取脚本（fetch_all.py）确保有缓存数据。")
+                st.warning("回测无数据。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")
             else:
                 # 存入 session_state，保证后续按钮交互（如 LLM 复盘）不丢失结果
                 st.session_state["backtest_result"] = (metrics, report, result)

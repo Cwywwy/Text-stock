@@ -54,8 +54,17 @@ class LLMConfig:
 
 
 def get_llm_config() -> LLMConfig:
-    """读取 LLM 配置：环境变量优先，其次项目根 .env。"""
+    """读取 LLM 配置：环境变量优先，其次 Streamlit Cloud Secrets，最后项目根 .env。"""
     load_env_file()
+    # 云端部署（Streamlit Community Cloud）：从 st.secrets 读取
+    try:
+        import streamlit as st
+
+        for key in ("LLM_BASE_URL", "LLM_MODEL", "LLM_API_KEY"):
+            if key in st.secrets and not os.getenv(key):
+                os.environ[key] = str(st.secrets[key])
+    except Exception:
+        pass
     return LLMConfig(
         api_key=os.getenv("LLM_API_KEY", "").strip() or os.getenv("OPENAI_API_KEY", "").strip(),
         base_url=os.getenv("LLM_BASE_URL", "").strip(),
