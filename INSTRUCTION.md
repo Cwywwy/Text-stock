@@ -1,7 +1,7 @@
 # 开发 Instruction（开发指南）
 
 > 本文件是项目的开发指导文档，**每完成一个 Phase 必须同步更新**。
-> 最后更新：2026-09-03（Phase 14 完成）
+> 最后更新：2026-09-04（Phase 16 完成）
 
 ---
 
@@ -147,6 +147,9 @@ stock plan/
 | 2026-09-03 | 更新任务以**独立子进程**执行，UI 经 data/logs/update_progress.json 轮询进度 | akshare 依赖 py_mini_racer（V8 引擎），在 Streamlit 进程内初始化偶发 `FATAL:partition_address_space.cc` 致命崩溃拖垮整个服务器（exit -2147483645）；子进程隔离后崩溃不影响主服务。fragment auto-rerun 内 `st.rerun(scope="app")` 不向客户端传播（Streamlit 1.63 怪癖），故结果全部在 fragment 内每 tick 重绘 |
 | 2026-09-03 | 云端部署走 **requirements.txt + st.secrets** | Streamlit Community Cloud 只认 requirements.txt（不读 pyproject），版本按本地验证固定；.env 不入库，云端 LLM Key 从 st.secrets 读取回退 |
 | 2026-09-03 | 今日信号/回测页 `saved` 参数兜底 `{}` | 选择未在「策略管理」编辑过参数的策略时 `by_name.get(name)` 返回 None，`{**saved}` 抛 TypeError；改为 `or {}` 走策略默认参数 |
+| 2026-09-04 | **云端数据快照外置**（data/snapshot.py + GitHub `data-snapshot` 孤儿分支） | 云端容器磁盘临时：推送重建/闲置回收/内存超限重启都会清空 data/（"拉完一次又清空"根因）。本机为权威源，每日 21:30 计划任务发布快照（单 zip 分卷每卷 90MB + manifest 双 sha256 校验，单 commit force push 不占仓库历史）；云端启动时 bars<100 自动恢复，原子替换失败回滚 |
+| 2026-09-04 | **云端轻量模式**（is_cloud + workers=3 + 全量 366 天） | Streamlit Community Cloud 容器 2.7GB 内存，8 线程全市场拉取易被打爆；显式 `STOCK_PLAN_CLOUD=1`（Secrets）优先，其次平台特征变量与 HOSTNAME 尽力检测 |
+| 2026-09-04 | snapshot 子进程调用 git 加 `encoding="utf-8"` | Windows 下 Python 默认 GBK 解码 git 输出，UTF-8 中文路径/输出会 UnicodeDecodeError（publish 首跑实测触发） |
 
 ## 8. 常用命令
 

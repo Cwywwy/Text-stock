@@ -102,15 +102,41 @@ stock plan/
 注意事项：
 
 - 依赖读取根目录 `requirements.txt`（已按本地验证版本固定）
-- 云端**没有本地缓存数据**，首次使用需在「🔄 数据更新」页手动全量拉取（约 15 分钟），之后增量更新秒级
-- Windows 计划任务自动更新仅在本地部署生效，云端请手动更新
+- 云端**数据自动恢复**：启动时检测本地无缓存数据，自动从 GitHub `data-snapshot` 分支下载快照（约 300MB，首次 1~3 分钟），无需手动全量拉取
+- Windows 计划任务自动更新仅在本地部署生效，云端请在「🔄 数据更新」页手动更新（云端轻量模式自动降低并发）
 - LLM API Key 在云端走 **Secrets**：App 菜单 → Settings → Secrets，填入：
 
 ```toml
 LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
 LLM_MODEL = "glm-4-flash"
 LLM_API_KEY = "你的key"
+
+# 可选：显式启用云端轻量模式（推荐，比自动检测更可靠）
+STOCK_PLAN_CLOUD = "1"
 ```
+
+## 云端数据快照（Phase 16）
+
+云端容器磁盘是**临时的**：推送代码触发重建、闲置回收、内存超限重启都会清空 `data/`。
+本方案由本机（权威源）每日发布数据快照，云端按需恢复，彻底解决"拉完一次数据之后又清空"。
+
+架构：
+
+```
+本机 bars/（权威源，298MB+）
+   │  scripts/publish_snapshot.py（每日 21:30 计划任务 \StockPlan\Snapshot_2130）
+   ▼
+GitHub data-snapshot 分支（孤儿分支，单 commit，manifest.json + bars.zip.part00~03，每卷 90MB）
+   │  raw.githubusercontent.com 分发
+   ▼
+云端恢复：app 启动时 bars < 100 只自动下载（st.status 进度）；
+「🔄 数据更新」页也有手动「从云端快照恢复」按钮
+```
+
+- **完整性校验**：逐卷 sha256 + 整包 zip_sha256 双重校验，原子替换，失败自动回滚不污染旧数据
+- **云端轻量模式**：检测到云端时增量更新并发降为 3 线程、全量拉取仅 1 年（容器 2.7GB 内存防超限）
+- **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`（`--build-only` 只打包不推送）
+- **恢复快照**：云端页面 →「🔄 数据更新」→「☁️ 从云端快照恢复数据」
 
 ## LLM 配置（可选）
 

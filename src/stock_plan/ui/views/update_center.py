@@ -47,6 +47,8 @@ def _read_progress_file() -> dict | None:
 
 def _start_task(mode: str, codes: list[str] | None = None) -> None:
     """以独立子进程启动更新任务，进度落到 JSON 文件供 fragment 轮询。"""
+    from stock_plan.data.snapshot import CLOUD_FULL_DAYS, CLOUD_WORKERS, is_cloud
+
     prog = _progress_state()
     prog.update({"running": True, "mode": mode, "result": None, "error": None})
     # 先清掉旧进度文件，避免读到上一轮的完成状态
@@ -58,6 +60,12 @@ def _start_task(mode: str, codes: list[str] | None = None) -> None:
     cmd = [sys.executable, "-m", "stock_plan.data.update_daily"]
     if mode == "uncached":
         cmd += ["--uncached", *(codes or [])]
+    elif mode == "full":
+        # 全量拉取：云端轻量 1 年 / 本机 5 年
+        cmd += ["--days", str(CLOUD_FULL_DAYS if is_cloud() else 1250), "--force"]
+    if is_cloud():
+        # 云端容器 2.7GB 内存：降低并发防超限
+        cmd += ["--workers", str(CLOUD_WORKERS)]
     env = {**os.environ, "PYTHONPATH": str(PROJECT_ROOT / "src")}
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     subprocess.Popen(
@@ -169,6 +177,39 @@ def _render_log_tail() -> None:
             st.caption("暂无更新记录")
 
 
+def _cloud_badge() -> None:
+    """显示当前运行环境徽章（云端轻量 / 本机完整）。"""
+    from stock_plan.data.snapshot import CLOUD_WORKERS, is_cloud
+
+    if is_cloud():
+        st.info(f"☁️ **云端轻量模式**：增量更新并发 {CLOUD_WORKERS} 线程；"
+                "数据快照在首次启动时自动恢复，数据丢失可点下方「从快照恢复」。")
+    else:
+        st.success("🖥️ **本机完整模式**：本机为数据权威源，可发布快照供云端恢复。")
+
+
+def _restore_from_snapshot() -> None:
+    """手动从 GitHub data-snapshot 分支恢复行情数据（带进度显示）。"""
+    from stock_plan.data.snapshot import BARS_DIR, PROJECT_ROOT, raw_base_url, restore_from_url
+
+    url = raw_base_url()
+    tmp_dir = PROJECT_ROOT / "data" / "snapshot_tmp"
+    with st.status("⬇️ 正在从云端快照恢复行情数据 …", expanded=True) as status:
+        st.write(f"快照地址：{url}")
+
+        def on_prog(done_bytes: int, total_bytes: int) -> None:
+            st.write(f"下载进度 {done_bytes / 1048576:.0f}/{total_bytes / 1048576:.0f} MB")
+
+        try:
+            stats = restore_from_url(url, BARS_DIR, tmp_dir, progress=on_prog)
+            status.update(label="✅ 快照恢复完成", state="complete", expanded=False)
+            st.success(f"已恢复 {stats['bars_count']} 只股票的行情数据（快照生成于 {stats['created_at']}）")
+            st.rerun(scope="app")
+        except Exception as e:  # noqa: BLE001
+            status.update(label="❌ 快照恢复失败", state="error")
+            st.error(f"恢复失败：{e}")
+
+
 def render() -> None:
     """数据更新页主入口。"""
     st.title("🔄 数据更新")
@@ -185,6 +226,13 @@ def render() -> None:
         )
 
     _data_status()
+    _cloud_badge()
+
+    with st.expander("☁️ 从云端快照恢复数据", expanded=False):
+        st.caption("从 GitHub data-snapshot 分支下载最新数据快照并覆盖本地行情数据（本机数据为权威源，云端数据丢失时使用）。")
+        if st.button("⬇️ 立即从快照恢复", key="btn_restore_snapshot"):
+            _restore_from_snapshot()
+
     st.divider()
 
     prog = _progress_state()

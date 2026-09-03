@@ -12,6 +12,16 @@ import streamlit as st
 
 st.set_page_config(page_title="盘前选股系统", page_icon="📈", layout="wide")
 
+# 云端/空数据环境：启动时自动从 GitHub 快照恢复行情数据（有数据则秒过）
+from stock_plan.data.snapshot import cloud_secrets_env
+
+cloud_secrets_env()
+if "snapshot_checked" not in st.session_state:
+    st.session_state["snapshot_checked"] = True
+    from stock_plan.data.snapshot import bootstrap_if_needed
+
+    bootstrap_if_needed(ui=True)
+
 from stock_plan.ui.views import (
     backtest,
     compare,
