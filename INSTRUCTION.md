@@ -87,6 +87,7 @@ stock plan/
 | Phase 9 V1 增强 | ✅ 完成 | 多策略对比 + Walk-Forward + 详细报告 + LLM + 可视化拼装 |
 | Phase 10 V2 远期 | ✅ 完成 | LLM 复盘 / 新闻舆情 / 多周期并存 / 推送 |
 | Phase 11 V3 增强版 | ✅ 完成 | 平铺导航 / 7 策略注册表 / 四大师研究页 / 均线自由组合 / 智谱 GLM 接入 / 深色主题 |
+| Phase 12 V4-Text 分支（分支1） | ✅ 完成 | 量价配置 / 界面亲民化 / 回测收益曲线 / 分支 API KEY / 板块自定义筛选 / 新手指南页 |
 
 ## 7. 关键决策记录（持续追加）
 
@@ -125,6 +126,13 @@ stock plan/
 | 2026-09-03 | LLM 配置走 **.env**（llm/config.py + python-dotenv 式自研加载器） | 用户选定智谱 GLM-4-Flash（open.bigmodel.cn OpenAI 兼容端点，免费）；key 存 .env 不入源码，`.gitignore` 已加 `.env` |
 | 2026-09-03 | **深色主题**（.streamlit/config.toml） | 用户偏好深色系界面；base=dark + 自定义配色 |
 | 2026-09-03 | 策略管理页支持**多策略参数编辑**（strategy_params_by_strategy） | 参数按策略名存 session_state，通用参数编辑器按类型分派控件；趋势策略兼容旧 strategy_params |
+| 2026-09-03 | V4 在 Text 克隆+分支1 实施，**不动主目录主分支** | 用户要求：主分支保持可运行版本，Text/data junction 共享数据目录 |
+| 2026-09-03 | 量价配置：流动性下限（liquidity_min 亿元）+ 放量异动（vol_surge_min 量比阈值 / vol_surge_bonus 加分） | custom.py 规则实现：流动性不足 -100 分排除，放量布尔×bonus 加分；builtin.py 加 avg_amount20 列 |
+| 2026-09-03 | **板块筛选**（factors/board.py）| BOARDS 前缀映射：主板 60/00、创业板 30、科创板 68、北交所 82/83/87/43/92；filter_universe_ui 在策略硬过滤前执行，ST 剔除与板块过滤需同步作用于 stock_list 与 bars_map 两处（否则 ST 漏网） |
+| 2026-09-03 | **共享 UI 组件**（ui/widgets.py） | board_filter_ui / apply_universe_filter / page_glossary / equity_curve_fig 四组件，today/backtest/compare/builder 4 页复用；缓存键加 boards_json+exclude_st |
+| 2026-09-03 | **收益曲线图**（equity_curve_fig） | 累计收益率%（首值归一）+ 历史最高点线 + 回撤红色阴影（fill tonexty）；backtest/builder 两页展示 |
+| 2026-09-03 | **亲民化文案**：新手指南页（guide.py）+ 9 页名词速览 + PARAM_DESC 大白话 | 5 类 22 术语（趋势/量价/风控/回测/基本面板块），每词含一句话解释+生活化例子+为什么有用；三分钟核心逻辑+免责声明 |
+| 2026-09-03 | 分支1 专用 API KEY 走 Text/.env | 智谱 GLM-4-Flash，.gitignore 已排除不入库 |
 
 ## 8. 常用命令
 

@@ -15,6 +15,10 @@
         "vol_ratio_max": 3.0,          # 量比上限
         "mom_min": -100,               # 近20日动量下限（%，低于排除；-100 不启用）
         "require_breakout": false,     # 要求接近/创20日新高（high20_ratio >= -2%）
+        # ---- 量价配置（R1 需求）----
+        "liquidity_min": 0.5,          # 流动性下限：近20日平均成交额（亿元），低于排除；0=不启用
+        "vol_surge_min": 0.0,          # 放量异动阈值：量比达到该值视为放量；0=不启用
+        "vol_surge_bonus": 10.0,       # 放量异动加分数值（vol_ratio >= vol_surge_min 时加分）
     },
     "params": {"atr_k_entry": 0.0, "atr_m_exit": 3.5, "atr_n_stop": 3.5, "hold_days": 30},
 }
@@ -105,6 +109,16 @@ class CustomStrategy(Strategy):
         # 要求接近/创 20 日新高（突破确认）
         if rules.get("require_breakout", False) and "high20_ratio" in df_factors.columns:
             score -= (df_factors["high20_ratio"] < -0.02) * 100
+        # ---- 量价配置（R1 需求）----
+        # 流动性下限：近 20 日平均成交额（亿元），低于排除（0 = 不启用）
+        liquidity_min = float(rules.get("liquidity_min", 0) or 0)
+        if liquidity_min > 0 and "avg_amount20" in df_factors.columns:
+            score -= (df_factors["avg_amount20"] < liquidity_min * 1e8) * 100
+        # 放量异动加分：量比达到阈值时加分（0 = 不启用）
+        vol_surge_min = float(rules.get("vol_surge_min", 0) or 0)
+        vol_surge_bonus = float(rules.get("vol_surge_bonus", 10) or 10)
+        if vol_surge_min > 0 and "vol_ratio" in df_factors.columns:
+            score += (df_factors["vol_ratio"] >= vol_surge_min) * vol_surge_bonus
         # 动量加分
         if "mom_ret" in df_factors.columns:
             w_mom = weights.get("mom_ret", 0.0)

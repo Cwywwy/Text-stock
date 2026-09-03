@@ -21,12 +21,25 @@ from stock_plan.backtest.report import make_report
 from stock_plan.data.storage import Storage
 from stock_plan.llm.analyzer import review_backtest
 from stock_plan.strategy.registry import create_strategy
+from stock_plan.ui.widgets import board_filter_ui, page_glossary
+
+# 本页名词速览（R2 亲民化）
+BACKTEST_GLOSSARY = {
+    "回测": "用过去几年的历史数据「假装重新炒一遍股」，检验这套策略到底赚不赚钱。",
+    "总收益率": "整个回测期间账户一共涨了百分之几。比如 9.37% 就是 10 万变 10.94 万。",
+    "最大回撤": "账户从「最高点」跌到「最低点」的最大幅度，衡量最惨的时候亏多少。",
+    "夏普比率": "每承担一份风险换来多少收益，越大越好。>1 不错，>2 很优秀。",
+    "胜率": "所有买卖中赚钱的比例。50% 胜率配 2 倍盈亏比也能稳赚。",
+    "盈亏比": "平均一笔赚的钱 ÷ 平均一笔亏的钱。大于 1 说明赚的时候比亏的时候多。",
+    "滑点": "实际成交价比看到的价格差一点，就像网购的运费，回测里模拟了这个损耗。",
+}
 
 
 @st.cache_data(ttl=600, show_spinner="正在运行回测…")
 def _cached_backtest(
     strategy_name: str, start: str, end: str, initial_cash: float,
     params_json: str, rebalance_freq: str, market_timing: bool, max_hold_days: int,
+    boards_json: str = "[]", exclude_st: bool = True,
 ):
     """带缓存回测（10 分钟内不重复计算）。"""
     import json
@@ -42,6 +55,13 @@ def _cached_backtest(
         fin = storage.load_fundamentals(code)
         if fin:
             fund_map[code] = fin
+
+    # 板块筛选 + 剔除 ST（R5 需求）
+    from stock_plan.factors.board import filter_universe_ui
+
+    boards = json.loads(boards_json)
+    stock_list, bars_map = filter_universe_ui(stock_list, bars_map, boards, exclude_st)
+    fund_map = {c: f for c, f in fund_map.items() if c in bars_map}
 
     params = json.loads(params_json) if params_json else None
     strategy = create_strategy(strategy_name, params)
@@ -103,6 +123,21 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
             xaxis_title="日期",
         )
         st.plotly_chart(fig, use_container_width=True)
+
+    # 收益曲线（R3 需求：累计收益率 % + 回撤区域标注）
+    st.subheader("📈 收益曲线（动态变化）")
+    st.caption(
+        "蓝线是「累计收益率」：从回测第一天算起，账户总共赚/亏了百分之几。"
+        "红色阴影是「回撤」：从阶段最高点跌下来的幅度，阴影越深说明中途跌得越狠。"
+    )
+    from stock_plan.ui.widgets import equity_curve_fig
+
+    eq = result.equity_curve if result is not None else None
+    fig_ret = equity_curve_fig(eq)
+    if fig_ret is not None:
+        st.plotly_chart(fig_ret, use_container_width=True)
+    else:
+        st.info("回测数据不足，无法绘制收益曲线。")
 
     # 月度收益
     st.subheader("月度收益")
@@ -229,6 +264,11 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
 def render():
     st.header("📊 回测结果")
     st.caption("用历史数据验证策略表现：逐日模拟 T+1 交易，含手续费/印花税/滑点/涨跌停。")
+    page_glossary(BACKTEST_GLOSSARY)
+
+    # 选股范围（R5：板块筛选 + 剔除 ST）
+    st.markdown("**选股范围**")
+    boards, exclude_st = board_filter_ui("bt")
 
     # 参数设置
     col1, col2, col3, col4 = st.columns(4)
@@ -274,6 +314,8 @@ def render():
                 rebalance_freq,
                 bool(market_timing),
                 int(max_hold_days),
+                json.dumps(boards, ensure_ascii=False),
+                exclude_st,
             )
             if not metrics:
                 st.warning("回测无数据。请先运行数据拉取脚本（fetch_all.py）确保有缓存数据。")

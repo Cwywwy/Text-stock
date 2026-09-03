@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 
 import pandas as pd
@@ -17,14 +18,19 @@ from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.backtest.walkforward import walk_forward
 from stock_plan.data.storage import Storage
 from stock_plan.strategy.registry import STRATEGIES
+from stock_plan.ui.widgets import board_filter_ui, page_glossary
+
+# 本页名词速览（R2 亲民化）
+COMPARE_GLOSSARY = {
+    "策略对比": "把几套买卖规则放进同一段历史里各跑一遍，看谁赚得多、谁跌得少。",
+    "Walk-Forward": "「滚动验证」：用前一段历史找最优参数，再拿到紧随其后的一段没见过的历史里考试，防止「背答案」（过拟合）。",
+    "样本外": "考试用的「没见过的数据」。样本外表现好，才说明策略是真有本事而不是运气。",
+    "资金曲线": "账户总资产随时间变化的折线，一路向上是好策略的基本长相。",
+}
 
 
-@st.cache_data(ttl=600, show_spinner="正在运行策略对比…")
-def _cached_compare(
-    start: str, end: str, initial_cash: float,
-    rebalance_freq: str, market_timing: bool, max_hold_days: int,
-):
-    """多策略对比（带缓存）。"""
+def _load_and_filter(boards: list[str] | None, exclude_st: bool):
+    """加载数据并应用板块筛选 + 剔除 ST（R5 需求）。"""
     storage = Storage()
     stock_list = storage.load_stock_list()
     bars_map = {}
@@ -34,6 +40,27 @@ def _cached_compare(
     fund_map = {}
     for code in bars_map:
         fin = storage.load_fundamentals(code)
+        if fin:
+            fund_map[code] = fin
+    from stock_plan.factors.board import filter_universe_ui
+
+    return filter_universe_ui(stock_list, bars_map, boards, exclude_st)
+
+
+@st.cache_data(ttl=600, show_spinner="正在运行策略对比…")
+def _cached_compare(
+    start: str, end: str, initial_cash: float,
+    rebalance_freq: str, market_timing: bool, max_hold_days: int,
+    boards_json: str = "[]", exclude_st: bool = True,
+):
+    """多策略对比（带缓存）。"""
+    import json
+
+    boards = json.loads(boards_json)
+    stock_list, bars_map = _load_and_filter(boards, exclude_st)
+    fund_map = {}
+    for code in bars_map:
+        fin = Storage().load_fundamentals(code)
         if fin:
             fund_map[code] = fin
 
@@ -58,17 +85,16 @@ def _cached_compare(
 def _cached_walkforward(
     strategy_name: str, start: str, end: str,
     train_days: int, test_days: int,
+    boards_json: str = "[]", exclude_st: bool = True,
 ):
     """Walk-Forward 滚动验证（带缓存）。"""
-    storage = Storage()
-    stock_list = storage.load_stock_list()
-    bars_map = {}
-    for code in stock_list["code"].astype(str).tolist():
-        if storage.cache_exists(code):
-            bars_map[code] = storage.load_bars(code)
+    import json
+
+    boards = json.loads(boards_json)
+    stock_list, bars_map = _load_and_filter(boards, exclude_st)
     fund_map = {}
     for code in bars_map:
-        fin = storage.load_fundamentals(code)
+        fin = Storage().load_fundamentals(code)
         if fin:
             fund_map[code] = fin
 
@@ -85,6 +111,11 @@ def _cached_walkforward(
 def render():
     st.header("⚖️ 策略对比")
     st.caption("多策略横向对比 + Walk-Forward 滚动样本外验证，避免过拟合历史。")
+    page_glossary(COMPARE_GLOSSARY)
+
+    # 选股范围（R5：板块筛选 + 剔除 ST）
+    st.markdown("**选股范围**")
+    boards, exclude_st = board_filter_ui("cmp")
 
     tab1, tab2 = st.tabs(["多策略对比", "Walk-Forward 验证"])
 
@@ -115,6 +146,7 @@ def render():
             results = _cached_compare(
                 start.isoformat(), end.isoformat(), float(initial_cash),
                 rebalance_freq, bool(market_timing), int(max_hold_days),
+                json.dumps(boards, ensure_ascii=False), exclude_st,
             )
 
             # 指标对比表
@@ -172,6 +204,7 @@ def render():
             wf = _cached_walkforward(
                 strategy_name, wf_start.isoformat(), date.today().isoformat(),
                 int(train_days), int(test_days),
+                json.dumps(boards, ensure_ascii=False), exclude_st,
             )
             if not wf.windows:
                 st.warning("区间太短，无法形成完整窗口。请把开始日期提前（建议 2 年以上）。")

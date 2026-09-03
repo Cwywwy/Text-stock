@@ -16,6 +16,7 @@ from stock_plan.ui.views import (
     backtest,
     compare,
     four_masters,
+    guide,
     llm,
     news,
     paper,
@@ -35,6 +36,7 @@ nav = st.navigation(
         st.Page(four_masters.render, title="四大师研究", icon="🏛️", url_path="masters"),
         st.Page(llm.render, title="LLM 智能分析", icon="🤖", url_path="llm"),
         st.Page(news.render, title="新闻舆情", icon="📰", url_path="news"),
+        st.Page(guide.render, title="新手指南", icon="🎓", url_path="guide"),
     ]
 )
 nav.run()
