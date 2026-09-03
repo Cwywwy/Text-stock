@@ -11,7 +11,6 @@ from __future__ import annotations
 import streamlit as st
 
 from stock_plan.signal.generator import generate_signals
-from stock_plan.strategy.registry import create_strategy
 from stock_plan.ui.widgets import board_filter_ui, page_glossary
 
 # 本页名词速览（R2 亲民化）
@@ -43,7 +42,10 @@ def _get_strategy(name: str, params: dict | None = None):
         if params:
             strategy.params = {**strategy.params, **params}
         return strategy
-    return create_strategy(name, params)
+    # 内置策略 + 已保存策略（LLM 生成/拼装页保存）统一走 store
+    from stock_plan.strategy import store
+
+    return store.resolve_strategy(name, params)
 
 
 @st.cache_data(ttl=600, show_spinner="正在生成信号…")
@@ -160,16 +162,16 @@ def render():
     boards, exclude_st = board_filter_ui("today")
 
     # 策略选择
-    from stock_plan.strategy.registry import STRATEGIES
+    from stock_plan.strategy import store
 
     has_custom = bool(st.session_state.get("custom_strategy_config"))
-    options = list(STRATEGIES.keys())
-    if has_custom:
+    options = store.strategy_options()
+    if has_custom and "自定义策略" not in options:
         options.append("自定义策略")
     strategy_name = st.selectbox(
         "选择策略",
         options,
-        help="内置策略与自定义策略（需先在「策略拼装」页保存）；参数可在「策略管理」页调整。",
+        help="内置策略 + 已保存策略（LLM 生成或拼装页保存）+ 自定义策略（需先在「策略拼装」页保存）；参数可在「策略管理」页调整。",
     )
     top_n = st.slider("信号数量", 3, 10, 5)
 

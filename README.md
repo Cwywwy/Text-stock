@@ -47,7 +47,7 @@ stock plan/
 │   ├── simulator/          # 模拟交易
 │   ├── llm/                # LLM Agent（V3 已接入，配置见项目根 .env）
 │   └── ui/
-│       └── views/          # Streamlit 页面（9 页平铺导航）
+│       └── views/          # Streamlit 页面（10 页平铺导航）
 ├── .streamlit/config.toml  # 深色主题配置
 ├── .env / .env.example     # LLM 等敏感配置（不入源码）
 └── tests/                  # 测试用例
@@ -55,7 +55,7 @@ stock plan/
 
 ## 开发进度
 
-当前 **Phase 0–12 全部完成**（MVP + V1 增强 + V2 远期 + V3 增强版 + V4-Text 分支）。
+当前 **Phase 0–13 全部完成**（MVP + V1 增强 + V2 远期 + V3 增强版 + V4-Text 分支 + V5 LLM策略生成/持仓诊断）。
 
 - ✅ Phase 0 环境与骨架
 - ✅ Phase 1 数据层
@@ -70,6 +70,7 @@ stock plan/
 - ✅ Phase 10 V2 远期（LLM 复盘 / 新闻舆情 / 多周期并存 / 推送）
 - ✅ Phase 11 V3 增强版（平铺 9 页导航 / 7 策略注册表 / 四大师研究页 / 均线自由组合 / 智谱 GLM-4-Flash 接入 / 深色主题）
 - ✅ Phase 12 V4-Text（分支1：量价配置 / 板块自定义筛选 / 界面亲民化+新手指南 / 回测收益曲线 / 共享 UI 组件）
+- ✅ Phase 13 V5（分支1：LLM 自然语言→结构化参数→保存策略全站打通 / 持仓诊断：清仓减仓做T建议 + 单股重回测）
 
 ## LLM 配置（可选）
 

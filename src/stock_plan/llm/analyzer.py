@@ -18,15 +18,21 @@ _SYSTEM_NEWS = (
     "理由：一句话"
 )
 
-_SYSTEM_STRATEGY = (
-    "你是一位量化策略专家。请根据用户用自然语言描述的投资偏好，"
-    "输出一份可落地的选股策略配置（JSON），字段包括：\n"
-    "- name: 策略名\n"
-    "- params: 参数对象（m 止盈ATR倍数、n 止损ATR倍数、hold 最大持仓天数）\n"
-    "- rules: 选股规则列表（每条一句话）\n"
-    "- risk: 风控说明（一句话）\n"
-    "只输出 JSON，不要多余文字。"
+_SYSTEM_STRATEGY_CFG = (
+    "你是量化策略专家。把用户的自然语言投资偏好转换为结构化选股策略配置。\n"
+    "只输出一个 JSON 对象（不要 markdown 代码块、不要多余文字），格式：\n"
+    "{\n"
+    '  "name": "策略名（10字内）",\n'
+    '  "config": {weights/rules/params 可平铺或分组，见下方词表},\n'
+    '  "unsupported": [{"name": "缺失能力名", "description": "用户想要什么", "suggestion": "建议补充什么参数/数据"}],\n'
+    '  "code": "仅当词表无法表达用户意图时，给出一段 Python 选股过滤/打分逻辑代码（pandas，'
+    "输入 df_factors 含 code/close/atr14/ma5/ma10/ma20/ma60/rsi14/vol_ratio/mom_ret/"
+    'high20_ratio/macd/macd_signal/avg_amount20/trend_score/fund_score 列），否则留空",\n'
+    '  "reason": "一句话说明你的取值逻辑"\n'
+    "}\n"
+    "词表（只能使用这些键，取值范围见说明）：\n"
 )
+
 
 _SYSTEM_SIGNAL = (
     "你是一位 A 股盘前选股助手。请解释以下选股信号：为什么选这只票、"
@@ -66,18 +72,188 @@ def analyze_news(code: str, name: str, news_items: list[dict], client: Optional[
     return c.chat(_SYSTEM_NEWS, user)
 
 
-def generate_strategy(description: str, client: Optional[LLMClient] = None) -> str:
-    """根据自然语言描述生成策略配置。
+def _vocab_text() -> str:
+    """把参数词表拼成 LLM 提示（来自 codegen，单一事实来源）。"""
+    from stock_plan.strategy.codegen import PARAM_SPEC, RULE_SPEC, WEIGHT_SPEC
 
-    参数：
-        description: 用户描述的投资偏好。
-        client: LLM 客户端。
+    lines = []
+    for key, (cn, desc, default, _t) in WEIGHT_SPEC.items():
+        lines.append(f"- weights.{key}（{cn}，默认 {default}）：{desc}")
+    for key, (cn, desc, default, _t) in RULE_SPEC.items():
+        lines.append(f"- rules.{key}（{cn}，默认 {_default_show(default)}）：{desc}")
+    for key, (cn, desc, default, _t) in PARAM_SPEC.items():
+        lines.append(f"- params.{key}（{cn}，默认 {default}）：{desc}")
+    lines.append("- name（策略名）")
+    return "\n".join(lines)
 
-    返回：
-        策略配置文本（JSON 或 mock 模板）。
+
+def _default_show(default) -> str:
+    if isinstance(default, bool):
+        return "true/false" if default else "false"
+    return str(default)
+
+
+def generate_strategy_config(description: str, client: Optional[LLMClient] = None) -> dict:
+    """根据自然语言描述生成结构化策略配置（V4 需求：参数优先，代码提案兜底）。
+
+    返回 dict：
+        config:         清洗后的合法 CustomStrategy 配置
+        unknown:        无法识别的键（词表外）
+        unsupported:    未支持参数反馈清单 [{name, description, suggestion}]
+        proposal_code:  自定义代码提案（仅当词表不够表达时；不参与实际选股）
+        reason:         LLM 一句话取值逻辑
+        mode:           "llm" | "mock"
     """
     c = client or get_client()
-    return c.chat(_SYSTEM_STRATEGY, description)
+    system = _SYSTEM_STRATEGY_CFG + _vocab_text()
+
+    def _empty(reason: str, mode: str) -> dict:
+        return {
+            "config": {},
+            "unknown": [],
+            "unsupported": [],
+            "proposal_code": "",
+            "reason": reason,
+            "mode": mode,
+        }
+
+    if c.mock:
+        return _mock_strategy_config(description)
+
+    raw = c.chat(system, description)
+    data, err = _parse_json_dict(raw)
+    if err:
+        return _empty(f"LLM 输出解析失败（{err}），请重试或换个描述。", "llm")
+
+    from stock_plan.strategy.codegen import normalize_config
+
+    raw_cfg = data.get("config", data)
+    config, unknown = normalize_config(raw_cfg)
+    unsupported = [
+        {
+            "name": str(u.get("name", ""))[:50],
+            "description": str(u.get("description", ""))[:200],
+            "suggestion": str(u.get("suggestion", ""))[:200],
+        }
+        for u in (data.get("unsupported") or [])
+        if isinstance(u, dict)
+    ]
+    code = str(data.get("code") or "").strip()
+    # 剥离可能的 markdown 围栏
+    if code.startswith("```"):
+        code = _strip_code_fence(code)
+    return {
+        "config": config,
+        "unknown": unknown,
+        "unsupported": unsupported,
+        "proposal_code": code,
+        "reason": str(data.get("reason") or "")[:300],
+        "mode": "llm",
+    }
+
+
+def _parse_json_dict(text: str) -> tuple[dict | None, str]:
+    """尽力从 LLM 回复中提取 JSON 对象。"""
+    import json
+
+    text = (text or "").strip()
+    candidates = [text]
+    if "```" in text:
+        candidates.insert(0, _strip_code_fence(text))
+    # 截取第一处 { 到最后一处 }
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        candidates.insert(0, text[start : end + 1])
+    for cand in candidates:
+        try:
+            data = json.loads(cand)
+            if isinstance(data, dict):
+                return data, ""
+        except (ValueError, TypeError):
+            continue
+    return None, "未找到合法 JSON"
+
+
+def _mock_strategy_config(description: str) -> dict:
+    """离线规则模式：关键词启发式生成配置（无 LLM 也可用）。"""
+    import re
+
+    from stock_plan.strategy.codegen import normalize_config
+
+    desc = description or ""
+    raw: dict = {"name": "LLM 生成策略（离线模式）"}
+    # 均线："X日均线附近买入" / "5日均线站上20日均线"
+    mas = [int(m) for m in re.findall(r"(\d{1,2})\s*日均线", desc)]
+    if len(mas) >= 2:
+        raw["trend_ma_fast"], raw["trend_ma_slow"] = min(mas[:2]), max(mas[:2])
+    elif mas:
+        raw["dev_ma"] = mas[0]
+        raw["dev_min"], raw["dev_max"] = -5.0, 5.0
+    # 持仓天数
+    m = re.search(r"持有\s*(\d{1,3})\s*天", desc)
+    if m:
+        raw["hold_days"] = int(m.group(1))
+    # 止盈止损（按 ATR 倍数描述）
+    m = re.search(r"止盈[^\d]{0,4}(\d+(?:\.\d+)?)", desc)
+    if m:
+        raw["atr_m_exit"] = float(m.group(1))
+    m = re.search(r"止损[^\d]{0,4}(\d+(?:\.\d+)?)", desc)
+    if m:
+        raw["atr_n_stop"] = float(m.group(1))
+    # RSI 区间
+    m = re.search(r"RSI[^\d]{0,6}(\d{1,3})", desc, re.IGNORECASE)
+    if m:
+        raw["rsi_max"] = min(float(m.group(1)), 100)
+    # 放量
+    if "放量" in desc:
+        raw["vol_surge_min"] = 1.5
+        raw["vol_surge_bonus"] = 10.0
+    # 流动性
+    m = re.search(r"成交额[^\d]{0,6}(\d+(?:\.\d+)?)", desc)
+    if m or "流动性" in desc or "冷门" in desc:
+        raw["liquidity_min"] = float(m.group(1)) if m else 0.5
+    # MACD
+    if "MACD" in desc.upper() or "金叉" in desc:
+        raw["macd_golden"] = True
+    if "零轴" in desc:
+        raw["macd_above_zero"] = True
+    # 突破
+    if "新高" in desc or "突破" in desc:
+        raw["require_breakout"] = True
+
+    config, unknown = normalize_config(raw)
+
+    # 未支持能力识别（供用户日后补充新参数）
+    unsupported = []
+    future_map = [
+        ("美股隔夜行情", ["美股", "纳指", "标普", "道琼斯", "隔夜外盘"]),
+        ("股指期货交割日", ["股指交割", "期指交割", "交割日"]),
+        ("期权交割日", ["期权交割"]),
+        ("龙虎榜/资金流数据", ["龙虎榜", "资金流", "北向资金"]),
+        ("涨停板情绪周期", ["连板", "涨停潮", "情绪周期"]),
+    ]
+    for name, kws in future_map:
+        if any(k in desc for k in kws):
+            unsupported.append({
+                "name": name,
+                "description": f"描述中提到「{name}」相关的选股依据，当前系统暂无该数据。",
+                "suggestion": f"需新增「{name}」数据源与因子列后，再以参数形式加入词表。",
+            })
+    if unknown:
+        unsupported.append({
+            "name": "未识别参数",
+            "description": f"以下参数不在系统词表中，已忽略：{', '.join(unknown)}",
+            "suggestion": "可从描述中删去，或日后把该能力加入系统词表。",
+        })
+    return {
+        "config": config,
+        "unknown": unknown,
+        "unsupported": unsupported,
+        "proposal_code": "",
+        "reason": "离线关键词匹配生成；配置 .env 启用真实 LLM 后效果更佳。",
+        "mode": "mock",
+    }
+
 
 
 def explain_signal(signal: dict, client: Optional[LLMClient] = None) -> str:

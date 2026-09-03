@@ -19,6 +19,8 @@
         "liquidity_min": 0.5,          # 流动性下限：近20日平均成交额（亿元），低于排除；0=不启用
         "vol_surge_min": 0.0,          # 放量异动阈值：量比达到该值视为放量；0=不启用
         "vol_surge_bonus": 10.0,       # 放量异动加分数值（vol_ratio >= vol_surge_min 时加分）
+        "macd_golden": False,          # MACD 金叉：快线在信号线上方（不满足排除）
+        "macd_above_zero": False,      # MACD 零轴上方（中期多头市场）
     },
     "params": {"atr_k_entry": 0.0, "atr_m_exit": 3.5, "atr_n_stop": 3.5, "hold_days": 30},
 }
@@ -119,6 +121,12 @@ class CustomStrategy(Strategy):
         vol_surge_bonus = float(rules.get("vol_surge_bonus", 10) or 10)
         if vol_surge_min > 0 and "vol_ratio" in df_factors.columns:
             score += (df_factors["vol_ratio"] >= vol_surge_min) * vol_surge_bonus
+        # ---- MACD 条件（V4 补充需求）----
+        if "macd" in df_factors.columns and "macd_signal" in df_factors.columns:
+            if rules.get("macd_golden", False):
+                score -= (~(df_factors["macd"] > df_factors["macd_signal"])) * 100
+            if rules.get("macd_above_zero", False):
+                score -= (df_factors["macd"] <= 0) * 100
         # 动量加分
         if "mom_ret" in df_factors.columns:
             w_mom = weights.get("mom_ret", 0.0)

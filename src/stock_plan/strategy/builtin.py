@@ -151,6 +151,8 @@ def build_factor_rows(
                 "vol_ratio": last["vol_ratio"],
                 "avg_amount20": avg_amount20,
                 "high20_ratio": high20_ratio,
+                "macd": last["macd"],
+                "macd_signal": last["macd_signal"],
                 "value_score": fund.get("value_score", 50.0),
                 "growth_score": fund.get("growth_score", 50.0),
                 "quality_score": fund.get("quality_score", 50.0),

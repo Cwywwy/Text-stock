@@ -17,6 +17,7 @@ from stock_plan.backtest.engine import BacktestConfig, run_backtest
 from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.backtest.walkforward import walk_forward
 from stock_plan.data.storage import Storage
+from stock_plan.strategy import store
 from stock_plan.strategy.registry import STRATEGIES
 from stock_plan.ui.widgets import board_filter_ui, page_glossary
 
@@ -64,9 +65,14 @@ def _cached_compare(
         if fin:
             fund_map[code] = fin
 
+    factories = {name: (lambda cls=cls: cls()) for name, cls in STRATEGIES.items()}
+    for n in store.list_strategies():
+        if n not in STRATEGIES:  # 已保存策略（LLM 生成/拼装页保存）一并纳入对比
+            factories[n] = lambda n=n: store.resolve_strategy(n)
+
     results = {}
-    for name, cls in STRATEGIES.items():
-        strat = cls()
+    for name, factory in factories.items():
+        strat = factory()
         config = BacktestConfig(
             start=date.fromisoformat(start),
             end=date.fromisoformat(end),
@@ -98,9 +104,12 @@ def _cached_walkforward(
         if fin:
             fund_map[code] = fin
 
-    cls = STRATEGIES[strategy_name]
+    if strategy_name in STRATEGIES:
+        factory = lambda: STRATEGIES[strategy_name]()
+    else:  # 已保存策略
+        factory = lambda: store.resolve_strategy(strategy_name)
     result = walk_forward(
-        lambda: cls(),
+        factory,
         bars_map, fund_map, stock_list,
         date.fromisoformat(start), date.fromisoformat(end),
         train_days=train_days, test_days=test_days,
@@ -189,7 +198,7 @@ def render():
     with tab2:
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            strategy_name = st.selectbox("策略", list(STRATEGIES.keys()), key="wf_strat")
+            strategy_name = st.selectbox("策略", store.strategy_options(), key="wf_strat")
         with col2:
             wf_start = st.date_input("开始日期", date.today() - timedelta(days=730), key="wf_start")
         with col3:
