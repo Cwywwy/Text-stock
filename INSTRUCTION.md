@@ -145,6 +145,8 @@ stock plan/
 | 2026-09-03 | 增量合并=**旧数据 + 新数据 concat 后按日期去重（keep=last）整体重写** | storage.save_bars 是整体覆盖写（无 append），直接写 30 天新数据会丢 5 年历史；合并后单文件重写成本可忽略 |
 | 2026-09-03 | 「数据更新」做成**左侧导航独立页**（views/update_center.py） | 右上角悬浮按钮会遮挡界面元素，用户两轮反馈后定为导航模块：状态指标 + 手动增量更新 + fragment 3 秒轮询进度 + 未缓存股票提示单独补拉 + 更新日志 |
 | 2026-09-03 | 更新任务以**独立子进程**执行，UI 经 data/logs/update_progress.json 轮询进度 | akshare 依赖 py_mini_racer（V8 引擎），在 Streamlit 进程内初始化偶发 `FATAL:partition_address_space.cc` 致命崩溃拖垮整个服务器（exit -2147483645）；子进程隔离后崩溃不影响主服务。fragment auto-rerun 内 `st.rerun(scope="app")` 不向客户端传播（Streamlit 1.63 怪癖），故结果全部在 fragment 内每 tick 重绘 |
+| 2026-09-03 | 云端部署走 **requirements.txt + st.secrets** | Streamlit Community Cloud 只认 requirements.txt（不读 pyproject），版本按本地验证固定；.env 不入库，云端 LLM Key 从 st.secrets 读取回退 |
+| 2026-09-03 | 今日信号/回测页 `saved` 参数兜底 `{}` | 选择未在「策略管理」编辑过参数的策略时 `by_name.get(name)` 返回 None，`{**saved}` 抛 TypeError；改为 `or {}` 走策略默认参数 |
 
 ## 8. 常用命令
 

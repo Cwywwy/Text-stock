@@ -188,9 +188,9 @@ def render():
         import json
 
         by_name = st.session_state.get("strategy_params_by_strategy", {})
-        saved = by_name.get(strategy_name)
-        if saved is None and strategy_name == "趋势跟随策略":
-            saved = st.session_state.get("strategy_params", {})  # 兼容旧版
+        saved = by_name.get(strategy_name) or {}
+        if not saved and strategy_name == "趋势跟随策略":
+            saved = st.session_state.get("strategy_params") or {}  # 兼容旧版
         config = st.session_state.get("custom_strategy_config", {})
 
         if period_label == "多周期并存":
@@ -208,7 +208,7 @@ def render():
                 if signals:
                     all_groups[label] = signals
             if not all_groups:
-                st.warning("未生成信号。请先运行数据拉取脚本（fetch_all.py）确保有缓存数据。")
+                st.warning("未生成信号。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")
                 return
             st.success(f"已生成 {len(all_groups)} 组信号（短线/中短线/中线）")
             for label, signals in all_groups.items():
@@ -226,7 +226,7 @@ def render():
                 exclude_st,
             )
             if not signals:
-                st.warning("未生成信号。请先运行数据拉取脚本（fetch_all.py）确保有缓存数据。")
+                st.warning("未生成信号。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")
                 return
             st.success(f"共生成 {len(signals)} 条{period_label}信号")
             _store_signals(signals, period_label)

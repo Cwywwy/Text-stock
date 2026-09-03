@@ -90,6 +90,28 @@ stock plan/
 - ✅ Phase 13 V5（分支1：LLM 自然语言→结构化参数→保存策略全站打通 / 持仓诊断：清仓减仓做T建议 + 单股重回测）
 - ✅ Phase 14（分支1：交易日 16:00/20:00/0:00/8:00 计划任务自动增量拉取 / 左侧「数据更新」页手动更新 + 进度 + 未缓存补拉）
 
+## 云端部署（Streamlit Community Cloud）
+
+应用可免费部署到 [Streamlit Community Cloud](https://share.streamlit.io)，获得公网链接：
+
+1. 将本仓库推送到 GitHub（如 `Cwywwy/Text-stock`，分支 `分支1`）
+2. 打开 [share.streamlit.io](https://share.streamlit.io) 并用 GitHub 账号登录
+3. 「Create app」→ 选择仓库 / 分支，主文件路径填 `src/stock_plan/ui/app.py`
+4. Advanced settings 里 Python 版本选 **3.13**，点 Deploy
+
+注意事项：
+
+- 依赖读取根目录 `requirements.txt`（已按本地验证版本固定）
+- 云端**没有本地缓存数据**，首次使用需在「🔄 数据更新」页手动全量拉取（约 15 分钟），之后增量更新秒级
+- Windows 计划任务自动更新仅在本地部署生效，云端请手动更新
+- LLM API Key 在云端走 **Secrets**：App 菜单 → Settings → Secrets，填入：
+
+```toml
+LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+LLM_MODEL = "glm-4-flash"
+LLM_API_KEY = "你的key"
+```
+
 ## LLM 配置（可选）
 
 复制 `.env.example` 为 `.env`，填入 API Key 即可启用真实 LLM 分析（默认智谱 GLM-4-Flash，免费）：
