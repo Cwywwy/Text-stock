@@ -20,6 +20,7 @@ from stock_plan.ui.views import (
     llm,
     news,
     paper,
+    portfolio,
     strategy_mgr,
     today,
     visual_builder,
@@ -28,6 +29,7 @@ from stock_plan.ui.views import (
 nav = st.navigation(
     [
         st.Page(today.render, title="今日信号", icon="📋", url_path="today", default=True),
+        st.Page(portfolio.render, title="持仓诊断", icon="🩺", url_path="portfolio"),
         st.Page(paper.render, title="模拟交易", icon="💼", url_path="paper"),
         st.Page(backtest.render, title="回测结果", icon="📊", url_path="backtest"),
         st.Page(compare.render, title="策略对比", icon="⚖️", url_path="compare"),

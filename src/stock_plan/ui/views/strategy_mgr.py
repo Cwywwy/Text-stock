@@ -92,3 +92,41 @@ def render():
         use_container_width=True,
         hide_index=True,
     )
+
+    # ============ 已保存策略（LLM 生成 / 拼装页保存） ============
+    from stock_plan.strategy import store
+
+    saved_records = store.list_strategies()
+    if saved_records:
+        st.markdown("---")
+        st.markdown("### 📁 已保存策略")
+        st.caption("由「LLM 策略生成」或「策略拼装」页保存的正式策略，今日信号/回测/对比页可直接选用。")
+        saved_name = st.selectbox("选择已保存策略", list(saved_records.keys()), key="saved_strategy_pick")
+        rec = saved_records[saved_name]
+        st.markdown(f"**来源**：{rec['source']}　|　**创建时间**：{rec['created_at']}")
+        if rec.get("notes"):
+            st.caption(f"AI 取值逻辑：{rec['notes']}")
+        cfg = rec["config"]
+        rows = []
+        for k, v in cfg.get("weights", {}).items():
+            rows.append({"类别": "权重", "参数": k, "值": v})
+        for k, v in cfg.get("rules", {}).items():
+            rows.append({"类别": "规则", "参数": k, "值": "启用" if v else "关闭"})
+        for k, v in cfg.get("params", {}).items():
+            rows.append({"类别": "买卖价参数", "参数": k, "值": v})
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+        unsupported = rec.get("unsupported") or []
+        if unsupported:
+            with st.expander("⚠️ 保存时的 AI 反馈（未支持参数建议）"):
+                for u in unsupported:
+                    st.markdown(f"- **{u.get('name', '未知')}**：{u.get('description', '')}（建议：{u.get('suggestion', '')}）")
+        if rec.get("proposal_code"):
+            with st.expander("🧪 自定义代码提案（未参与选股，仅供审核）"):
+                st.code(rec["proposal_code"], language="python")
+        if st.button("🗑️ 删除该策略", key="del_saved_strategy"):
+            store.delete_strategy(saved_name)
+            st.success(f"已删除「{saved_name}」。")
+            st.rerun()
+    else:
+        st.markdown("---")
+        st.caption("还没有已保存策略。可到「LLM 智能分析 → 策略生成」用自然语言生成并保存。")

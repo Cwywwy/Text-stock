@@ -64,7 +64,9 @@ def _cached_backtest(
     fund_map = {c: f for c, f in fund_map.items() if c in bars_map}
 
     params = json.loads(params_json) if params_json else None
-    strategy = create_strategy(strategy_name, params)
+    from stock_plan.strategy import store
+
+    strategy = store.resolve_strategy(strategy_name, params)
 
     config = BacktestConfig(
         start=date.fromisoformat(start),
@@ -273,9 +275,9 @@ def render():
     # 参数设置
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        from stock_plan.strategy.registry import STRATEGIES
+        from stock_plan.strategy import store
 
-        strategy_name = st.selectbox("策略", list(STRATEGIES.keys()))
+        strategy_name = st.selectbox("策略", store.strategy_options())
     with col2:
         default_end = date.today()
         default_start = default_end - timedelta(days=365)
