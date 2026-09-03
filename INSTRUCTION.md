@@ -1,7 +1,7 @@
 # 开发 Instruction（开发指南）
 
 > 本文件是项目的开发指导文档，**每完成一个 Phase 必须同步更新**。
-> 最后更新：2026-09-03（Phase 13 / V5 完成）
+> 最后更新：2026-09-03（Phase 14 完成）
 
 ---
 
@@ -56,7 +56,7 @@ stock plan/
 │   ├── simulator/          # 模拟交易
 │   ├── llm/                # LLM Agent（V3 已接入，配置来自 .env）
 │   └── ui/
-│       └── views/          # Streamlit 页面（10 页平铺导航）
+│       └── views/          # Streamlit 页面（12 页平铺导航）
 └── tests/                  # 测试用例
 ```
 
@@ -89,6 +89,7 @@ stock plan/
 | Phase 11 V3 增强版 | ✅ 完成 | 平铺导航 / 7 策略注册表 / 四大师研究页 / 均线自由组合 / 智谱 GLM 接入 / 深色主题 |
 | Phase 12 V4-Text 分支（分支1） | ✅ 完成 | 量价配置 / 界面亲民化 / 回测收益曲线 / 分支 API KEY / 板块自定义筛选 / 新手指南页 |
 | Phase 13 V5-LLM 策略生成 + 持仓诊断 | ✅ 完成 | LLM 自然语言→结构化参数→保存策略全站打通 / 持仓诊断（清仓/减仓/做T建议 + 单股重回测） |
+| Phase 14 定时数据自动更新 | ✅ 完成 | 增量更新引擎（幂等）+ Windows 计划任务 4 时间点（16/20/0/8 点）+ 左侧导航「数据更新」页（手动更新/进度/未缓存补拉） |
 
 ## 7. 关键决策记录（持续追加）
 
@@ -139,6 +140,11 @@ stock plan/
 | 2026-09-03 | **持仓诊断引擎**（analysis/holding.py + views/portfolio.py，导航第 2 位） | 输入买入日期/买价/策略 → 规则对照给 4 级结论（清仓/减仓/做T/持有）+ 止盈止损位按策略口径折算到用户买价；做T建议：低吸=max(MA10, 现价-0.8×ATR)、高抛=min(近20日高, 现价+0.8×ATR)，按现价距哪端更近定正T/反T；附 120 日走势图（买入价/止损/止盈/做T价位 hline）与单股近一年重回测 |
 | 2026-09-03 | 买入日期晚于最新行情日时**近似诊断** | 当日刚买的情况：以最新交易日为买点近似计算，UI 显示 st.info 提示，避免直接报错 |
 | 2026-09-03 | filter_universe 需要 stock_list 含 **is_st 列** | 单股回测构造 stock_list 时必须带 `is_st: 0`，否则 KeyError |
+| 2026-09-03 | **定时更新用独立增量脚本 + 系统级调度**（data/updater.py + update_daily.py + scripts/run_update.cmd） | 用户要求网页将来分享给朋友，调度放 OS 层（Windows schtasks / 将来 Linux cron）；任务名 `\StockPlan\Update_1600/2000/0000/0800`，日志 data/logs/update.log |
+| 2026-09-03 | 增量更新**幂等设计**：本地最后日期 ≥ 期望最新交易日则跳过且不联网 | 一天 4 个时间点重复运行无副作用；周末/节假日自动空转；期望日期规则=交易日且过 16:00 取当天，否则上一交易日（交易日历 akshare 拉取，本地按天缓存 CSV，失败回退周一~周五近似） |
+| 2026-09-03 | 增量合并=**旧数据 + 新数据 concat 后按日期去重（keep=last）整体重写** | storage.save_bars 是整体覆盖写（无 append），直接写 30 天新数据会丢 5 年历史；合并后单文件重写成本可忽略 |
+| 2026-09-03 | 「数据更新」做成**左侧导航独立页**（views/update_center.py） | 右上角悬浮按钮会遮挡界面元素，用户两轮反馈后定为导航模块：状态指标 + 手动增量更新 + fragment 3 秒轮询进度 + 未缓存股票提示单独补拉 + 更新日志 |
+| 2026-09-03 | 更新任务以**独立子进程**执行，UI 经 data/logs/update_progress.json 轮询进度 | akshare 依赖 py_mini_racer（V8 引擎），在 Streamlit 进程内初始化偶发 `FATAL:partition_address_space.cc` 致命崩溃拖垮整个服务器（exit -2147483645）；子进程隔离后崩溃不影响主服务。fragment auto-rerun 内 `st.rerun(scope="app")` 不向客户端传播（Streamlit 1.63 怪癖），故结果全部在 fragment 内每 tick 重绘 |
 
 ## 8. 常用命令
 

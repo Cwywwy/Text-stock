@@ -6,7 +6,7 @@
 
 导航为平铺结构（便于后续功能模块化拆分）：
     今日信号 / 模拟交易 / 回测结果 / 策略对比 / 策略拼装 /
-    策略管理 / 四大师研究 / LLM 智能分析 / 新闻舆情
+    策略管理 / 四大师研究 / LLM 智能分析 / 新闻舆情 / 数据更新
 """
 import streamlit as st
 
@@ -23,6 +23,7 @@ from stock_plan.ui.views import (
     portfolio,
     strategy_mgr,
     today,
+    update_center,
     visual_builder,
 )
 
@@ -39,6 +40,7 @@ nav = st.navigation(
         st.Page(llm.render, title="LLM 智能分析", icon="🤖", url_path="llm"),
         st.Page(news.render, title="新闻舆情", icon="📰", url_path="news"),
         st.Page(guide.render, title="新手指南", icon="🎓", url_path="guide"),
+        st.Page(update_center.render, title="数据更新", icon="🔄", url_path="update"),
     ]
 )
 nav.run()

@@ -47,15 +47,32 @@ stock plan/
 │   ├── simulator/          # 模拟交易
 │   ├── llm/                # LLM Agent（V3 已接入，配置见项目根 .env）
 │   └── ui/
-│       └── views/          # Streamlit 页面（10 页平铺导航）
+│       └── views/          # Streamlit 页面（12 页平铺导航）
+├── scripts/run_update.cmd  # 数据定时更新包装脚本（Windows 计划任务用）
 ├── .streamlit/config.toml  # 深色主题配置
 ├── .env / .env.example     # LLM 等敏感配置（不入源码）
 └── tests/                  # 测试用例
 ```
 
+## 数据自动更新（Phase 14）
+
+数据需在**股票交易日**收盘后刷新，系统通过 Windows 计划任务在以下时点自动增量拉取（幂等，重复执行不会重复写入）：
+
+| 计划任务 | 时间 | 说明 |
+|----------|------|------|
+| `\StockPlan\Update_1600` | 每交易日 16:00 | 收盘后首轮（当日数据陆续出全） |
+| `\StockPlan\Update_2000` | 每交易日 20:00 | 第二轮补齐 |
+| `\StockPlan\Update_0000` | 次日 00:00 | 深夜兜底 |
+| `\StockPlan\Update_0800` | 次日 08:00 | 盘前兜底，保证开盘前数据最新 |
+
+- 增量只拉最近 30 天并按日期去重合并，已是最新数据的股票自动跳过，不联网。
+- 手动更新入口：左侧导航 **「🔄 数据更新」** 页——显示缓存状态指标，可点击「立即增量更新」实时查看进度；若存在未缓存的股票会提示并可单独补拉。
+- 更新日志：`data/logs/update.log`（数据更新页内可直接查看最近记录）。
+- 重装系统或新机器需重新注册计划任务（管理员 PowerShell）：对 `schtasks /Create /TN "\StockPlan\Update_1600" /TR "d:\Vscode\stock plan\Text\scripts\run_update.cmd" /SC WEEKLY /D MON,TUE,WED,THU,FRI /ST 16:00` 依次改任务名/时间执行 4 次。
+
 ## 开发进度
 
-当前 **Phase 0–13 全部完成**（MVP + V1 增强 + V2 远期 + V3 增强版 + V4-Text 分支 + V5 LLM策略生成/持仓诊断）。
+当前 **Phase 0–14 全部完成**（MVP + V1 增强 + V2 远期 + V3 增强版 + V4-Text 分支 + V5 LLM策略生成/持仓诊断 + 定时数据自动更新）。
 
 - ✅ Phase 0 环境与骨架
 - ✅ Phase 1 数据层
@@ -71,6 +88,7 @@ stock plan/
 - ✅ Phase 11 V3 增强版（平铺 9 页导航 / 7 策略注册表 / 四大师研究页 / 均线自由组合 / 智谱 GLM-4-Flash 接入 / 深色主题）
 - ✅ Phase 12 V4-Text（分支1：量价配置 / 板块自定义筛选 / 界面亲民化+新手指南 / 回测收益曲线 / 共享 UI 组件）
 - ✅ Phase 13 V5（分支1：LLM 自然语言→结构化参数→保存策略全站打通 / 持仓诊断：清仓减仓做T建议 + 单股重回测）
+- ✅ Phase 14（分支1：交易日 16:00/20:00/0:00/8:00 计划任务自动增量拉取 / 左侧「数据更新」页手动更新 + 进度 + 未缓存补拉）
 
 ## LLM 配置（可选）
 
