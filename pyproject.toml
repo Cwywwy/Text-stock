@@ -1,0 +1,27 @@
+[project]
+name = "stock-plan"
+version = "0.1.0"
+description = "盘前选股系统：A股技术面+基本面选股，含回测与模拟交易"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "akshare>=1.18.94",
+    "numpy>=2.5.2",
+    "pandas>=3.0.5",
+    "plotly>=7.0.0",
+    "pyarrow>=25.0.1",
+    "streamlit>=1.63.0",
+    "openai>=1.0.0",
+]
+
+[project.scripts]
+stock-plan = "stock_plan:main"
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

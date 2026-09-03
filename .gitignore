@@ -1,0 +1,26 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets
+.env
+streamlit_out.log
+streamlit_err.log
+*.log
+
+# Local data cache (large, not suitable for git)
+data/raw/
+data/processed/
+data/db/
+
+# Tooling caches
+.pytest_cache/
+__pycache__/
+
