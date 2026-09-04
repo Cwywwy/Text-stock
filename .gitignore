@@ -15,10 +15,13 @@ streamlit_out.log
 streamlit_err.log
 *.log
 
-# Local data cache (large, not suitable for git)
+# 本地数据缓存 (large, not suitable for git)
 data/raw/
 data/processed/
 data/db/
+
+# 快照发布临时 worktree
+.snapshot_worktree/
 
 # Tooling caches
 .pytest_cache/

@@ -10,6 +10,14 @@ import streamlit as st
 
 from stock_plan.llm.analyzer import four_masters_analysis
 from stock_plan.llm.client import get_client
+from stock_plan.ui.widgets import page_glossary
+
+MASTERS_GLOSSARY = {
+    "四大师": "巴菲特（好生意+护城河）、芒格（多元思维）、段永平（生意本质+不懂不做）、李录（长期确定性）四位价值投资大师。",
+    "护城河": "别人抢不走的竞争优势，如品牌、牌照、网络效应。像古城护城河一样挡住竞争者。",
+    "价值投资": "买「价格低于内在价值」的好公司，长期持有赚公司成长的钱，而不是猜价格涨跌。",
+    "否决项": "一票否决的硬标准。比如财报造假嫌疑、看不懂的生意——分数再高也不买。",
+}
 
 
 def render():
@@ -18,6 +26,7 @@ def render():
         "从巴菲特（护城河）、芒格（多元思维）、段永平（生意本质）、李录（长期确定性）"
         "四个视角对个股做对抗式基本面分析。"
     )
+    page_glossary(MASTERS_GLOSSARY)
 
     st.warning(
         "⚠️ 定位说明：本页是**长线价值投资研究框架**，与「今日信号」等盘前短线选股模块的定位不同，"

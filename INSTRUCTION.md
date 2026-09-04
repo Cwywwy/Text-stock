@@ -1,7 +1,7 @@
 # 开发 Instruction（开发指南）
 
 > 本文件是项目的开发指导文档，**每完成一个 Phase 必须同步更新**。
-> 最后更新：2026-09-03（Phase 11 / V3 完成）
+> 最后更新：2026-09-04（Phase 16 完成）
 
 ---
 
@@ -56,7 +56,7 @@ stock plan/
 │   ├── simulator/          # 模拟交易
 │   ├── llm/                # LLM Agent（V3 已接入，配置来自 .env）
 │   └── ui/
-│       └── views/          # Streamlit 页面（9 页平铺导航）
+│       └── views/          # Streamlit 页面（12 页平铺导航）
 └── tests/                  # 测试用例
 ```
 
@@ -87,6 +87,9 @@ stock plan/
 | Phase 9 V1 增强 | ✅ 完成 | 多策略对比 + Walk-Forward + 详细报告 + LLM + 可视化拼装 |
 | Phase 10 V2 远期 | ✅ 完成 | LLM 复盘 / 新闻舆情 / 多周期并存 / 推送 |
 | Phase 11 V3 增强版 | ✅ 完成 | 平铺导航 / 7 策略注册表 / 四大师研究页 / 均线自由组合 / 智谱 GLM 接入 / 深色主题 |
+| Phase 12 V4-Text 分支（分支1） | ✅ 完成 | 量价配置 / 界面亲民化 / 回测收益曲线 / 分支 API KEY / 板块自定义筛选 / 新手指南页 |
+| Phase 13 V5-LLM 策略生成 + 持仓诊断 | ✅ 完成 | LLM 自然语言→结构化参数→保存策略全站打通 / 持仓诊断（清仓/减仓/做T建议 + 单股重回测） |
+| Phase 14 定时数据自动更新 | ✅ 完成 | 增量更新引擎（幂等）+ Windows 计划任务 4 时间点（16/20/0/8 点）+ 左侧导航「数据更新」页（手动更新/进度/未缓存补拉） |
 
 ## 7. 关键决策记录（持续追加）
 
@@ -125,6 +128,28 @@ stock plan/
 | 2026-09-03 | LLM 配置走 **.env**（llm/config.py + python-dotenv 式自研加载器） | 用户选定智谱 GLM-4-Flash（open.bigmodel.cn OpenAI 兼容端点，免费）；key 存 .env 不入源码，`.gitignore` 已加 `.env` |
 | 2026-09-03 | **深色主题**（.streamlit/config.toml） | 用户偏好深色系界面；base=dark + 自定义配色 |
 | 2026-09-03 | 策略管理页支持**多策略参数编辑**（strategy_params_by_strategy） | 参数按策略名存 session_state，通用参数编辑器按类型分派控件；趋势策略兼容旧 strategy_params |
+| 2026-09-03 | V4 在 Text 克隆+分支1 实施，**不动主目录主分支** | 用户要求：主分支保持可运行版本，Text/data junction 共享数据目录 |
+| 2026-09-03 | 量价配置：流动性下限（liquidity_min 亿元）+ 放量异动（vol_surge_min 量比阈值 / vol_surge_bonus 加分） | custom.py 规则实现：流动性不足 -100 分排除，放量布尔×bonus 加分；builtin.py 加 avg_amount20 列 |
+| 2026-09-03 | **板块筛选**（factors/board.py）| BOARDS 前缀映射：主板 60/00、创业板 30、科创板 68、北交所 82/83/87/43/92；filter_universe_ui 在策略硬过滤前执行，ST 剔除与板块过滤需同步作用于 stock_list 与 bars_map 两处（否则 ST 漏网） |
+| 2026-09-03 | **共享 UI 组件**（ui/widgets.py） | board_filter_ui / apply_universe_filter / page_glossary / equity_curve_fig 四组件，today/backtest/compare/builder 4 页复用；缓存键加 boards_json+exclude_st |
+| 2026-09-03 | **收益曲线图**（equity_curve_fig） | 累计收益率%（首值归一）+ 历史最高点线 + 回撤红色阴影（fill tonexty）；backtest/builder 两页展示 |
+| 2026-09-03 | **亲民化文案**：新手指南页（guide.py）+ 9 页名词速览 + PARAM_DESC 大白话 | 5 类 22 术语（趋势/量价/风控/回测/基本面板块），每词含一句话解释+生活化例子+为什么有用；三分钟核心逻辑+免责声明 |
+| 2026-09-03 | 分支1 专用 API KEY 走 Text/.env | 智谱 GLM-4-Flash，.gitignore 已排除不入库 |
+| 2026-09-03 | **LLM 策略生成走参数主路线 + 代码提案旁路**（strategy/codegen.py + llm/analyzer.py） | LLM 分析自然语言 → 输出 WEIGHT/RULE/PARAM 三类结构化参数（严格钳制区间：weights 0~2.0、ATR 倍数 0.5~20、hold_days 1~250、dev_ma ∈ {5,7,10,20,30,60}，均线快慢成对否则双零）→ UI 参数对照表（默认值 vs 建议值）；现有参数表达不了的想法进"未支持参数反馈"清单并生成注释版/可运行脚本版代码提案，代码不直接参与选股 |
+| 2026-09-03 | **已保存策略持久化**（strategy/store.py，SQLite data/db/strategies.db） | save_strategy（同名覆盖，source=llm/builder）+ strategy_options() + resolve_strategy()；今日信号/回测/对比/策略管理 4 页统一走 store，保存后立即可用 |
+| 2026-09-03 | **持仓诊断引擎**（analysis/holding.py + views/portfolio.py，导航第 2 位） | 输入买入日期/买价/策略 → 规则对照给 4 级结论（清仓/减仓/做T/持有）+ 止盈止损位按策略口径折算到用户买价；做T建议：低吸=max(MA10, 现价-0.8×ATR)、高抛=min(近20日高, 现价+0.8×ATR)，按现价距哪端更近定正T/反T；附 120 日走势图（买入价/止损/止盈/做T价位 hline）与单股近一年重回测 |
+| 2026-09-03 | 买入日期晚于最新行情日时**近似诊断** | 当日刚买的情况：以最新交易日为买点近似计算，UI 显示 st.info 提示，避免直接报错 |
+| 2026-09-03 | filter_universe 需要 stock_list 含 **is_st 列** | 单股回测构造 stock_list 时必须带 `is_st: 0`，否则 KeyError |
+| 2026-09-03 | **定时更新用独立增量脚本 + 系统级调度**（data/updater.py + update_daily.py + scripts/run_update.cmd） | 用户要求网页将来分享给朋友，调度放 OS 层（Windows schtasks / 将来 Linux cron）；任务名 `\StockPlan\Update_1600/2000/0000/0800`，日志 data/logs/update.log |
+| 2026-09-03 | 增量更新**幂等设计**：本地最后日期 ≥ 期望最新交易日则跳过且不联网 | 一天 4 个时间点重复运行无副作用；周末/节假日自动空转；期望日期规则=交易日且过 16:00 取当天，否则上一交易日（交易日历 akshare 拉取，本地按天缓存 CSV，失败回退周一~周五近似） |
+| 2026-09-03 | 增量合并=**旧数据 + 新数据 concat 后按日期去重（keep=last）整体重写** | storage.save_bars 是整体覆盖写（无 append），直接写 30 天新数据会丢 5 年历史；合并后单文件重写成本可忽略 |
+| 2026-09-03 | 「数据更新」做成**左侧导航独立页**（views/update_center.py） | 右上角悬浮按钮会遮挡界面元素，用户两轮反馈后定为导航模块：状态指标 + 手动增量更新 + fragment 3 秒轮询进度 + 未缓存股票提示单独补拉 + 更新日志 |
+| 2026-09-03 | 更新任务以**独立子进程**执行，UI 经 data/logs/update_progress.json 轮询进度 | akshare 依赖 py_mini_racer（V8 引擎），在 Streamlit 进程内初始化偶发 `FATAL:partition_address_space.cc` 致命崩溃拖垮整个服务器（exit -2147483645）；子进程隔离后崩溃不影响主服务。fragment auto-rerun 内 `st.rerun(scope="app")` 不向客户端传播（Streamlit 1.63 怪癖），故结果全部在 fragment 内每 tick 重绘 |
+| 2026-09-03 | 云端部署走 **requirements.txt + st.secrets** | Streamlit Community Cloud 只认 requirements.txt（不读 pyproject），版本按本地验证固定；.env 不入库，云端 LLM Key 从 st.secrets 读取回退 |
+| 2026-09-03 | 今日信号/回测页 `saved` 参数兜底 `{}` | 选择未在「策略管理」编辑过参数的策略时 `by_name.get(name)` 返回 None，`{**saved}` 抛 TypeError；改为 `or {}` 走策略默认参数 |
+| 2026-09-04 | **云端数据快照外置**（data/snapshot.py + GitHub `data-snapshot` 孤儿分支） | 云端容器磁盘临时：推送重建/闲置回收/内存超限重启都会清空 data/（"拉完一次又清空"根因）。本机为权威源，每日 21:30 计划任务发布快照（单 zip 分卷每卷 90MB + manifest 双 sha256 校验，单 commit force push 不占仓库历史）；云端启动时 bars<100 自动恢复，原子替换失败回滚 |
+| 2026-09-04 | **云端轻量模式**（is_cloud + workers=3 + 全量 366 天） | Streamlit Community Cloud 容器 2.7GB 内存，8 线程全市场拉取易被打爆；显式 `STOCK_PLAN_CLOUD=1`（Secrets）优先，其次平台特征变量与 HOSTNAME 尽力检测 |
+| 2026-09-04 | snapshot 子进程调用 git 加 `encoding="utf-8"` | Windows 下 Python 默认 GBK 解码 git 输出，UTF-8 中文路径/输出会 UnicodeDecodeError（publish 首跑实测触发） |
 
 ## 8. 常用命令
 

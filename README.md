@@ -47,15 +47,32 @@ stock plan/
 │   ├── simulator/          # 模拟交易
 │   ├── llm/                # LLM Agent（V3 已接入，配置见项目根 .env）
 │   └── ui/
-│       └── views/          # Streamlit 页面（9 页平铺导航）
+│       └── views/          # Streamlit 页面（12 页平铺导航）
+├── scripts/run_update.cmd  # 数据定时更新包装脚本（Windows 计划任务用）
 ├── .streamlit/config.toml  # 深色主题配置
 ├── .env / .env.example     # LLM 等敏感配置（不入源码）
 └── tests/                  # 测试用例
 ```
 
+## 数据自动更新（Phase 14）
+
+数据需在**股票交易日**收盘后刷新，系统通过 Windows 计划任务在以下时点自动增量拉取（幂等，重复执行不会重复写入）：
+
+| 计划任务 | 时间 | 说明 |
+|----------|------|------|
+| `\StockPlan\Update_1600` | 每交易日 16:00 | 收盘后首轮（当日数据陆续出全） |
+| `\StockPlan\Update_2000` | 每交易日 20:00 | 第二轮补齐 |
+| `\StockPlan\Update_0000` | 次日 00:00 | 深夜兜底 |
+| `\StockPlan\Update_0800` | 次日 08:00 | 盘前兜底，保证开盘前数据最新 |
+
+- 增量只拉最近 30 天并按日期去重合并，已是最新数据的股票自动跳过，不联网。
+- 手动更新入口：左侧导航 **「🔄 数据更新」** 页——显示缓存状态指标，可点击「立即增量更新」实时查看进度；若存在未缓存的股票会提示并可单独补拉。
+- 更新日志：`data/logs/update.log`（数据更新页内可直接查看最近记录）。
+- 重装系统或新机器需重新注册计划任务（管理员 PowerShell）：对 `schtasks /Create /TN "\StockPlan\Update_1600" /TR "d:\Vscode\stock plan\Text\scripts\run_update.cmd" /SC WEEKLY /D MON,TUE,WED,THU,FRI /ST 16:00` 依次改任务名/时间执行 4 次。
+
 ## 开发进度
 
-当前 **Phase 0–11 全部完成**（MVP + V1 增强 + V2 远期 + V3 增强版）。
+当前 **Phase 0–14 全部完成**（MVP + V1 增强 + V2 远期 + V3 增强版 + V4-Text 分支 + V5 LLM策略生成/持仓诊断 + 定时数据自动更新）。
 
 - ✅ Phase 0 环境与骨架
 - ✅ Phase 1 数据层
@@ -69,6 +86,57 @@ stock plan/
 - ✅ Phase 9 V1 增强（多策略对比 / Walk-Forward / 详细报告 / LLM / 可视化拼装）
 - ✅ Phase 10 V2 远期（LLM 复盘 / 新闻舆情 / 多周期并存 / 推送）
 - ✅ Phase 11 V3 增强版（平铺 9 页导航 / 7 策略注册表 / 四大师研究页 / 均线自由组合 / 智谱 GLM-4-Flash 接入 / 深色主题）
+- ✅ Phase 12 V4-Text（分支1：量价配置 / 板块自定义筛选 / 界面亲民化+新手指南 / 回测收益曲线 / 共享 UI 组件）
+- ✅ Phase 13 V5（分支1：LLM 自然语言→结构化参数→保存策略全站打通 / 持仓诊断：清仓减仓做T建议 + 单股重回测）
+- ✅ Phase 14（分支1：交易日 16:00/20:00/0:00/8:00 计划任务自动增量拉取 / 左侧「数据更新」页手动更新 + 进度 + 未缓存补拉）
+
+## 云端部署（Streamlit Community Cloud）
+
+应用可免费部署到 [Streamlit Community Cloud](https://share.streamlit.io)，获得公网链接：
+
+1. 将本仓库推送到 GitHub（如 `Cwywwy/Text-stock`，分支 `分支1`）
+2. 打开 [share.streamlit.io](https://share.streamlit.io) 并用 GitHub 账号登录
+3. 「Create app」→ 选择仓库 / 分支，主文件路径填 `src/stock_plan/ui/app.py`
+4. Advanced settings 里 Python 版本选 **3.13**，点 Deploy
+
+注意事项：
+
+- 依赖读取根目录 `requirements.txt`（已按本地验证版本固定）
+- 云端**数据自动恢复**：启动时检测本地无缓存数据，自动从 GitHub `data-snapshot` 分支下载快照（约 300MB，首次 1~3 分钟），无需手动全量拉取
+- Windows 计划任务自动更新仅在本地部署生效，云端请在「🔄 数据更新」页手动更新（云端轻量模式自动降低并发）
+- LLM API Key 在云端走 **Secrets**：App 菜单 → Settings → Secrets，填入：
+
+```toml
+LLM_BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+LLM_MODEL = "glm-4-flash"
+LLM_API_KEY = "你的key"
+
+# 可选：显式启用云端轻量模式（推荐，比自动检测更可靠）
+STOCK_PLAN_CLOUD = "1"
+```
+
+## 云端数据快照（Phase 16）
+
+云端容器磁盘是**临时的**：推送代码触发重建、闲置回收、内存超限重启都会清空 `data/`。
+本方案由本机（权威源）每日发布数据快照，云端按需恢复，彻底解决"拉完一次数据之后又清空"。
+
+架构：
+
+```
+本机 bars/（权威源，298MB+）
+   │  scripts/publish_snapshot.py（每日 21:30 计划任务 \StockPlan\Snapshot_2130）
+   ▼
+GitHub data-snapshot 分支（孤儿分支，单 commit，manifest.json + bars.zip.part00~03，每卷 90MB）
+   │  raw.githubusercontent.com 分发
+   ▼
+云端恢复：app 启动时 bars < 100 只自动下载（st.status 进度）；
+「🔄 数据更新」页也有手动「从云端快照恢复」按钮
+```
+
+- **完整性校验**：逐卷 sha256 + 整包 zip_sha256 双重校验，原子替换，失败自动回滚不污染旧数据
+- **云端轻量模式**：检测到云端时增量更新并发降为 3 线程、全量拉取仅 1 年（容器 2.7GB 内存防超限）
+- **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`（`--build-only` 只打包不推送）
+- **恢复快照**：云端页面 →「🔄 数据更新」→「☁️ 从云端快照恢复数据」
 
 ## LLM 配置（可选）
 
