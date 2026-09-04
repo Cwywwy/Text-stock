@@ -1,0 +1,45 @@
+{
+  "strategies": {
+    "我的自定义策略": {
+      "config": {
+        "name": "我的自定义策略",
+        "params": {
+          "atr_k_entry": 0.0,
+          "atr_m_exit": 3.5,
+          "atr_n_stop": 3.5,
+          "hold_days": 30
+        },
+        "rules": {
+          "dev_ma": 20,
+          "dev_max": 5,
+          "dev_min": -5,
+          "liquidity_min": 0.5,
+          "ma20_gt_ma60": false,
+          "mom_min": -30,
+          "require_breakout": false,
+          "rsi_max": 75,
+          "rsi_min": 0,
+          "trend_ma_fast": 10,
+          "trend_ma_slow": 30,
+          "vol_ratio_max": 3.0,
+          "vol_surge_bonus": 10.0,
+          "vol_surge_min": 0.0
+        },
+        "weights": {
+          "fund_score": 0.4,
+          "mom_ret": 0.0,
+          "trend_score": 0.6
+        }
+      },
+      "created_at": "2026-09-04T20:37:55",
+      "fingerprint": "3856b57c750a29d89e528c5b957f7d83ae4913f8e913726b22d4895b9a9a46bd",
+      "name": "我的自定义策略",
+      "notes": "",
+      "proposal_code": "",
+      "source": "builder",
+      "status": "pending",
+      "unsupported": [],
+      "updated_at": "2026-09-04T20:37:55"
+    }
+  }
+}
