@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 
 import pandas as pd
 import pytest
 
 from stock_plan.data.snapshot import (
     MIN_BARS_READY,
+    local_branch_exists,
     part_filename,
     validate_manifest,
 )
@@ -30,6 +32,28 @@ def test_part_filename_format() -> None:
     assert part_filename(0) == "bars.zip.part00"
     assert part_filename(3) == "bars.zip.part03"
     assert part_filename(17) == "bars.zip.part17"
+
+
+# ---------- local_branch_exists ----------
+
+def test_local_branch_exists_returns_true_for_existing_branch(monkeypatch) -> None:
+    """git 返回 0 时应识别为已有本地快照分支。"""
+    class Result:
+        returncode = 0
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: Result())
+    assert local_branch_exists("data-snapshot") is True
+
+
+def test_local_branch_exists_returns_false_for_missing_branch(monkeypatch) -> None:
+    """git 返回 1 时应允许首次创建孤儿分支。"""
+    class Result:
+        returncode = 1
+        stderr = ""
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: Result())
+    assert local_branch_exists("data-snapshot") is False
 
 
 # ---------- validate_manifest ----------

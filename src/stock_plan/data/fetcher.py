@@ -6,13 +6,19 @@
 
 注意：Windows 控制台默认 GBK 编码，打印中文列名会乱码，但数据本身正常。
 运行脚本时建议设置环境变量 PYTHONIOENCODING=utf-8。
+
+Revision History:
+    2026-09-04  serialise Sina V8 decoding to prevent MiniRacer crashes
 """
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from threading import Lock
 
 import akshare as ak
 import pandas as pd
+
+SINA_DAILY_LOCK = Lock()
 
 
 def _to_sina_symbol(code: str) -> str:
@@ -69,9 +75,11 @@ class DataFetcher:
         symbol = _to_sina_symbol(code)
         start_str = start.strftime("%Y%m%d") if isinstance(start, date) else start
         end_str = end.strftime("%Y%m%d") if isinstance(end, date) else end
-        df = ak.stock_zh_a_daily(
-            symbol=symbol, start_date=start_str, end_date=end_str, adjust="qfq"
-        )
+        # AKShare 的新浪解码器会创建 V8 上下文，mini-racer 在并发初始化时会原生崩溃。
+        with SINA_DAILY_LOCK:
+            df = ak.stock_zh_a_daily(
+                symbol=symbol, start_date=start_str, end_date=end_str, adjust="qfq"
+            )
         if df is None or df.empty:
             return pd.DataFrame(
                 columns=["date", "open", "high", "low", "close", "volume", "amount", "turnover"]

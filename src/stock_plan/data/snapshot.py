@@ -18,6 +18,7 @@ Revision History:
     2026-09-04  new: snapshot build/publish/restore + cloud mode detect
     2026-09-04  add CLOUD_MAX_CODES cap for backtest/signal universe
     2026-09-04  preserve shared strategy payloads with market snapshots
+    2026-09-04  reuse local snapshot branch for repeated publications
 """
 
 from __future__ import annotations
@@ -183,9 +184,14 @@ def publish(
     def _git(*args: str, cwd: Path = PROJECT_ROOT) -> None:
         subprocess_run(["git", *args], cwd)
 
-    _git("worktree", "add", "--detach", str(wt))
+    branch_exists = local_branch_exists(SNAPSHOT_BRANCH)
+    if branch_exists:
+        _git("worktree", "add", str(wt), SNAPSHOT_BRANCH)
+    else:
+        _git("worktree", "add", "--detach", str(wt))
     try:
-        _git("checkout", "--orphan", SNAPSHOT_BRANCH, cwd=wt)
+        if not branch_exists:
+            _git("checkout", "--orphan", SNAPSHOT_BRANCH, cwd=wt)
         _git("rm", "-rf", ".", cwd=wt)
         shutil.copy2(build_dir / "manifest.json", wt / "manifest.json")
         for p in manifest["parts"]:
@@ -204,6 +210,24 @@ def publish(
 
     return {"bars_count": manifest["bars_count"], "zip_bytes": manifest["zip_bytes"],
             "parts": len(manifest["parts"]), "branch": SNAPSHOT_BRANCH}
+
+
+def local_branch_exists(branch: str) -> bool:
+    """返回本地是否已有指定分支；异常 git 状态明确报错。"""
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        shell=False,
+    )
+    if result.returncode in (0, 1):
+        return result.returncode == 0
+    raise RuntimeError(f"git 检查本地分支失败: {result.stderr.strip()[:400]}")
 
 
 def subprocess_run(cmd: list[str], cwd: Path) -> None:
