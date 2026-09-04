@@ -138,6 +138,20 @@ GitHub data-snapshot 分支（孤儿分支，单 commit，manifest.json + bars.z
 - **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`（`--build-only` 只打包不推送）
 - **恢复快照**：云端页面 →「🔄 数据更新」→「☁️ 从云端快照恢复数据」
 
+## 共享策略与全市场信号
+
+本试用版不提供用户权限：用户新建的策略为**公开策略**，名称、参数与规则会对所有用户可见和可用。保存前必须确认公开提示；同名策略不会覆盖，请使用新名称。
+
+新策略先进入“待生效”状态。本机每天的 `\StockPlan\Snapshot_2130` 任务会在发布行情快照前，使用完整 A 股数据计算全部待生效策略的 Top 20 信号；开发者打开本机 localhost 时也会补偿触发此任务。云端只读取已发布且与当前策略配置版本匹配的结果，因此不会在云端进行全市场扫描。
+
+云端部署需在 Streamlit Secrets 增加仅供应用使用的细粒度 GitHub 令牌（只授予此仓库 Contents 读写权限）：
+
+```toml
+DATA_SNAPSHOT_TOKEN = "github_pat_..."
+```
+
+令牌不得写入代码、`README.md`、`.env` 示例或提交到 Git。未配置时，提交公共策略会显示明确的配置错误。
+
 ## LLM 配置（可选）
 
 复制 `.env.example` 为 `.env`，填入 API Key 即可启用真实 LLM 分析（默认智谱 GLM-4-Flash，免费）：

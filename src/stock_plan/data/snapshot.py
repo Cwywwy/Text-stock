@@ -17,6 +17,7 @@
 Revision History:
     2026-09-04  new: snapshot build/publish/restore + cloud mode detect
     2026-09-04  add CLOUD_MAX_CODES cap for backtest/signal universe
+    2026-09-04  preserve shared strategy payloads with market snapshots
 """
 
 from __future__ import annotations
@@ -87,7 +88,7 @@ def cloud_secrets_env() -> None:
     try:
         import streamlit as st
 
-        for key in ("STOCK_PLAN_CLOUD", "DATA_SNAPSHOT_REPO"):
+        for key in ("STOCK_PLAN_CLOUD", "DATA_SNAPSHOT_REPO", "DATA_SNAPSHOT_TOKEN"):
             if key in st.secrets and not os.getenv(key):
                 os.environ[key] = str(st.secrets[key])
     except Exception:
@@ -159,7 +160,11 @@ def validate_manifest(manifest: dict) -> list[str]:
 
 # ---------- 发布（本机） ----------
 
-def publish(repo_url: str | None = None, worktree_dir: Path | None = None) -> dict:
+def publish(
+    repo_url: str | None = None,
+    worktree_dir: Path | None = None,
+    extra_files: dict[str, bytes] | None = None,
+) -> dict:
     """打包并 force push 到 data-snapshot 孤儿分支（单 commit，不占仓库历史）。
 
     返回 {"bars_count", "zip_bytes", "parts", "branch"}。
@@ -185,6 +190,10 @@ def publish(repo_url: str | None = None, worktree_dir: Path | None = None) -> di
         shutil.copy2(build_dir / "manifest.json", wt / "manifest.json")
         for p in manifest["parts"]:
             shutil.copy2(build_dir / p["file"], wt / p["file"])
+        for name, content in (extra_files or {}).items():
+            if Path(name).name != name:
+                raise ValueError(f"附加快照文件名不合法：{name}")
+            (wt / name).write_bytes(content)
         _git("add", "-A", cwd=wt)
         _git("-c", "user.name=snapshot-bot", "-c", "user.email=snapshot@local", "commit", "-m",
              f"data snapshot {manifest['created_at']} ({manifest['bars_count']} bars)", cwd=wt)

@@ -5,12 +5,15 @@
 - 生成信号按钮（带缓存，避免重复计算）
 - Top5 信号表格（代码/名称/综合分/买入价/卖出价/止损/持仓天数/理由）
 - 一键把信号发送到模拟交易
+
+Revision History:
+    2026-09-04  show version-matched published full-market public signals
 """
 from __future__ import annotations
 
 import streamlit as st
 
-from stock_plan.signal.generator import generate_signals
+from stock_plan.signal.generator import Signal, generate_signals
 from stock_plan.ui.widgets import board_filter_ui, page_glossary
 
 # 本页名词速览（R2 亲民化）
@@ -67,9 +70,44 @@ def _cached_signals(
             strategy.params = {**strategy.params, **params}
     else:
         strategy = _get_strategy(strategy_name, params)
+    from stock_plan.data.snapshot import is_cloud
+
+    if is_cloud():
+        from stock_plan.strategy import store
+        from stock_plan.strategy.publication import load_public_signals, strategy_fingerprint
+
+        record = store.load_strategy(strategy_name)
+        if record is not None:
+            published = load_public_signals().get(strategy_name)
+            if published is None or published.get("fingerprint") != strategy_fingerprint(record["config"]):
+                return []
+            return [Signal(**signal) for signal in published.get("signals", [])[:top_n]]
     return generate_signals(
         strategy=strategy, top_n=top_n, boards=boards, exclude_st=exclude_st
     )
+
+
+def _public_strategy_status(strategy_name: str, boards: list[str], exclude_st: bool) -> str | None:
+    """云端公共策略只能使用版本匹配的全 A 股已发布结果。"""
+    from stock_plan.data.snapshot import is_cloud
+
+    if not is_cloud():
+        return None
+    from stock_plan.strategy import store
+    from stock_plan.strategy.publication import load_public_signals, strategy_fingerprint
+
+    record = store.load_strategy(strategy_name)
+    if record is None:
+        return None
+    if boards or not exclude_st:
+        return "公共策略的全 A 股信号不支持本页板块/ST 二次筛选；请使用“全部板块”并勾选“剔除 ST”。"
+    published = load_public_signals().get(strategy_name)
+    if published is None or published.get("fingerprint") != strategy_fingerprint(record["config"]):
+        return (
+            f"策略「{strategy_name}」正在等待开发者本机完成全 A 股计算并发布；"
+            "发布后将在下一个交易日早上 9:00 生效。"
+        )
+    return None
 
 
 def _signals_to_rows(signals):
@@ -186,6 +224,11 @@ def render():
 
     if st.button("🔄 生成今日信号", type="primary"):
         import json
+
+        status = _public_strategy_status(strategy_name, boards, exclude_st)
+        if status is not None:
+            st.warning(status)
+            return
 
         by_name = st.session_state.get("strategy_params_by_strategy", {})
         saved = by_name.get(strategy_name) or {}
