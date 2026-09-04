@@ -7,6 +7,7 @@
 
 Revision History:
     2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
+    2026-09-04  require public acknowledgement before shared strategy submission
 """
 from __future__ import annotations
 
@@ -245,7 +246,27 @@ def render():
                 st.dataframe(result.trades.tail(20), use_container_width=True, hide_index=True)
 
     with col16:
-        if st.button("💾 保存策略", type="secondary"):
-            st.session_state["custom_strategy_config"] = config
-            st.session_state["strategy_params"] = config["params"]
-            st.success(f"策略「{name}」已保存，可在今日信号页使用。")
+        st.warning(
+            "公开策略提示：本系统为共享试用环境。策略名称、参数和规则将对所有用户公开，"
+            "其他用户可查看和使用。请勿填写个人或敏感信息。"
+        )
+        confirmed = st.checkbox(
+            "我已知悉该策略将公开给所有用户，且不包含个人或敏感信息。",
+            key="builder_public_strategy_confirm",
+        )
+        if st.button("💾 提交公开策略", type="secondary", disabled=not confirmed):
+            from stock_plan.strategy import store
+            from stock_plan.strategy.publication import submit_public_strategy
+
+            try:
+                record = submit_public_strategy(name.strip(), config, source="builder")
+                store.save_strategy(record["name"], config, source="builder")
+            except (RuntimeError, ValueError) as error:
+                st.error(f"提交失败：{error}")
+            else:
+                st.session_state["custom_strategy_config"] = config
+                st.session_state["strategy_params"] = config["params"]
+                st.success(
+                    f"✅ 已提交「{record['name']}」。等待开发者本机完成全 A 股计算并发布后，"
+                    "将在下一个交易日早上 9:00 生效。"
+                )
