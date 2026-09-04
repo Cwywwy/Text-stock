@@ -6,6 +6,9 @@
 3. 构建因子行（技术分 + 基本面分）
 4. 策略打分，取 Top 5
 5. 为每只股票生成 Signal（含目标买入/卖出价、止损、持仓天数、入选理由）
+
+Revision History:
+    2026-09-04  load only 180-day window to avoid cloud OOM
 """
 from __future__ import annotations
 
@@ -73,26 +76,21 @@ def generate_signals(
     strategy = strategy or TrendFollowingStrategy()
     storage = storage or Storage()
 
-    # 1. 加载数据
-    stock_list = storage.load_stock_list()
+    # 1. 加载数据（仅最近 180 个日历日窗口，指标预热足够且内存可控；云端限制股票数量）
+    from datetime import timedelta
+
+    from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
+
+    end = date.today()
+    start = end - timedelta(days=180)
+    stock_list, bars_map, fund_map = storage.load_market_maps(
+        start=start, end=end,
+        boards=boards, exclude_st=exclude_st,
+        max_codes=CLOUD_MAX_CODES if is_cloud() else None,
+    )
     if stock_list.empty:
         return []
     name_map = dict(zip(stock_list["code"].astype(str), stock_list["name"]))
-    bars_map = {}
-    for code in stock_list["code"].astype(str).tolist():
-        if storage.cache_exists(code):
-            bars_map[code] = storage.load_bars(code)
-    fund_map = {}
-    for code in bars_map:
-        fin = storage.load_fundamentals(code)
-        if fin:
-            fund_map[code] = fin
-
-    # 1.5 板块筛选 + 剔除 ST（R5 需求，在策略硬过滤之前执行）
-    from stock_plan.factors.board import filter_universe_ui
-
-    stock_list, bars_map = filter_universe_ui(stock_list, bars_map, boards, exclude_st)
-    fund_map = {c: f for c, f in fund_map.items() if c in bars_map}
 
     # 2. 硬过滤
     codes = strategy.filter_universe(stock_list, bars_map)

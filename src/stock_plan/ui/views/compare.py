@@ -3,6 +3,9 @@
 展示内容：
 - 多策略对比：趋势策略 vs 动量策略，同一区间跑回测，横向对比指标
 - Walk-Forward：滚动窗口样本外验证，展示每个窗口的最优参数与样本外表现
+
+Revision History:
+    2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
 """
 from __future__ import annotations
 
@@ -30,22 +33,15 @@ COMPARE_GLOSSARY = {
 }
 
 
-def _load_and_filter(boards: list[str] | None, exclude_st: bool):
-    """加载数据并应用板块筛选 + 剔除 ST（R5 需求）。"""
-    storage = Storage()
-    stock_list = storage.load_stock_list()
-    bars_map = {}
-    for code in stock_list["code"].astype(str).tolist():
-        if storage.cache_exists(code):
-            bars_map[code] = storage.load_bars(code)
-    fund_map = {}
-    for code in bars_map:
-        fin = storage.load_fundamentals(code)
-        if fin:
-            fund_map[code] = fin
-    from stock_plan.factors.board import filter_universe_ui
+def _load_and_filter(start: str, end: str, boards: list[str] | None, exclude_st: bool):
+    """加载数据并应用板块筛选 + 剔除 ST（窗口加载，控制内存占用）。"""
+    from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
 
-    return filter_universe_ui(stock_list, bars_map, boards, exclude_st)
+    return Storage().load_market_maps(
+        start=start, end=end, lead_days=180,
+        boards=boards, exclude_st=exclude_st,
+        max_codes=CLOUD_MAX_CODES if is_cloud() else None,
+    )
 
 
 @st.cache_data(ttl=600, show_spinner="正在运行策略对比…")
@@ -58,12 +54,7 @@ def _cached_compare(
     import json
 
     boards = json.loads(boards_json)
-    stock_list, bars_map = _load_and_filter(boards, exclude_st)
-    fund_map = {}
-    for code in bars_map:
-        fin = Storage().load_fundamentals(code)
-        if fin:
-            fund_map[code] = fin
+    stock_list, bars_map, fund_map = _load_and_filter(start, end, boards, exclude_st)
 
     factories = {name: (lambda cls=cls: cls()) for name, cls in STRATEGIES.items()}
     for n in store.list_strategies():
@@ -97,12 +88,7 @@ def _cached_walkforward(
     import json
 
     boards = json.loads(boards_json)
-    stock_list, bars_map = _load_and_filter(boards, exclude_st)
-    fund_map = {}
-    for code in bars_map:
-        fin = Storage().load_fundamentals(code)
-        if fin:
-            fund_map[code] = fin
+    stock_list, bars_map, fund_map = _load_and_filter(start, end, boards, exclude_st)
 
     if strategy_name in STRATEGIES:
         factory = lambda: STRATEGIES[strategy_name]()

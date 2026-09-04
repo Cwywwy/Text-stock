@@ -16,6 +16,7 @@
 
 Revision History:
     2026-09-04  new: snapshot build/publish/restore + cloud mode detect
+    2026-09-04  add CLOUD_MAX_CODES cap for backtest/signal universe
 """
 
 from __future__ import annotations
@@ -43,6 +44,8 @@ MIN_BARS_READY = 100
 # 云端轻量模式参数
 CLOUD_WORKERS = 3
 CLOUD_FULL_DAYS = 366
+# 云端回测/信号参与计算的股票数上限（全市场约 5500 只会撑爆容器内存）
+CLOUD_MAX_CODES = 1800
 
 
 def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
