@@ -60,15 +60,13 @@ stock plan/
 
 | 计划任务 | 时间 | 说明 |
 |----------|------|------|
-| `\StockPlan\Update_1600` | 每交易日 16:00 | 收盘后首轮（当日数据陆续出全） |
-| `\StockPlan\Update_2000` | 每交易日 20:00 | 第二轮补齐 |
-| `\StockPlan\Update_0000` | 次日 00:00 | 深夜兜底 |
-| `\StockPlan\Update_0800` | 次日 08:00 | 盘前兜底，保证开盘前数据最新 |
+| `\StockPlan\Update_0800` | 交易日 08:00 | 盘前兜底，保证开盘前数据最新 |
+| `\StockPlan\Update_2000` | 交易日 20:00 | 收盘后补齐 |
 
 - 增量只拉最近 30 天并按日期去重合并，已是最新数据的股票自动跳过，不联网。
 - 手动更新入口：左侧导航 **「🔄 数据更新」** 页——显示缓存状态指标，可点击「立即增量更新」实时查看进度；若存在未缓存的股票会提示并可单独补拉。
 - 更新日志：`data/logs/update.log`（数据更新页内可直接查看最近记录）。
-- 重装系统或新机器需重新注册计划任务（管理员 PowerShell）：对 `schtasks /Create /TN "\StockPlan\Update_1600" /TR "d:\Vscode\stock plan\Text\scripts\run_update.cmd" /SC WEEKLY /D MON,TUE,WED,THU,FRI /ST 16:00` 依次改任务名/时间执行 4 次。
+- 重装系统或新机器需重新注册计划任务：在 Windows「任务计划程序」中，分别编辑或新建 `\StockPlan\Update_0800` 和 `\StockPlan\Update_2000`。在「操作」页填写：**程序或脚本** `C:\Windows\System32\cmd.exe`；**添加参数** `/d /c call "D:\Vscode\stock plan\Text\scripts\run_update.cmd"`；**起始于** `D:\Vscode\stock plan\Text`。在「触发器」页分别设为每周一至周五的 08:00 和 20:00。`call` 可安全执行含空格路径的批处理文件。
 
 ## 开发进度
 
