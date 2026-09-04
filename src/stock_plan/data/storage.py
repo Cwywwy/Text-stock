@@ -8,6 +8,9 @@
 这样做的原因：
 - Parquet 比 CSV 体积小、读取快，适合存大量日线数据
 - SQLite 单文件、无需安装数据库服务，适合存元数据
+
+Revision History:
+    2026-09-04  add load_market_maps windowed loader for backtest/signal
 """
 from __future__ import annotations
 
@@ -100,6 +103,60 @@ class Storage:
     def bars_count(self) -> int:
         """已缓存日线的股票数量。"""
         return len(list(self.bars_dir.glob("*.parquet")))
+
+    # ---------- 回测/信号统一加载（内存受限环境友好） ----------
+    def load_market_maps(
+        self,
+        start: pd.Timestamp | str | None = None,
+        end: pd.Timestamp | str | None = None,
+        lead_days: int = 0,
+        boards: list[str] | None = None,
+        exclude_st: bool = True,
+        max_codes: int | None = None,
+    ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame], dict[str, dict]]:
+        """按需装配回测/信号数据（stock_list, bars_map, fund_map）。
+
+        相比全量加载，这里做三件事控制内存占用：
+        - 日期窗口：只加载 [start - lead_days, end] 区间的日线（lead_days 供指标预热）；
+        - 预筛选：加载前先按板块/ST 过滤代码，避免读入用不到的股票数据；
+        - 数量上限：max_codes 生效时对代码等间隔抽样（云端轻量模式使用）。
+
+        start/end 为 None 时加载全历史，行为与旧版全量加载一致。
+        """
+        stock_list = self.load_stock_list()
+        if stock_list.empty:
+            return stock_list, {}, {}
+
+        # 预筛选语义与 factors.board.filter_universe_ui 一致：先过滤代码再加载
+        codes = stock_list["code"].astype(str).tolist()
+        if exclude_st and "is_st" in stock_list.columns:
+            codes = stock_list.loc[stock_list["is_st"] != 1, "code"].astype(str).tolist()
+        from stock_plan.factors.board import filter_codes_by_boards
+
+        codes = filter_codes_by_boards(codes, boards)
+        if max_codes is not None and len(codes) > max_codes:
+            step = -(-len(codes) // max_codes)  # 向上取整，等间隔抽样保留板块分布
+            codes = codes[::step]
+
+        lo = pd.Timestamp(start) - pd.Timedelta(days=lead_days) if start is not None else None
+        hi = pd.Timestamp(end) if end is not None else None
+        bars_map: dict[str, pd.DataFrame] = {}
+        for code in codes:
+            if not self.cache_exists(code):
+                continue
+            df = self.load_bars(code)
+            if df.empty:
+                continue
+            if lo is not None:
+                df = df[df["date"] >= lo]
+            if hi is not None:
+                df = df[df["date"] <= hi]
+            if df.empty:
+                continue
+            bars_map[code] = df.reset_index(drop=True)
+
+        fund_map = {c: f for c in bars_map if (f := self.load_fundamentals(c)) is not None}
+        return stock_list, bars_map, fund_map
 
     # ---------- 财务指标（SQLite） ----------
     def save_fundamentals(self, code: str, data: dict) -> None:

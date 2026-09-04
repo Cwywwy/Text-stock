@@ -4,6 +4,9 @@
 1. 配置策略（名称、因子权重、规则阈值、买卖参数）
 2. 运行回测验证
 3. 保存策略到 session_state（供今日信号页使用）
+
+Revision History:
+    2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
 """
 from __future__ import annotations
 
@@ -39,25 +42,16 @@ def _cached_custom_backtest(
     """自定义策略回测（带缓存）。"""
     import json
 
+    from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
+
     config = json.loads(config_json)
-    storage = Storage()
-    stock_list = storage.load_stock_list()
-    bars_map = {}
-    for code in stock_list["code"].astype(str).tolist():
-        if storage.cache_exists(code):
-            bars_map[code] = storage.load_bars(code)
-    fund_map = {}
-    for code in bars_map:
-        fin = storage.load_fundamentals(code)
-        if fin:
-            fund_map[code] = fin
-
-    # 板块筛选 + 剔除 ST（R5 需求）
-    from stock_plan.factors.board import filter_universe_ui
-
+    # 窗口 + 预筛选加载（指标预热 180 个日历日，云端限制股票数量）
     boards = json.loads(boards_json)
-    stock_list, bars_map = filter_universe_ui(stock_list, bars_map, boards, exclude_st)
-    fund_map = {c: f for c, f in fund_map.items() if c in bars_map}
+    stock_list, bars_map, fund_map = Storage().load_market_maps(
+        start=start, end=end, lead_days=180,
+        boards=boards, exclude_st=exclude_st,
+        max_codes=CLOUD_MAX_CODES if is_cloud() else None,
+    )
 
     strategy = CustomStrategy(config)
     bt_config = BacktestConfig(
