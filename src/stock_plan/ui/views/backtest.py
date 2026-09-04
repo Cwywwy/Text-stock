@@ -9,6 +9,7 @@
 
 Revision History:
     2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
+    2026-09-04  show cloud sample-universe disclosure
 """
 from __future__ import annotations
 
@@ -259,6 +260,13 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
 
 def render():
     st.header("📊 回测结果")
+    from stock_plan.data.snapshot import is_cloud
+
+    if is_cloud():
+        st.info(
+            "云端轻量模式说明：当前回测基于约 1800 只股票组成的样本市场，而非全部 A 股。"
+            "收益、胜率与选股结果可能与全市场回测存在差异；本地运行不受此限制。"
+        )
     st.caption("用历史数据验证策略表现：逐日模拟 T+1 交易，含手续费/印花税/滑点/涨跌停。")
     page_glossary(BACKTEST_GLOSSARY)
 

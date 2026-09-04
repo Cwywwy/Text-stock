@@ -6,6 +6,7 @@
 
 Revision History:
     2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
+    2026-09-04  show cloud sample-universe disclosure
 """
 from __future__ import annotations
 
@@ -105,6 +106,13 @@ def _cached_walkforward(
 
 def render():
     st.header("⚖️ 策略对比")
+    from stock_plan.data.snapshot import is_cloud
+
+    if is_cloud():
+        st.info(
+            "云端轻量模式说明：当前策略对比基于约 1800 只股票组成的样本市场，而非全部 A 股。"
+            "收益、胜率与选股结果可能与全市场回测存在差异；本地运行不受此限制。"
+        )
     st.caption("多策略横向对比 + Walk-Forward 滚动样本外验证，避免过拟合历史。")
     page_glossary(COMPARE_GLOSSARY)
 

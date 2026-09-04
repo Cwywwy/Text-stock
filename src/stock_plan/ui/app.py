@@ -7,13 +7,22 @@
 导航为平铺结构（便于后续功能模块化拆分）：
     今日信号 / 模拟交易 / 回测结果 / 策略对比 / 策略拼装 /
     策略管理 / 四大师研究 / LLM 智能分析 / 新闻舆情 / 数据更新
+
+Revision History:
+    2026-09-04  sync public strategies and trigger local pending publication
 """
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+
 import streamlit as st
 
 st.set_page_config(page_title="盘前选股系统", page_icon="📈", layout="wide")
 
 # 云端/空数据环境：启动时自动从 GitHub 快照恢复行情数据（有数据则秒过）
-from stock_plan.data.snapshot import cloud_secrets_env
+from stock_plan.data.snapshot import PROJECT_ROOT, cloud_secrets_env, is_cloud
 
 cloud_secrets_env()
 if "snapshot_checked" not in st.session_state:
@@ -21,6 +30,28 @@ if "snapshot_checked" not in st.session_state:
     from stock_plan.data.snapshot import bootstrap_if_needed
 
     bootstrap_if_needed(ui=True)
+
+from stock_plan.strategy.publication import sync_public_strategies_to_local
+
+if "public_strategy_sync_checked" not in st.session_state:
+    st.session_state["public_strategy_sync_checked"] = True
+    try:
+        sync_public_strategies_to_local()
+    except (RuntimeError, ValueError) as error:
+        st.warning(f"共享策略同步失败：{error}")
+
+if not is_cloud() and "pending_strategy_publication_started" not in st.session_state:
+    st.session_state["pending_strategy_publication_started"] = True
+    command = [sys.executable, "scripts/publish_snapshot.py", "--pending-only"]
+    try:
+        subprocess.Popen(
+            command, cwd=str(PROJECT_ROOT),
+            env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT / "src")},
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+    except OSError as error:
+        st.warning(f"无法启动待发布策略任务：{error}")
 
 from stock_plan.ui.views import (
     backtest,

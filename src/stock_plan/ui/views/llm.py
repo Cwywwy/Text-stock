@@ -1,6 +1,9 @@
 """LLM 智能分析页面 — 信号解释 / 消息面分析 / 策略生成。
 
 未配置 API Key 时自动降级为离线规则模式（mock），UI 仍可正常使用。
+
+Revision History:
+    2026-09-04  require public acknowledgement before shared strategy submission
 """
 from __future__ import annotations
 
@@ -150,26 +153,39 @@ def _render_strategy_result(result: dict):
     col_main, col_code = st.columns([3, 2])
     with col_main:
         name = st.text_input(
-            "确认保存：给策略起个名字",
+            "策略名称（将公开给所有用户）",
             value=config.get("name", "LLM 生成策略"),
             key="llm_strategy_name",
         )
-        if st.button("💾 保存为正式策略", type="primary"):
-            saved = store.save_strategy(
-                name.strip() or config.get("name", "LLM 生成策略"),
-                config,
-                source="llm",
-                proposal_code=result.get("proposal_code", ""),
-                unsupported=unsupported,
-                notes=result.get("reason", ""),
-            )
-            if saved:
-                st.success(
-                    f"✅ 已保存「{name.strip()}」！现在可到「今日信号 / 回测结果 / 策略对比」页选择它。"
+        st.warning(
+            "公开策略提示：本系统为共享试用环境。策略名称、参数和规则将对所有用户公开，"
+            "其他用户可查看和使用。请勿填写个人或敏感信息。"
+        )
+        confirmed = st.checkbox(
+            "我已知悉该策略将公开给所有用户，且不包含个人或敏感信息。",
+            key="llm_public_strategy_confirm",
+        )
+        if st.button("💾 提交公开策略", type="primary", disabled=not confirmed):
+            from stock_plan.strategy.publication import submit_public_strategy
+
+            try:
+                record = submit_public_strategy(
+                    name.strip(), config, source="llm",
+                    proposal_code=result.get("proposal_code", ""),
+                    unsupported=unsupported, notes=result.get("reason", ""),
                 )
+                store.save_strategy(
+                    record["name"], config, source="llm",
+                    proposal_code=result.get("proposal_code", ""),
+                    unsupported=unsupported, notes=result.get("reason", ""),
+                )
+            except (RuntimeError, ValueError) as error:
+                st.error(f"提交失败：{error}")
             else:
-                st.error("保存失败：名字不能为空且配置不能为空。")
-        st.caption("提示：保存后可在「策略管理」页查看删除；同名保存会覆盖旧版本。")
+                st.success(
+                    f"✅ 已提交「{record['name']}」。等待开发者本机完成全 A 股计算并发布后，"
+                    "将在下一个交易日早上 9:00 生效。"
+                )
 
     with col_code:
         annotated = generate_annotated_code(config)
