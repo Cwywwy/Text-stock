@@ -15,8 +15,8 @@
 # 1. 安装 uv（若未安装）
 irm https://astral.sh/uv/install.ps1 | iex
 
-# 2. 进入项目目录并同步依赖
-cd "d:\Vscode\stock plan"
+# 2. 进入项目目录并同步依赖（路径按你本机实际位置替换）
+cd "D:\DeepSeekHarness\案例区\stock plan"
 uv sync
 ```
 
@@ -54,23 +54,58 @@ stock plan/
 └── tests/                  # 测试用例
 ```
 
-## 数据自动更新（Phase 14）
+## 数据自动更新
 
-数据需在**股票交易日**收盘后刷新，系统通过 Windows 计划任务在以下时点自动增量拉取（幂等，重复执行不会重复写入）：
+数据需在**股票交易日**收盘后刷新。调度由 `scripts/daily_job.ps1` 承担（幂等，重复执行不会重复写入），
+Windows 计划任务只负责按时间唤起它：
 
 | 计划任务 | 时间 | 说明 |
 |----------|------|------|
-| `\StockPlan\Update_0800` | 交易日 08:00 | 盘前兜底，保证开盘前数据最新 |
-| `\StockPlan\Update_2000` | 交易日 20:00 | 收盘后补齐 |
+| `\StockPlan\Daily_Publish` | 交易日 16:30 | 增量更新 + 发布数据快照到 GitHub |
+| `\StockPlan\Daily_Update` | 交易日 08:00 | 盘前兜底，只更新不发布（避免一天两次上传 300MB） |
+| `\StockPlan\Monthly_Rebuild` | 每月 1 日 17:00 | 全历史重建，修正前复权因子的回溯偏差 |
 
-- 增量只拉最近 30 天并按日期去重合并，已是最新数据的股票自动跳过，不联网。
+**注册任务（换机器或重装系统后执行一次）**：
+
+```powershell
+# 用【管理员】身份打开 PowerShell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register_tasks.ps1
+```
+
+本机 `schtasks` 需要管理员权限（非提权会报 `Access is denied`）。不方便提权时加 `-ExportOnly`
+只生成 XML，再用「任务计划程序 → 操作 → 导入任务」逐个导入，效果等价：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register_tasks.ps1 -ExportOnly
+```
+
+任务 XML 里已固定这些修正项（旧任务"莫名其妙不成功"的根因）：`WakeToRun`（睡眠中唤醒）、
+`StartWhenAvailable`（错过的补跑）、`DisallowStartIfOnBatteries=false`（用电池也跑）、
+`RunOnlyIfNetworkAvailable`、`ExecutionTimeLimit=PT3H`（卡死会被结束），并且动作直接调用
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File`——不再用 `cmd /c ""...""`
+包装含空格与中文的路径。
+
+- 增量只拉最近 30 天并按日期去重合并，已是最新数据的股票自动跳过，不联网（实测全市场约 23 秒）。
 - 手动更新入口：左侧导航 **「🔄 数据更新」** 页——显示缓存状态指标，可点击「立即增量更新」实时查看进度；若存在未缓存的股票会提示并可单独补拉。
-- 更新日志：`data/logs/update.log`（数据更新页内可直接查看最近记录）。
-- 重装系统或新机器需重新注册计划任务：在 Windows「任务计划程序」中，分别编辑或新建 `\StockPlan\Update_0800` 和 `\StockPlan\Update_2000`。在「操作」页填写：**程序或脚本** `C:\Windows\System32\cmd.exe`；**添加参数** `/d /c call "D:\Vscode\stock plan\Text\scripts\run_update.cmd"`；**起始于** `D:\Vscode\stock plan\Text`。在「触发器」页分别设为每周一至周五的 08:00 和 20:00。`call` 可安全执行含空格路径的批处理文件。
+- 更新日志：`data/logs/update.log`、`data/logs/daily_job.log`（数据更新页内可直接查看最近记录）。
+
+### 全历史重建（`--rebuild`）
+
+**前复权价是回溯性的**：每次分红/送转后，数据源返回的整段历史价格都会按新因子改写。
+而"只补最近 30 天再合并"只会覆盖最近那段，更早的行仍停留在旧因子上，导致历史序列在
+除权日出现人为跳空，均线/ATR/涨跌幅/回测全线失真（实测间隔约 6 周：`000001` 偏移
+2.19%、`601318` 偏移 1.74%）。
+
+```powershell
+uv run python -m stock_plan.data.update_daily --rebuild   # 约 10 分钟，5553 只
+```
+
+由于数据源每次请求都返回整份历史文件，"重拉 5 年"与"补 30 天"的网络成本几乎相同，
+因此这个操作很划算。`\StockPlan\Monthly_Rebuild` 已把它固定为每月一次。
 
 ## 开发进度
 
-当前 **Phase 0–14 全部完成**（MVP + V1 增强 + V2 远期 + V3 增强版 + V4-Text 分支 + V5 LLM策略生成/持仓诊断 + 定时数据自动更新）。
+当前 **Phase 0–16 全部完成**，并已修复数据层并发瓶颈与前复权回溯偏差。
 
 - ✅ Phase 0 环境与骨架
 - ✅ Phase 1 数据层
@@ -84,9 +119,13 @@ stock plan/
 - ✅ Phase 9 V1 增强（多策略对比 / Walk-Forward / 详细报告 / LLM / 可视化拼装）
 - ✅ Phase 10 V2 远期（LLM 复盘 / 新闻舆情 / 多周期并存 / 推送）
 - ✅ Phase 11 V3 增强版（平铺 9 页导航 / 7 策略注册表 / 四大师研究页 / 均线自由组合 / 智谱 GLM-4-Flash 接入 / 深色主题）
-- ✅ Phase 12 V4-Text（分支1：量价配置 / 板块自定义筛选 / 界面亲民化+新手指南 / 回测收益曲线 / 共享 UI 组件）
-- ✅ Phase 13 V5（分支1：LLM 自然语言→结构化参数→保存策略全站打通 / 持仓诊断：清仓减仓做T建议 + 单股重回测）
-- ✅ Phase 14（分支1：交易日 16:00/20:00/0:00/8:00 计划任务自动增量拉取 / 左侧「数据更新」页手动更新 + 进度 + 未缓存补拉）
+- ✅ Phase 12 V4-Text（量价配置 / 板块自定义筛选 / 界面亲民化+新手指南 / 回测收益曲线 / 共享 UI 组件）
+- ✅ Phase 13 V5（LLM 自然语言→结构化参数→保存策略全站打通 / 持仓诊断：清仓减仓做T建议 + 单股重回测）
+- ✅ Phase 14 定时数据自动更新（增量引擎 + 计划任务 + 左侧「数据更新」页手动更新 + 进度 + 未缓存补拉）
+- ✅ Phase 15 云端部署准备（requirements.txt + `st.secrets` 回退 + 平台化说明）
+- ✅ Phase 16 云端数据快照持久化（`data-snapshot` 分卷发布/恢复 + 云端轻量模式 + 启动自动恢复）
+- ✅ 数据层修复（2026-10-15）：新浪日线并发化（全市场 **75.5 → 13.7 分钟**）、`--rebuild`
+  全历史重建修正前复权回溯、`save_bars` 原子写、计划任务重写为可重注册的脚本 + XML
 
 ## 云端部署（Streamlit Community Cloud）
 

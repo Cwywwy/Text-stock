@@ -1,7 +1,7 @@
 # 开发 Instruction（开发指南）
 
 > 本文件是项目的开发指导文档，**每完成一个 Phase 必须同步更新**。
-> 最后更新：2026-09-04（Phase 16 完成）
+> 最后更新：2026-10-15（数据层并发化与前复权回溯修复）
 
 ---
 
@@ -47,6 +47,11 @@ stock plan/
 │   ├── raw/                # 原始数据（AKShare 落盘）
 │   ├── processed/          # 清洗后数据（Parquet）
 │   └── db/                 # SQLite（策略/回测/模拟交易记录）
+├── scripts/
+│   ├── daily_job.ps1       # 每日任务入口（增量更新 → 发布快照），计划任务调用
+│   ├── register_tasks.ps1  # 一键注册/重注册计划任务
+│   ├── publish_snapshot.py # 打包并发布数据快照到 GitHub
+│   └── tasks/              # 任务计划程序 XML（版本化，换机器可直接导入）
 ├── src/stock_plan/
 │   ├── data/               # 数据获取与缓存
 │   ├── factors/            # 因子计算
@@ -89,7 +94,10 @@ stock plan/
 | Phase 11 V3 增强版 | ✅ 完成 | 平铺导航 / 7 策略注册表 / 四大师研究页 / 均线自由组合 / 智谱 GLM 接入 / 深色主题 |
 | Phase 12 V4-Text 分支（分支1） | ✅ 完成 | 量价配置 / 界面亲民化 / 回测收益曲线 / 分支 API KEY / 板块自定义筛选 / 新手指南页 |
 | Phase 13 V5-LLM 策略生成 + 持仓诊断 | ✅ 完成 | LLM 自然语言→结构化参数→保存策略全站打通 / 持仓诊断（清仓/减仓/做T建议 + 单股重回测） |
-| Phase 14 定时数据自动更新 | ✅ 完成 | 增量更新引擎（幂等）+ Windows 计划任务 4 时间点（16/20/0/8 点）+ 左侧导航「数据更新」页（手动更新/进度/未缓存补拉） |
+| Phase 14 定时数据自动更新 | ✅ 完成 | 增量更新引擎（幂等）+ Windows 计划任务 + 左侧导航「数据更新」页（手动更新/进度/未缓存补拉） |
+| Phase 15 云端部署准备 | ✅ 完成 | requirements.txt（Cloud 只认它）+ `st.secrets` 回退 + 平台化说明 |
+| Phase 16 云端数据快照持久化 | ✅ 完成 | `data-snapshot` 分卷发布/恢复（双 sha256 + 原子替换回滚）+ 云端轻量模式 + 启动自动恢复 |
+| 数据层修复（2026-10-15） | ✅ 完成 | 新浪日线并发化 75.5→13.7 分钟、`--rebuild` 修正前复权回溯、`save_bars` 原子写、计划任务脚本化 |
 
 ## 7. 关键决策记录（持续追加）
 
@@ -150,6 +158,15 @@ stock plan/
 | 2026-09-04 | **云端数据快照外置**（data/snapshot.py + GitHub `data-snapshot` 孤儿分支） | 云端容器磁盘临时：推送重建/闲置回收/内存超限重启都会清空 data/（"拉完一次又清空"根因）。本机为权威源，每日 21:30 计划任务发布快照（单 zip 分卷每卷 90MB + manifest 双 sha256 校验，单 commit force push 不占仓库历史）；云端启动时 bars<100 自动恢复，原子替换失败回滚 |
 | 2026-09-04 | **云端轻量模式**（is_cloud + workers=3 + 全量 366 天） | Streamlit Community Cloud 容器 2.7GB 内存，8 线程全市场拉取易被打爆；显式 `STOCK_PLAN_CLOUD=1`（Secrets）优先，其次平台特征变量与 HOSTNAME 尽力检测 |
 | 2026-09-04 | snapshot 子进程调用 git 加 `encoding="utf-8"` | Windows 下 Python 默认 GBK 解码 git 输出，UTF-8 中文路径/输出会 UnicodeDecodeError（publish 首跑实测触发） |
+| 2026-10-15 | **新浪日线改并发**：全局锁 → 线程本地 V8 上下文（只锁"创建"那一步） | 原锁包住了 3 个串行 HTTP，实测 8 线程仅 1.03x 加速、全市场 78~104 分钟。崩溃成因是 akshare 每次调用都 `new` 一个 MiniRacer，**并发创建** V8 上下文才崩（partition_address_space.cc），复用上下文即安全。保留 `STOCK_PLAN_SINA_LOCK=1` 可回退旧行为 |
+| 2026-10-15 | 新增 **`--rebuild` 全历史重建**（`rebuild_history`） | 前复权因子是回溯性的，"只补最近 30 天再合并"会让更早的行停留在旧因子上。实测间隔约 6 周：000001 偏 2.19%、601318 偏 1.74%。新浪每次请求返回整份历史文件，重拉 5 年与补 30 天成本几乎相同（实测 5553 只 9.6 分钟） |
+| 2026-10-15 | `Storage.save_bars` 改**临时文件 + `os.replace` 原子写** | 增量更新/全量重建会在 Streamlit 运行期间改写同一文件，直接覆盖会让并发读取方读到半个 parquet |
+| 2026-10-15 | 幂等预筛改 `Storage.last_date`（**只读 date 列**）+ `cache_exists` 单次遍历分桶 | 为拿一个日期解析整份 parquet 不划算；原 cached/uncached 各调一次等于每只股票 stat 两次 |
+| 2026-10-15 | `workers` 默认 8 → **16** | 实测 16 线程 0.130s/请求，24/32 线程无进一步收益 |
+| 2026-10-15 | 计划任务改为**脚本 + XML 注册**（`scripts/register_tasks.ps1` + `scripts/tasks/*.xml`） | 旧任务 `LogonMode=Interactive only`、动作用 `cmd /c ""...""` 包装含空格与中文的路径、指向已失效的旧目录与旧谱系，且 4 个更新任务已丢失。新 XML 固定 WakeToRun / StartWhenAvailable / 非交流电 / PT3H 超时 |
+| 2026-10-15 | `.ps1` 必须带 **UTF-8 BOM**，任务 XML 必须 **UTF-16** | PowerShell 5.1 对无 BOM 脚本按 GBK 解码，中文注释直接语法报错；任务计划程序要求 UTF-16，否则中文路径失真 |
+| 2026-10-15 | `.streamlit/secrets.toml` 加入 `.gitignore` | 内含 GitHub PAT（Contents 读写），此前未被忽略，`git add -A` 一次就会入库并推送。已确认它从未进入任何提交或远端，**无需轮换** |
+| 2026-10-15 | 复制/搬移项目后必须重跑 `uv sync` | `.venv\Lib\site-packages\stock_plan.pth` 存的是**绝对路径**，复制后仍指向旧目录，`import stock_plan` 会静默加载旧代码（表现为测试假绿、app 读旧数据）。`uv sync --frozen` 会把 editable 安装改指新路径 |
 
 ## 8. 常用命令
 
@@ -165,4 +182,13 @@ uv run python -c "..."
 
 # 运行测试
 uv run pytest tests/
+
+# 增量更新（幂等：数据已最新则跳过且不联网，实测全市场约 23 秒）
+uv run python -m stock_plan.data.update_daily
+
+# 全历史重建（修正前复权因子的回溯偏差，约 10 分钟）
+uv run python -m stock_plan.data.update_daily --rebuild
+
+# 注册/重注册 Windows 计划任务（需管理员；不提权可加 -ExportOnly 只生成 XML）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register_tasks.ps1
 ```

@@ -2,6 +2,37 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-15
+
+- **数据拉取并发化：全市场 75.5 → 13.7 分钟**（分支 `fix/data-fetch-performance`）
+  - 根因：`fetcher.py` 的 `SINA_DAILY_LOCK` 包住了整个 `ak.stock_zh_a_daily` 调用，而该调用内部含 3 个串行
+    HTTP（日线 blob / outstanding_share / 前复权因子），于是网络被一起串行化。实测 8 线程相对单线程仅
+    **1.03x** 加速，`workers` 参数形同虚设
+  - 锁要防的崩溃来自 akshare **每次调用都 `new` 一个 `py_mini_racer.MiniRacer()`**，多线程并发*创建* V8
+    上下文才触发原生崩溃。改为线程本地单例、且只把"创建"这一步加锁，既消除崩溃成因又恢复并发
+  - 保留环境变量 `STOCK_PLAN_SINA_LOCK=1` 可回退到旧的全局串行行为
+  - A/B 实测（24 只 × 16 线程）：19.57s → **3.56s**；V8 上下文创建 16 次 / 24 请求 / 16 线程，证明复用生效
+  - `workers` 默认 8 → 16（实测 16 线程 0.130s/请求，24/32 线程无进一步收益）
+- **新增 `--rebuild` 全历史重建**（`updater.rebuild_history`）
+  - 前复权因子是**回溯性**的：每次分红/送转都会改写整段历史价格，而"只补最近 30 天再合并"会让更早的行
+    停留在旧因子上，导致历史序列在除权日人为跳空（实测间隔约 6 周：`000001` 偏 2.19%、`601318` 偏 1.74%）
+  - 由于数据源每次请求都返回整份历史文件，"重拉 5 年"与"补 30 天"的网络成本几乎相同，因此定期全量重建划算
+  - 实测 5553 只、9.6 分钟、0 失败；`000001` 11.88→11.62、`601318` 58.00→56.99，与直接重抓逐位一致
+  - 已固化为每月 1 日的计划任务 `\StockPlan\Monthly_Rebuild`
+- **数据层健壮性**
+  - `Storage.save_bars` 改为临时文件 + `os.replace` 原子替换，避免重建期间被并发读取方读到半个 parquet
+  - `Storage.last_date` 只读 `date` 列；`cache_exists` 单次遍历分桶（原来正反各调一遍 = 每只 stat 两次）
+- **计划任务重写为可重注册的脚本 + XML**（`scripts/daily_job.ps1`、`scripts/register_tasks.ps1`、`scripts/tasks/*.xml`）
+  - 旧任务的问题：`LogonMode=Interactive only`（未登录不跑）、动作用 `cmd /c ""...""` 包装含空格与中文的路径、
+    指向已失效的旧目录与旧谱系，且 4 个增量更新任务已丢失
+  - 新 XML 固定 `WakeToRun` / `StartWhenAvailable`（错过补跑）/ `DisallowStartIfOnBatteries=false` /
+    `RunOnlyIfNetworkAvailable` / `ExecutionTimeLimit=PT3H`，日志落 `data/logs/daily_job.log`
+- **安全**：`.streamlit/secrets.toml` 加入 `.gitignore`。该文件内含 GitHub PAT（Contents 读写），此前未被忽略，
+  一次 `git add -A` 就会入库并推送。已确认它**从未进入任何提交或远端，无需轮换 token**
+- **文档**：README / INSTRUCTION / plan 同步到 Phase 16，修正写死的 `D:\Vscode\...` 旧路径、README 内部
+  自相矛盾的计划任务描述（§数据自动更新说 2 个任务、§开发进度却写 4 个）
+- 验证：`pytest` **54 passed**；12 页 `AppTest` 全部渲染正常、0 异常
+
 ## 2026-09-04
 
 - **本机计划任务与快照发布修复**（分支1）
