@@ -25,6 +25,10 @@ data/logs/
 # 快照发布临时 worktree
 .snapshot_worktree/
 
+# 旧分支工作副本（嵌套 git 仓库，不应随主仓库分发）
+# 原先以 gitlink（mode 160000）被跟踪且没有 .gitmodules，clone 后只会得到一个空目录
+Text/
+
 # 计划任务旧版本备份（一次性产物，不入库）
 scripts/backup/
 
