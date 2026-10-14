@@ -14,7 +14,7 @@ from __future__ import annotations
 import streamlit as st
 
 from stock_plan.signal.generator import Signal, generate_signals
-from stock_plan.ui.widgets import board_filter_ui, page_glossary
+from stock_plan.ui.widgets import board_filter_ui, market_regime_panel, page_glossary
 
 # 本页名词速览（R2 亲民化）
 TODAY_GLOSSARY = {
@@ -194,6 +194,10 @@ def render():
     st.header("📋 今日信号")
     st.caption("基于最新缓存数据，按策略打分选出 Top 标的，输出目标买入/卖出价与止损位。")
     page_glossary(TODAY_GLOSSARY)
+
+    # 市场阶段（暂时需求 6）：先看大盘处于什么阶段，再决定用哪类策略与仓位
+    market_regime_panel()
+    st.divider()
 
     # 板块筛选（R5：自定义股票板块 + 剔除 ST）
     st.markdown("**选股范围**")

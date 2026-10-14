@@ -107,6 +107,112 @@ def page_glossary(terms: dict[str, str]):
             st.markdown(f"- **{term}**：{desc}")
 
 
+# ---------------------------------------------------------------------------
+# 市场阶段面板（暂时需求 6）
+# ---------------------------------------------------------------------------
+
+def _fmt_pct(value, digits: int = 1, suffix: str = "%") -> str:
+    """把可能是 NaN 的比例值格式化成字符串。"""
+    try:
+        if value is None or pd.isna(value):
+            return "—"
+        return f"{float(value) * 100:.{digits}f}{suffix}"
+    except Exception:
+        return "—"
+
+
+@st.cache_data(ttl=1800, show_spinner="正在判断市场阶段…")
+def _regime_data(max_codes: int = 800, lookback_days: int = 900):
+    """算等权指数与市场阶段，返回纯 dict / DataFrame 以便被缓存。"""
+    from datetime import date, timedelta
+
+    from stock_plan.data.storage import Storage
+    from stock_plan.factors.regime import (
+        MIN_CONTRIBUTORS,
+        detect_regime,
+        equal_weight_index,
+        regime_table,
+        suggest_playbook,
+    )
+
+    end = date.today()
+    start = end - timedelta(days=lookback_days)
+    _, bars_map, _ = Storage().load_market_maps(start=start, end=end, max_codes=max_codes)
+    if not bars_map:
+        return None
+    index = equal_weight_index(
+        {code: bars_map[code] for code in bars_map},
+        min_contributors=max(1, min(MIN_CONTRIBUTORS, len(bars_map))),
+    )
+    if index is None or index.empty:
+        return None
+    snap = detect_regime(index)
+    return {
+        "snapshot": snap.to_dict(),
+        "plan": suggest_playbook(snap),
+        "table": regime_table(index).tail(300),
+        "n_codes": len(bars_map),
+    }
+
+
+def market_regime_panel(expanded: bool = False) -> None:
+    """「当前市场处于什么阶段」面板 + 分阶段策略与仓位建议。
+
+    大盘用**等权收益指数**（不是平均原始股价）：不受高价股主导，也不会因成分股
+    增减而跳空。阶段判定规则见 factors/regime.py 的模块文档。
+    """
+    data = _regime_data()
+    if not data or not data.get("snapshot"):
+        st.caption("暂无足够数据判断市场阶段（请先到「🔄 数据更新」页拉取数据）。")
+        return
+
+    snap = data["snapshot"]
+    plan = data["plan"]
+
+    st.markdown("#### 🧭 当前市场阶段")
+    cols = st.columns(4)
+    cols[0].metric("阶段", snap.get("phase", "—"))
+    cols[1].metric(
+        "波动率", snap.get("volatility", "—"),
+        f"历史 {_fmt_pct(snap.get('vol_percentile'), 0)} 分位",
+    )
+    cols[2].metric("建议仓位", _fmt_pct(plan.get("position"), 0), plan.get("stance", ""))
+    cols[3].metric("通道位置", _fmt_pct(snap.get("channel_pos"), 0), f"样本 {data['n_codes']} 只")
+
+    for line in snap.get("explain", []):
+        st.caption(f"· {line}")
+
+    prefer = "、".join(plan.get("prefer", ()) or ())
+    st.info(f"**{plan.get('stance', '')}**｜偏好策略：{prefer}。{plan.get('note', '')}")
+
+    with st.expander("📈 等权指数与均线", expanded=expanded):
+        table = data.get("table")
+        if table is not None and not table.empty:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=table.index, y=table["close"], mode="lines", name="等权指数",
+                line=dict(color="#1f77b4", width=2),
+            ))
+            fig.add_trace(go.Scatter(
+                x=table.index, y=table["ma20"], mode="lines", name="MA20",
+                line=dict(color="#ff7f0e", width=1),
+            ))
+            fig.add_trace(go.Scatter(
+                x=table.index, y=table["ma60"], mode="lines", name="MA60",
+                line=dict(color="#2ca02c", width=1),
+            ))
+            fig.update_layout(
+                height=280, margin=dict(l=40, r=20, t=20, b=30),
+                yaxis_title="等权指数（起点 = 1）", hovermode="x unified",
+            )
+            apply_time_axis(fig)
+            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+        st.caption(
+            "等权指数 = 每只股票的日收益率等权平均后累乘 —— 与个股价位无关，"
+            "也不会因为成分股增减而跳空。"
+        )
+
+
 def equity_curve_fig(equity: pd.Series) -> go.Figure | None:
     """累计收益率曲线（%）+ 回撤区域标注（R3 需求）。
 

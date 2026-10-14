@@ -127,13 +127,24 @@ def run_backtest(
     code_dates = {code: factor_index[code].index.values for code in codes}
     code_ptr = {code: -1 for code in codes}
 
-    # 大盘代理：所有候选股票收盘价的等权平均（用于大盘择时）
+    # 大盘代理：**等权收益指数**（用于大盘择时）
+    # 原实现是 closes.mean(axis=1) —— 对原始股价直接取平均，有两个方法学问题：
+    #   1. 被高价股主导（茅台 1300 元与 3 元股在均值里权重相同），实际等价于"高价股指数"；
+    #   2. 某只股票缺当日 K 线时会从均值里消失，指数水平**跳空** —— 于是
+    #      "大盘跌破 MA20"可能由成分变动而非行情触发，仓位被莫名减半。
+    # 改为先算每只股票的日收益率、等权平均后累乘，与价格水平和成分变动都无关。
     market_close: pd.Series | None = None
     market_ma20: pd.Series | None = None
     if config.market_timing:
-        closes = pd.DataFrame({code: date_index[code]["close"] for code in codes})
-        market_close = closes.mean(axis=1).sort_index()
-        market_ma20 = market_close.rolling(20).mean()
+        from stock_plan.factors.regime import MIN_CONTRIBUTORS, equal_weight_index
+
+        # 候选池小于阈值时按候选数放宽，避免"股票太少 → 指数恒为 1.0 →
+        # 大盘择时被静默禁用"这种看不出来的行为
+        market_close = equal_weight_index(
+            {code: bars_map[code] for code in codes},
+            min_contributors=max(1, min(MIN_CONTRIBUTORS, len(codes))),
+        )
+        market_ma20 = market_close.rolling(20).mean() if len(market_close) else None
 
     cash = config.initial_cash
     positions: dict[str, dict] = {}  # code -> {shares, entry_price, entry_date, stop, target}
