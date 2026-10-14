@@ -119,6 +119,10 @@ def run_backtest(
         f = compute_technical(bars_map[code]).set_index("date")
         # 近 20 日最高收盘价（供突破策略使用，rolling 窗口止于当日，无未来函数）
         f["high20"] = f["close"].rolling(20).max()
+        # 近 20 日平均成交额（供流动性筛选使用）。必须用 **rolling** 而不是
+        # `bars["amount"].tail(20)` —— 后者取的是整条序列末尾，在逐日回测里就是未来数据。
+        if "amount" in f.columns:
+            f["avg_amount20"] = f["amount"].rolling(20).mean()
         # 自定义均线列（供自定义策略均线自由组合使用）
         for _p in (5, 7, 10, 30):
             f[f"ma{_p}"] = f["close"].rolling(_p).mean()
@@ -293,6 +297,14 @@ def run_backtest(
                     "vol_ratio": last["vol_ratio"],
                     "mom_ret": mom_ret,
                     "high20_ratio": high20_ratio,
+                    # 以下三列原先只在「今日信号」路径里有，导致自定义策略的
+                    # 流动性下限与 MACD 条件在**回测**中被静默跳过（不一致是双向的）。
+                    # 现与 build_factor_rows 对齐，并由 tests/test_factor_parity.py 锁死。
+                    "avg_amount20": float(last.get("avg_amount20"))
+                    if pd.notna(last.get("avg_amount20"))
+                    else float("nan"),
+                    "macd": last["macd"],
+                    "macd_signal": last["macd_signal"],
                     "value_score": fund.get("value_score", 50.0),
                     "growth_score": fund.get("growth_score", 50.0),
                     "quality_score": fund.get("quality_score", 50.0),

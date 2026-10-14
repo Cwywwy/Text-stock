@@ -128,7 +128,18 @@
     `simulator/paper.py`（盘前信号、无未来函数）、引擎因子预计算（全 `rolling`/`ewm` 因果）
   - 📌 待办（非缺陷）：`paper.py` 印花税用千一，而 A 股 2023-08-28 起已减半为 0.05%；
     偏保守、方向安全，若要贴近现实可按日期分段
-- 验证：`compileall` 全包 0 错误；`pytest` **130 passed**；12 页 AppTest 全绿
+- **审计发现 5（已修）：回测与实盘的因子列不一致，规则被静默跳过**
+  - 两条路径各自内联构造因子行，列集**双向不一致**：
+    `mom_ret`/`ma5/7/10/30` 只有回测有（实盘的动量规则被静默跳过）；
+    `avg_amount20`/`macd`/`macd_signal` 只有实盘有（回测的流动性/MACD 规则被静默跳过）
+  - 因为 `CustomStrategy.score` 用 `if "列" in df.columns` 守卫，**缺列不报错、直接跳过规则** ——
+    用户看到的现象是"同一个策略在两个页面选出不同的股票"
+  - 修法：统一两条路径的因子列集；**`avg_amount20` 在引擎里必须用 `rolling(20)`**，
+    不能用 `bars["amount"].tail(20)`（后者取序列末尾，在逐日回测里就是未来数据）
+  - 新增 `tests/test_factor_parity.py` 4 个用例锁死 schema 一致；
+    **反向验证：stash 掉修正 → 4 failed，恢复 → 4 passed**
+  - 过程中我自己写错三版用例（不可判别 / 用错 API / 测错方向），均已修正并记录
+- 验证：`compileall` 全包 0 错误；`pytest` **134 passed**；12 页 AppTest 全绿
 
 ## 2026-10-15
 
