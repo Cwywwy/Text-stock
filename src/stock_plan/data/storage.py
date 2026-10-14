@@ -1,4 +1,4 @@
-"""数据存储模块 — 本地缓存层。
+﻿"""数据存储模块 — 本地缓存层。
 
 设计：
 - 日线行情 → Parquet 文件（data/processed/bars/{code}.parquet），列式存储、读取快
@@ -11,6 +11,7 @@
 
 Revision History:
     2026-09-04  add load_market_maps windowed loader for backtest/signal
+    2026-10-15  在 load_bars 里剔除"零值占位行"（见 _sanitize_bars）
 """
 from __future__ import annotations
 
@@ -22,6 +23,38 @@ import pandas as pd
 
 # 项目根目录（src/stock_plan/data/storage.py 向上 3 级 = 项目根）
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _sanitize_bars(df: pd.DataFrame) -> pd.DataFrame:
+    """剔除**不可能的行情行**：`open`/`high`/`low` 出现 0 或负值。
+
+    为什么需要（2026-10-15 端到端验收发现）：
+    数据源本身偶尔会给出停牌占位行。实测新浪 `stock_zh_a_daily` 对 3 只科创板股票
+    （688089 / 688143 / 688173，全库 3/5890）在 2024-11-06 返回：
+
+        date        open  high  low   close  volume  amount  turnover
+        2024-11-06  0.00  0.00  0.00  前收   0.0     0.0     0.0
+
+    （已直接重新拉取同区间确认：新浪返回里同样带这一行，不是本项目管线造的。）
+
+    危害在于 ATR：`TR = max(high-low, |high-前收|, |low-前收|)`，
+    当 `low = 0` 时 TR 变成 `|0 - 前收|`（≈20，而正常约 1）。这个尖峰进入 ATR 的 EMA
+    （alpha=1/14）后会把 ATR **放大 1.5~1.8 倍并持续近一个月** —— 实测 688143 峰值
+    3.812 vs 干净的 2.178。乘上默认的 `m=n=3.5`，止损位被拉远约 5.7 元
+    （对 25 元的股票≈23%），单笔风险敞口被严重误算。图上也表现为掉到 0 的尖刺。
+
+    真实停牌日本就没有 K 线，因此**剔除**是语义正确的做法（不是填值）。
+    缓存文件保留原始行以便追溯，这里只在**读取时**过滤。
+    """
+    if df is None or df.empty:
+        return df
+    price_cols = [c for c in ("open", "high", "low") if c in df.columns]
+    if not price_cols:
+        return df
+    bad = (df[price_cols] <= 0).any(axis=1)
+    if not bad.any():
+        return df
+    return df.loc[~bad].reset_index(drop=True)
 BARS_DIR = PROJECT_ROOT / "data" / "processed" / "bars"
 DB_PATH = PROJECT_ROOT / "data" / "db" / "meta.db"
 
@@ -113,13 +146,17 @@ class Storage:
         os.replace(tmp, target)  # 同目录内替换，POSIX/NTFS 上均为原子操作
 
     def load_bars(self, code: str) -> pd.DataFrame:
-        """读取日线行情。若不存在返回空 DataFrame。"""
+        """读取日线行情。若不存在返回空 DataFrame。
+
+        读取时会**剔除不可能的行情行**（open/high/low 出现 0 或负值），见 `_sanitize_bars`。
+        这是所有行情消费方的唯一入口，因此在此处清洗可覆盖回测、信号、图表等全部路径。
+        """
         path = self._bars_path(code)
         if not path.exists():
             return pd.DataFrame(columns=BAR_COLUMNS)
         df = pd.read_parquet(path)
         df["date"] = pd.to_datetime(df["date"])
-        return df
+        return _sanitize_bars(df)
 
     def cache_exists(self, code: str) -> bool:
         """判断该股票日线缓存是否存在。"""
