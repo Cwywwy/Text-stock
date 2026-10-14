@@ -166,7 +166,8 @@ uv run python -m stock_plan.data.delisted --all                   # 两者都补
 注意事项：
 
 - 依赖读取根目录 `requirements.txt`（已按本地验证版本固定）
-- 云端**数据自动恢复**：启动时检测本地无缓存数据，自动从 GitHub `data-snapshot` 分支下载快照（约 300MB，首次 1~3 分钟），无需手动全量拉取
+- 云端**数据自动恢复**：启动时检测本地无缓存数据，自动从 GitHub Releases 的 `data-snapshot`
+  标签下载快照（约 350MB，首次 1~3 分钟），无需手动全量拉取
 - Windows 计划任务自动更新仅在本地部署生效，云端请在「🔄 数据更新」页手动更新（云端轻量模式自动降低并发）
 - LLM API Key 在云端走 **Secrets**：App 菜单 → Settings → Secrets，填入：
 
@@ -187,20 +188,32 @@ STOCK_PLAN_CLOUD = "1"
 架构：
 
 ```
-本机 bars/（权威源，298MB+）
-   │  scripts/publish_snapshot.py（每日 21:30 计划任务 \StockPlan\Snapshot_2130）
+本机 bars/（权威源，约 350MB）
+   │  scripts/publish_snapshot.py（每交易日 16:30 计划任务 \StockPlan\Daily_Publish）
    ▼
-GitHub data-snapshot 分支（孤儿分支，单 commit，manifest.json + bars.zip.part00~03，每卷 90MB）
-   │  raw.githubusercontent.com 分发
+GitHub Releases：tag = data-snapshot（资产：manifest.json + bars-<时间戳>.part00~03，每卷 90MB）
+   │  github.com/.../releases/download/data-snapshot 分发
    ▼
 云端恢复：app 启动时 bars < 100 只自动下载（st.status 进度）；
 「🔄 数据更新」页也有手动「从云端快照恢复」按钮
 ```
 
+- **为什么用 Releases 而不是分支**：原先 force push 到 `data-snapshot` 孤儿分支，每天会往
+  仓库里塞一份约 300MB 的 blob（GitHub 侧何时回收不可控），且 `raw.githubusercontent.com`
+  有 CDN 缓存，force push 后短期内可能仍取到旧快照。改走 Release 资产后，仓库历史不再增长，
+  下载地址也不经过那层缓存
+- **发布原子性**：以 `manifest.json` 充当"提交指针" —— 先以带版本号的名字上传新分卷
+  （不覆盖旧资产），全部就位后才替换 manifest，最后清理被取代的旧分卷。因此上传中途失败时
+  线上仍是完整的旧快照
 - **完整性校验**：逐卷 sha256 + 整包 zip_sha256 双重校验，原子替换，失败自动回滚不污染旧数据
+- **回退能力**：恢复端会按 Release → 旧分支 的顺序尝试多个地址，发布方式切换期间不会拿不到数据；
+  发布端可用 `STOCK_PLAN_SNAPSHOT_BACKEND=branch` 回退到旧的孤儿分支方式
 - **云端轻量模式**：检测到云端时增量更新并发降为 3 线程、全量拉取仅 1 年（容器 2.7GB 内存防超限）
-- **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`（`--build-only` 只打包不推送）
+- **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`
+  （`--build-only` 只打包不推送，用于排查）
 - **恢复快照**：云端页面 →「🔄 数据更新」→「☁️ 从云端快照恢复数据」
+- **令牌来源**：显式参数 → `DATA_SNAPSHOT_TOKEN` 环境变量 → `.streamlit/secrets.toml`
+  （本机计划任务不经过 Streamlit，靠最后这一层读取）
 
 ## 共享策略与全市场信号
 

@@ -63,7 +63,20 @@
     冗余中枢，加入**中枢延伸**合并后降到 **3 个**（000001 16→2、300750 19→2、601318 20→7）
   - 「持仓诊断」页新增可折叠的缠论结构区块（笔/中枢/分型/三买 + 当前价相对中枢上下沿的位置）
   - `tests/test_chan.py` 24 个用例，全部基于**可手算**的人工折线行情与手工构造分型
-- 验证：`compileall` 全包 0 错误；`pytest` **104 passed**；12 页 AppTest 全绿
+- **快照分发改 GitHub Releases**（`8fa4e2e`）
+  - 原先 force push 到 `data-snapshot` 孤儿分支：每天往仓库塞约 300MB blob（GitHub 侧回收
+    不可控），且 `raw.githubusercontent.com` 有 CDN 缓存，force push 后可能仍取到旧快照
+  - 新增 `publish_to_release()`：**用 manifest 充当"提交指针"** —— 先以带版本号的名字上传新分卷
+    （不覆盖旧资产），全部就位后才替换 manifest，最后清理被取代的旧分卷。上传中途失败时
+    线上仍是完整旧快照；切换成功后 Release 只保留一份数据
+  - 恢复端新增 `restore_with_fallback()`：按 Release → 旧分支 顺序尝试，切换期不影响云端；
+    发布端可用 `STOCK_PLAN_SNAPSHOT_BACKEND=branch` 回退
+  - 补上 `resolve_token()`：显式参数 → 环境变量 → `.streamlit/secrets.toml`。
+    原实现只认环境变量，而本机计划任务不经过 Streamlit、读不到 `st.secrets`，
+    定时发布会直接报"缺少 token"
+  - 只读飞行前检查：token 有效（认证为 Cwywwy）、仓库 public、`permissions.push=True`（可发布）
+  - `publish_snapshot.py --build-only` 实测：5776 只 → **351MB / 4 卷**
+- 验证：`compileall` 全包 0 错误；`pytest` **113 passed**；12 页 AppTest 全绿
 
 ## 2026-10-15
 
