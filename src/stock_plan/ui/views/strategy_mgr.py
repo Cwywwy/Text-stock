@@ -96,37 +96,117 @@ def render():
     # ============ 已保存策略（LLM 生成 / 拼装页保存） ============
     from stock_plan.strategy import store
 
+    def _flash(msg: str) -> None:
+        """把提示存进 session_state 再 rerun —— 直接 st.success 会被 rerun 丢掉。"""
+        st.session_state["_strategy_flash"] = msg
+
     saved_records = store.list_strategies()
     if saved_records:
         st.markdown("---")
         st.markdown("### 📁 已保存策略")
         st.caption("由「LLM 策略生成」或「策略拼装」页保存的正式策略，今日信号/回测/对比页可直接选用。")
-        saved_name = st.selectbox("选择已保存策略", list(saved_records.keys()), key="saved_strategy_pick")
-        rec = saved_records[saved_name]
-        st.markdown(f"**来源**：{rec['source']}　|　**创建时间**：{rec['created_at']}")
-        if rec.get("notes"):
-            st.caption(f"AI 取值逻辑：{rec['notes']}")
-        cfg = rec["config"]
-        rows = []
-        for k, v in cfg.get("weights", {}).items():
-            rows.append({"类别": "权重", "参数": k, "值": v})
-        for k, v in cfg.get("rules", {}).items():
-            rows.append({"类别": "规则", "参数": k, "值": "启用" if v else "关闭"})
-        for k, v in cfg.get("params", {}).items():
-            rows.append({"类别": "买卖价参数", "参数": k, "值": v})
-        st.dataframe(rows, use_container_width=True, hide_index=True)
-        unsupported = rec.get("unsupported") or []
-        if unsupported:
-            with st.expander("⚠️ 保存时的 AI 反馈（未支持参数建议）"):
-                for u in unsupported:
-                    st.markdown(f"- **{u.get('name', '未知')}**：{u.get('description', '')}（建议：{u.get('suggestion', '')}）")
-        if rec.get("proposal_code"):
-            with st.expander("🧪 自定义代码提案（未参与选股，仅供审核）"):
-                st.code(rec["proposal_code"], language="python")
-        if st.button("🗑️ 删除该策略", key="del_saved_strategy"):
-            store.delete_strategy(saved_name)
-            st.success(f"已删除「{saved_name}」。")
-            st.rerun()
+
+        flash = st.session_state.pop("_strategy_flash", None)
+        if flash:
+            st.success(flash)
+
+        # ---- 分组标签筛选（暂时需求 4：策略分批）----
+        tags = store.all_tags()
+        picked_tag = st.selectbox(
+            "按标签筛选", ["（全部）"] + tags, key="saved_tag_filter",
+            help="标签在下方「批量管理」里为策略填写，用于把策略分批管理。",
+        )
+        if picked_tag != "（全部）":
+            saved_records = store.list_strategies(tag=picked_tag)
+            st.caption(f"标签「{picked_tag}」下共 {len(saved_records)} 个策略。")
+
+        if not saved_records:
+            st.info("该标签下没有策略。")
+        else:
+            saved_name = st.selectbox(
+                "选择已保存策略", list(saved_records.keys()), key="saved_strategy_pick"
+            )
+            rec = saved_records[saved_name]
+            st.markdown(
+                f"**来源**：{rec['source']}　|　**创建时间**：{rec['created_at']}"
+                + (f"　|　**标签**：{rec['tags']}" if rec.get("tags") else "")
+            )
+            if rec.get("notes"):
+                st.caption(f"AI 取值逻辑：{rec['notes']}")
+            cfg = rec["config"]
+            rows = []
+            for k, v in cfg.get("weights", {}).items():
+                rows.append({"类别": "权重", "参数": k, "值": v})
+            for k, v in cfg.get("rules", {}).items():
+                rows.append({"类别": "规则", "参数": k, "值": "启用" if v else "关闭"})
+            for k, v in cfg.get("params", {}).items():
+                rows.append({"类别": "买卖价参数", "参数": k, "值": v})
+            st.dataframe(rows, use_container_width=True, hide_index=True)
+            unsupported = rec.get("unsupported") or []
+            if unsupported:
+                with st.expander("⚠️ 保存时的 AI 反馈（未支持参数建议）"):
+                    for u in unsupported:
+                        st.markdown(f"- **{u.get('name', '未知')}**：{u.get('description', '')}（建议：{u.get('suggestion', '')}）")
+            if rec.get("proposal_code"):
+                with st.expander("🧪 自定义代码提案（未参与选股，仅供审核）"):
+                    st.code(rec["proposal_code"], language="python")
+            if st.button("🗑️ 删除该策略", key="del_saved_strategy"):
+                store.delete_strategy(saved_name)
+                _flash(f"已删除「{saved_name}」。")
+                st.rerun()
+
+        # ---- 批量管理：总览 + 标签 + 批量删除（暂时需求 4）----
+        with st.expander(
+            f"🧹 批量管理（共 {len(store.list_strategies())} 个已保存策略）", expanded=False
+        ):
+            all_recs = store.list_strategies()
+            st.dataframe(
+                [
+                    {
+                        "名称": r["name"],
+                        "来源": r["source"],
+                        "标签": r.get("tags") or "—",
+                        "创建": str(r.get("created_at") or "")[:19],
+                    }
+                    for r in all_recs.values()
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.markdown("**为单个策略设置标签**")
+            tcol1, tcol2, tcol3 = st.columns([2, 2, 1])
+            with tcol1:
+                tag_target = st.selectbox(
+                    "策略", list(all_recs.keys()), key="tag_edit_target"
+                )
+            with tcol2:
+                tag_value = st.text_input(
+                    "标签（多个用逗号分隔）",
+                    value=all_recs[tag_target].get("tags") or "",
+                    key="tag_edit_value",
+                    help="例如：客户-张三, 短线。用于把策略分批管理。",
+                )
+            with tcol3:
+                st.caption("")
+                if st.button("💾 保存标签", key="tag_save"):
+                    store.set_tags(tag_target, tag_value)
+                    _flash(f"「{tag_target}」标签已更新。")
+                    st.rerun()
+
+            st.markdown("**批量删除多余策略**")
+            victims = st.multiselect(
+                "选择要删除的策略（可多选）", list(all_recs.keys()), key="bulk_delete_pick"
+            )
+            confirm = st.checkbox(
+                f"我确认删除这 {len(victims)} 个策略（不可撤销）",
+                key="bulk_delete_confirm",
+                disabled=not victims,
+            )
+            if st.button("🗑️ 批量删除", key="bulk_delete", disabled=not (victims and confirm)):
+                n = store.delete_strategies(victims)
+                _flash(f"已删除 {n} 个策略。")
+                st.rerun()
     else:
         st.markdown("---")
         st.caption("还没有已保存策略。可到「LLM 智能分析 → 策略生成」用自然语言生成并保存。")
