@@ -20,7 +20,7 @@ from stock_plan.backtest.engine import BacktestConfig, run_backtest
 from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.data.storage import Storage
 from stock_plan.strategy.custom import CustomStrategy, build_custom_factor_rows
-from stock_plan.ui.widgets import board_filter_ui, equity_curve_fig, page_glossary
+from stock_plan.ui.widgets import PLOTLY_CONFIG, board_filter_ui, equity_curve_fig, page_glossary
 
 # 本页名词速览（R2 亲民化）
 BUILDER_GLOSSARY = {
@@ -240,7 +240,7 @@ def render():
             st.caption("蓝线 = 累计收益率（从第一天算起赚/亏百分之几）；红色阴影 = 中途回撤的深度。")
             fig_ret = equity_curve_fig(result.equity_curve)
             if fig_ret is not None:
-                st.plotly_chart(fig_ret, use_container_width=True)
+                st.plotly_chart(fig_ret, use_container_width=True, config=PLOTLY_CONFIG)
 
             if result.trades is not None and not result.trades.empty:
                 st.dataframe(result.trades.tail(20), use_container_width=True, hide_index=True)

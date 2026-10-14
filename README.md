@@ -103,6 +103,33 @@ uv run python -m stock_plan.data.update_daily --rebuild   # 约 10 分钟，5553
 由于数据源每次请求都返回整份历史文件，"重拉 5 年"与"补 30 天"的网络成本几乎相同，
 因此这个操作很划算。`\StockPlan\Monthly_Rebuild` 已把它固定为每月一次。
 
+### 退市股数据（消除幸存者偏差）
+
+股票列表来自新浪实时行情，只含**当前在市**的 5573 只。历史上退市、暂停上市、被吸收
+合并的公司从未进入样本，**回测收益会被系统性高估**——这不是精度问题，而是会让
+"策略有效"这个结论本身失真。
+
+实测量级：2021-10-29 全市场只有 **4525** 只 A 股，而今天是 **5573** 只；仅采样 3 个
+历史时点就能推出 298 只期间退市的股票。
+
+退市股行情只能走 **baostock**（新浪源对退市代码已不再返回数据，全部 `JSONDecodeError`）。
+
+```powershell
+# 补齐时点股票池（按月采样，最近 5 年约 61 次请求，首次约 10 分钟）
+uv run python -m stock_plan.data.delisted --universe
+
+# 补齐退市股完整历史行情 + 元数据（一次性；落地后不再依赖 baostock 在线）
+uv run python -m stock_plan.data.delisted --delisted --limit 10   # 先试跑 10 只
+uv run python -m stock_plan.data.delisted --all                   # 两者都补
+```
+
+落盘位置：时点池 `data/processed/universe/{交易日}.parquet`（只存代码，约 60KB/个）；
+退市股行情复用 `data/processed/bars/{code}.parquet`；元数据在 SQLite `delisted_stocks` 表。
+
+设计说明：**baostock 是惰性导入**，应用与云端不安装它也能正常运行，因此
+`requirements.txt` 无需新增依赖。完整调研数据与实现方案见
+[.github/plans/2026-10-15-1-new-delisted-stock-history-db.md](.github/plans/2026-10-15-1-new-delisted-stock-history-db.md)。
+
 ## 开发进度
 
 当前 **Phase 0–16 全部完成**，并已修复数据层并发瓶颈与前复权回溯偏差。
@@ -139,7 +166,8 @@ uv run python -m stock_plan.data.update_daily --rebuild   # 约 10 分钟，5553
 注意事项：
 
 - 依赖读取根目录 `requirements.txt`（已按本地验证版本固定）
-- 云端**数据自动恢复**：启动时检测本地无缓存数据，自动从 GitHub `data-snapshot` 分支下载快照（约 300MB，首次 1~3 分钟），无需手动全量拉取
+- 云端**数据自动恢复**：启动时检测本地无缓存数据，自动从 GitHub Releases 的 `data-snapshot`
+  标签下载快照（约 350MB，首次 1~3 分钟），无需手动全量拉取
 - Windows 计划任务自动更新仅在本地部署生效，云端请在「🔄 数据更新」页手动更新（云端轻量模式自动降低并发）
 - LLM API Key 在云端走 **Secrets**：App 菜单 → Settings → Secrets，填入：
 
@@ -160,20 +188,32 @@ STOCK_PLAN_CLOUD = "1"
 架构：
 
 ```
-本机 bars/（权威源，298MB+）
-   │  scripts/publish_snapshot.py（每日 21:30 计划任务 \StockPlan\Snapshot_2130）
+本机 bars/（权威源，约 350MB）
+   │  scripts/publish_snapshot.py（每交易日 16:30 计划任务 \StockPlan\Daily_Publish）
    ▼
-GitHub data-snapshot 分支（孤儿分支，单 commit，manifest.json + bars.zip.part00~03，每卷 90MB）
-   │  raw.githubusercontent.com 分发
+GitHub Releases：tag = data-snapshot（资产：manifest.json + bars-<时间戳>.part00~03，每卷 90MB）
+   │  github.com/.../releases/download/data-snapshot 分发
    ▼
 云端恢复：app 启动时 bars < 100 只自动下载（st.status 进度）；
 「🔄 数据更新」页也有手动「从云端快照恢复」按钮
 ```
 
+- **为什么用 Releases 而不是分支**：原先 force push 到 `data-snapshot` 孤儿分支，每天会往
+  仓库里塞一份约 300MB 的 blob（GitHub 侧何时回收不可控），且 `raw.githubusercontent.com`
+  有 CDN 缓存，force push 后短期内可能仍取到旧快照。改走 Release 资产后，仓库历史不再增长，
+  下载地址也不经过那层缓存
+- **发布原子性**：以 `manifest.json` 充当"提交指针" —— 先以带版本号的名字上传新分卷
+  （不覆盖旧资产），全部就位后才替换 manifest，最后清理被取代的旧分卷。因此上传中途失败时
+  线上仍是完整的旧快照
 - **完整性校验**：逐卷 sha256 + 整包 zip_sha256 双重校验，原子替换，失败自动回滚不污染旧数据
+- **回退能力**：恢复端会按 Release → 旧分支 的顺序尝试多个地址，发布方式切换期间不会拿不到数据；
+  发布端可用 `STOCK_PLAN_SNAPSHOT_BACKEND=branch` 回退到旧的孤儿分支方式
 - **云端轻量模式**：检测到云端时增量更新并发降为 3 线程、全量拉取仅 1 年（容器 2.7GB 内存防超限）
-- **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`（`--build-only` 只打包不推送）
+- **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`
+  （`--build-only` 只打包不推送，用于排查）
 - **恢复快照**：云端页面 →「🔄 数据更新」→「☁️ 从云端快照恢复数据」
+- **令牌来源**：显式参数 → `DATA_SNAPSHOT_TOKEN` 环境变量 → `.streamlit/secrets.toml`
+  （本机计划任务不经过 Streamlit，靠最后这一层读取）
 
 ## 共享策略与全市场信号
 

@@ -12,6 +12,7 @@ dependencies = [
     "pyarrow>=25.0.1",
     "streamlit>=1.63.0",
     "openai>=1.0.0",
+    "baostock>=0.9.4",
 ]
 
 [project.scripts]

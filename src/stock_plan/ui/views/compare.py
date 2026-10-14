@@ -23,7 +23,7 @@ from stock_plan.backtest.walkforward import walk_forward
 from stock_plan.data.storage import Storage
 from stock_plan.strategy import store
 from stock_plan.strategy.registry import STRATEGIES
-from stock_plan.ui.widgets import board_filter_ui, page_glossary
+from stock_plan.ui.widgets import apply_time_axis, PLOTLY_CONFIG, board_filter_ui, page_glossary
 
 # 本页名词速览（R2 亲民化）
 COMPARE_GLOSSARY = {
@@ -178,7 +178,7 @@ def render():
                 if eq.empty:
                     continue
                 fig.add_trace(go.Scatter(
-                    x=[str(d)[:10] for d in eq.index],
+                    x=pd.to_datetime(eq.index),
                     y=eq.values,
                     mode="lines",
                     name=name,
@@ -186,7 +186,8 @@ def render():
                 ))
             fig.update_layout(height=400, margin=dict(l=40, r=20, t=30, b=30),
                               yaxis_title="资产（元）", xaxis_title="日期")
-            st.plotly_chart(fig, use_container_width=True)
+            apply_time_axis(fig)
+            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
     # ============ Tab 2: Walk-Forward ============
     with tab2:
@@ -240,7 +241,7 @@ def render():
                 st.subheader("样本外资金曲线")
                 fig2 = go.Figure()
                 fig2.add_trace(go.Scatter(
-                    x=[str(d)[:10] for d in wf.oos_equity.index],
+                    x=pd.to_datetime(wf.oos_equity.index),
                     y=wf.oos_equity.values,
                     mode="lines",
                     name="样本外资产",
@@ -248,4 +249,5 @@ def render():
                 ))
                 fig2.update_layout(height=350, margin=dict(l=40, r=20, t=30, b=30),
                                    yaxis_title="资产（元）", xaxis_title="日期")
-                st.plotly_chart(fig2, use_container_width=True)
+                apply_time_axis(fig2)
+                st.plotly_chart(fig2, use_container_width=True, config=PLOTLY_CONFIG)

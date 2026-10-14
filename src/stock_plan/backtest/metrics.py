@@ -26,6 +26,7 @@ def calc_metrics(equity: pd.Series, trades: pd.DataFrame) -> dict:
         - profit_loss     盈亏比（平均盈利/平均亏损）
         - trade_count     交易次数
         - avg_hold_days   平均持仓天数
+        - avg_pnl_pct     单笔平均收益率（%），用于与往返交易成本对比
     """
     if equity is None or equity.empty:
         return {}
@@ -58,8 +59,10 @@ def calc_metrics(equity: pd.Series, trades: pd.DataFrame) -> dict:
         hold_days = (pd.to_datetime(trades["exit_date"]) - pd.to_datetime(trades["entry_date"])).dt.days
         avg_hold_days = hold_days.mean()
         trade_count = len(trades)
+        # 单笔平均收益率：用于判断"策略赚的钱够不够覆盖来回手续费+印花税+滑点"
+        avg_pnl_pct = float(trades["pnl_pct"].mean()) if "pnl_pct" in trades.columns else 0.0
     else:
-        win_rate = profit_loss = avg_hold_days = 0.0
+        win_rate = profit_loss = avg_hold_days = avg_pnl_pct = 0.0
         trade_count = 0
 
     return {
@@ -71,6 +74,7 @@ def calc_metrics(equity: pd.Series, trades: pd.DataFrame) -> dict:
         "profit_loss": round(profit_loss, 2) if profit_loss != float("inf") else None,
         "trade_count": trade_count,
         "avg_hold_days": round(avg_hold_days, 1),
+        "avg_pnl_pct": round(avg_pnl_pct, 2),
     }
 
 
