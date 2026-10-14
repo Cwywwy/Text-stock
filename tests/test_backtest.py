@@ -158,3 +158,52 @@ def test_commission_and_slippage():
     assert t["exit_price"] > 0
     # pnl 应等于 卖出所得 - 买入成本（含费用）
     assert t["pnl"] != 0
+
+
+# ---------- 交易成本可配置（暂时需求 5）----------
+def test_avg_pnl_pct_metric():
+    """metrics 暴露单笔平均收益率，供"收益能否覆盖往返成本"的判断使用。"""
+    from stock_plan.backtest.metrics import calc_metrics
+
+    idx = pd.date_range("2026-01-01", periods=60, freq="B")
+    equity = pd.Series([100_000.0 * (1.001 ** i) for i in range(60)], index=idx)
+    trades = pd.DataFrame(
+        {
+            "entry_date": ["2026-01-05", "2026-01-10", "2026-01-15"],
+            "exit_date": ["2026-01-12", "2026-01-20", "2026-01-25"],
+            "pnl": [1000.0, -500.0, 2000.0],
+            "pnl_pct": [3.0, -1.5, 6.0],
+        }
+    )
+    assert calc_metrics(equity, trades)["avg_pnl_pct"] == pytest.approx(2.5, abs=0.01)
+    # 无交易时应为 0，而不是 NaN（否则 UI 上的成本对比会显示 nan）
+    assert calc_metrics(equity, pd.DataFrame())["avg_pnl_pct"] == 0.0
+
+
+def test_commission_is_configurable():
+    """佣金/印花税/滑点可配置：成本调高后总收益必须下降。
+
+    原实现这三个值写死在 BacktestConfig 默认值里，UI 无法修改，不满足
+    "客户自定义回测"的诉求（暂时需求 5）。
+    """
+    from stock_plan.backtest.metrics import calc_metrics
+
+    bars_map = {"600000": _make_bars(120, start_price=10.0, drift=0.01)}
+    stock_list = _make_stock_list(["600000"])
+    end = date(2025, 6, 30)
+    start = end - timedelta(days=180)
+
+    free = BacktestConfig(start=start, end=end, top_n=1,
+                          commission=0.0, stamp_tax=0.0, slippage=0.0)
+    pricey = BacktestConfig(start=start, end=end, top_n=1,
+                            commission=0.003, stamp_tax=0.001, slippage=0.002)
+
+    r_free = run_backtest(DummyStrategy(), free, bars_map, {}, stock_list)
+    r_pricey = run_backtest(DummyStrategy(), pricey, bars_map, {}, stock_list)
+    m_free = calc_metrics(r_free.equity_curve, r_free.trades)
+    m_pricey = calc_metrics(r_pricey.equity_curve, r_pricey.trades)
+
+    assert m_free["trade_count"] > 0, "该用例需要有交易，否则断言无意义"
+    assert m_pricey["total_return"] < m_free["total_return"], "提高交易成本后总收益应下降"
+    # 零成本档的单笔均收益应高于高成本档
+    assert m_free["avg_pnl_pct"] > m_pricey["avg_pnl_pct"]

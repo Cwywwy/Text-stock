@@ -44,8 +44,16 @@ def _cached_backtest(
     strategy_name: str, start: str, end: str, initial_cash: float,
     params_json: str, rebalance_freq: str, market_timing: bool, max_hold_days: int,
     boards_json: str = "[]", exclude_st: bool = True,
+    commission_w: float = 3.0, stamp_tax_w: float = 10.0, slippage_w: float = 10.0,
 ):
-    """带缓存回测（10 分钟内不重复计算）。"""
+    """带缓存回测（10 分钟内不重复计算）。
+
+    交易成本三个参数单位统一为**万分之**（万三 = 3），与券商报价习惯一致：
+    - commission_w 佣金，买卖都收，默认 3（= 0.0003）
+    - stamp_tax_w  印花税，仅卖出收，默认 10（= 0.001，即千分之一）
+    - slippage_w   滑点，买卖都收，默认 10（= 0.001）
+    这些参数参与缓存键，改动后会自动重算。
+    """
     import json
 
     from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
@@ -70,6 +78,10 @@ def _cached_backtest(
         rebalance_freq=rebalance_freq,
         market_timing=market_timing,
         max_hold_days=max_hold_days,
+        # UI 用"万分之"输入，这里换算成小数比例
+        commission=commission_w / 10_000,
+        stamp_tax=stamp_tax_w / 10_000,
+        slippage=slippage_w / 10_000,
     )
     result = run_backtest(strategy, config, bars_map, fund_map, stock_list)
     metrics = calc_metrics(result.equity_curve, result.trades)
@@ -77,28 +89,91 @@ def _cached_backtest(
     return metrics, report, result
 
 
+# ---------------- 过拟合自查（暂时需求 5）----------------
+
+# 经验阈值：样本太短或交易太少时，回测指标基本没有统计意义
+_OVERFIT_MIN_YEARS = 2.0     # 建议至少 2 年样本，覆盖一轮涨跌
+_OVERFIT_MIN_TRADES = 30     # 少于 30 笔交易，胜率/盈亏比的随机波动过大
+
+
+def _render_overfit_guide(metrics: dict, config_dict: dict) -> None:
+    """右侧「过拟合自查」面板：先用本次回测的真实数字做自动诊断，再给规避清单。
+
+    过拟合 = 策略把历史噪声也"背下来"了，回测很漂亮但一到实盘就失效。它没法靠单一
+    指标直接判定，所以这里给的是几个**强警示信号**，以及对应的应对动作；用真实数字
+    而不是固定文案，用户才知道自己这次到底哪里可疑。
+    """
+    years = float(config_dict.get("years", 0) or 0)
+    trades = int(metrics.get("trade_count", 0) or 0)
+    avg_pnl = float(metrics.get("avg_pnl_pct", 0) or 0)
+    round_trip = float(config_dict.get("round_trip_cost_pct", 0) or 0)
+
+    st.markdown("#### 🚨 过拟合自查")
+    st.caption("回测好看 ≠ 实盘能赚。以下是过拟合的强警示信号。")
+
+    checks: list[tuple[bool, str]] = [
+        (
+            years >= _OVERFIT_MIN_YEARS,
+            f"样本 {years:.1f} 年（建议 ≥ {_OVERFIT_MIN_YEARS:.0f} 年，需覆盖一轮涨跌）",
+        ),
+        (
+            trades >= _OVERFIT_MIN_TRADES,
+            f"交易 {trades} 笔（建议 ≥ {_OVERFIT_MIN_TRADES} 笔，否则胜率/盈亏比随机性太大）",
+        ),
+    ]
+    if round_trip > 0:
+        cover = avg_pnl > round_trip
+        checks.append((
+            cover,
+            f"单笔均收益 {avg_pnl:.2f}% vs 往返成本 {round_trip:.2f}%"
+            + ("" if cover else "（赚的不够覆盖成本）"),
+        ))
+
+    for ok, text in checks:
+        if ok:
+            st.success("✓ " + text)
+        else:
+            st.warning("⚠ " + text)
+
+    st.info("还没做过样本外验证？去「⚖️ 策略对比」页的 **Walk-Forward** 标签跑一次。")
+
+    with st.expander("怎么避免过拟合（6 条）"):
+        st.markdown(
+            "1. **留出样本外**：用一半时间调参、另一半只验证；不要反复看验证段再去改参数。\n"
+            "2. **跑 Walk-Forward**：滚动地「训练→验证」，看验证段是否还稳定。\n"
+            "3. **参数别调太细**：在最优参数附近小幅扰动，若收益大幅下滑，就是过拟合了。\n"
+            "4. **少用参数**：一个策略可调参数越多，越容易把噪声也拟合进去。\n"
+            "5. **算上交易成本**：频繁换手常被佣金+印花税+滑点吃光（见上面的成本诊断）。\n"
+            "6. **换股票池验证**：在不同板块/股票池上表现是否一致。"
+        )
+
+
 def _render_result(metrics: dict, report: dict, result, config_dict: dict):
     """渲染回测结果（从 session_state 读取，避免按钮交互导致结果丢失）。"""
-    # 核心指标卡片
-    st.subheader("核心指标")
-    cols = st.columns(4)
-    cards = [
-        ("总收益率", f"{metrics.get('total_return', 0):.2f}%"),
-        ("年化收益率", f"{metrics.get('annual_return', 0):.2f}%"),
-        ("最大回撤", f"{metrics.get('max_drawdown', 0):.2f}%"),
-        ("夏普比率", f"{metrics.get('sharpe', 0):.2f}"),
-    ]
-    for col, (label, value) in zip(cols, cards):
-        col.metric(label, value)
-    cols = st.columns(4)
-    cards2 = [
-        ("胜率", f"{metrics.get('win_rate', 0):.2f}%"),
-        ("盈亏比", f"{metrics.get('profit_loss', 0) or 0:.2f}"),
-        ("交易次数", f"{metrics.get('trade_count', 0)}"),
-        ("平均持仓", f"{metrics.get('avg_hold_days', 0):.1f} 天"),
-    ]
-    for col, (label, value) in zip(cols, cards2):
-        col.metric(label, value)
+    # 左侧核心指标 + 右侧过拟合自查（暂时需求 5：回测右方教用户避免过拟合）
+    left, right = st.columns([3, 1], gap="medium")
+    with left:
+        st.subheader("核心指标")
+        cols = st.columns(4)
+        cards = [
+            ("总收益率", f"{metrics.get('total_return', 0):.2f}%"),
+            ("年化收益率", f"{metrics.get('annual_return', 0):.2f}%"),
+            ("最大回撤", f"{metrics.get('max_drawdown', 0):.2f}%"),
+            ("夏普比率", f"{metrics.get('sharpe', 0):.2f}"),
+        ]
+        for col, (label, value) in zip(cols, cards):
+            col.metric(label, value)
+        cols = st.columns(4)
+        cards2 = [
+            ("胜率", f"{metrics.get('win_rate', 0):.2f}%"),
+            ("盈亏比", f"{metrics.get('profit_loss', 0) or 0:.2f}"),
+            ("交易次数", f"{metrics.get('trade_count', 0)}"),
+            ("平均持仓", f"{metrics.get('avg_hold_days', 0):.1f} 天"),
+        ]
+        for col, (label, value) in zip(cols, cards2):
+            col.metric(label, value)
+    with right:
+        _render_overfit_guide(metrics, config_dict)
 
     # 资金曲线
     st.subheader("资金曲线")
@@ -128,7 +203,9 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
         "蓝线是「累计收益率」：从回测第一天算起，账户总共赚/亏了百分之几。"
         "红色阴影是「回撤」：从阶段最高点跌下来的幅度，阴影越深说明中途跌得越狠。"
     )
-    from stock_plan.ui.widgets import apply_time_axis, equity_curve_fig
+    # 注意：这里不要 import apply_time_axis —— 函数内的 import 会把它变成该函数的
+    # 局部名，导致上面模块级导入的那次调用（在本次 import 之前执行）抛 UnboundLocalError。
+    from stock_plan.ui.widgets import equity_curve_fig
 
     eq = result.equity_curve if result is not None else None
     fig_ret = equity_curve_fig(eq)
@@ -300,6 +377,31 @@ def render():
     with col8:
         st.caption("")
 
+    # 交易成本（暂时需求 5）：原先佣金万三 / 印花税千一 / 滑点千一是写死的，用户改不了
+    with st.expander("💰 交易成本设置（佣金 / 印花税 / 滑点）", expanded=False):
+        cc1, cc2, cc3 = st.columns(3)
+        with cc1:
+            commission_w = st.number_input(
+                "佣金（万分之）", 0.0, 100.0, 3.0, step=0.5,
+                help="买卖都收。万分之三 = 每 1 万元成交收 3 元。多数券商在万 1～万 3（此处未模拟最低 5 元起收）。",
+            )
+        with cc2:
+            stamp_tax_w = st.number_input(
+                "印花税（万分之，仅卖出）", 0.0, 100.0, 10.0, step=1.0,
+                help="只在卖出时收。当前 A 股为千分之一，即万分之十。",
+            )
+        with cc3:
+            slippage_w = st.number_input(
+                "滑点（万分之）", 0.0, 200.0, 10.0, step=1.0,
+                help="模拟实际成交价比看到的价格差一点。小盘股、流动性差的股票应调大。",
+            )
+        _round_trip_w = 2 * commission_w + stamp_tax_w + 2 * slippage_w
+        round_trip_cost_pct = _round_trip_w / 100
+        st.caption(
+            f"买卖一个来回的总成本约 **{round_trip_cost_pct:.2f}%**（万分之 {_round_trip_w:.0f}）："
+            f"一笔交易要先赚 {round_trip_cost_pct:.2f}% 才回本。换手率越高，这笔成本越致命。"
+        )
+
     if st.button("▶️ 运行回测", type="primary"):
         if start >= end:
             st.error("开始日期必须早于结束日期")
@@ -321,6 +423,9 @@ def render():
                 int(max_hold_days),
                 json.dumps(boards, ensure_ascii=False),
                 exclude_st,
+                float(commission_w),
+                float(stamp_tax_w),
+                float(slippage_w),
             )
             if not metrics:
                 st.warning("回测无数据。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")
@@ -333,6 +438,12 @@ def render():
                     "hold": int(max_hold_days),
                     "rebalance_freq": rebalance_freq,
                     "market_timing": bool(market_timing),
+                    # 供右侧「过拟合自查」用的上下文
+                    "years": (end - start).days / 365.0,
+                    "round_trip_cost_pct": round_trip_cost_pct,
+                    "commission_w": float(commission_w),
+                    "stamp_tax_w": float(stamp_tax_w),
+                    "slippage_w": float(slippage_w),
                 }
 
     # 从 session_state 渲染结果（若已运行过回测）
