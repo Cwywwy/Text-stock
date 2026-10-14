@@ -103,6 +103,33 @@ uv run python -m stock_plan.data.update_daily --rebuild   # 约 10 分钟，5553
 由于数据源每次请求都返回整份历史文件，"重拉 5 年"与"补 30 天"的网络成本几乎相同，
 因此这个操作很划算。`\StockPlan\Monthly_Rebuild` 已把它固定为每月一次。
 
+### 退市股数据（消除幸存者偏差）
+
+股票列表来自新浪实时行情，只含**当前在市**的 5573 只。历史上退市、暂停上市、被吸收
+合并的公司从未进入样本，**回测收益会被系统性高估**——这不是精度问题，而是会让
+"策略有效"这个结论本身失真。
+
+实测量级：2021-10-29 全市场只有 **4525** 只 A 股，而今天是 **5573** 只；仅采样 3 个
+历史时点就能推出 298 只期间退市的股票。
+
+退市股行情只能走 **baostock**（新浪源对退市代码已不再返回数据，全部 `JSONDecodeError`）。
+
+```powershell
+# 补齐时点股票池（按月采样，最近 5 年约 61 次请求，首次约 10 分钟）
+uv run python -m stock_plan.data.delisted --universe
+
+# 补齐退市股完整历史行情 + 元数据（一次性；落地后不再依赖 baostock 在线）
+uv run python -m stock_plan.data.delisted --delisted --limit 10   # 先试跑 10 只
+uv run python -m stock_plan.data.delisted --all                   # 两者都补
+```
+
+落盘位置：时点池 `data/processed/universe/{交易日}.parquet`（只存代码，约 60KB/个）；
+退市股行情复用 `data/processed/bars/{code}.parquet`；元数据在 SQLite `delisted_stocks` 表。
+
+设计说明：**baostock 是惰性导入**，应用与云端不安装它也能正常运行，因此
+`requirements.txt` 无需新增依赖。完整调研数据与实现方案见
+[.github/plans/2026-10-15-1-new-delisted-stock-history-db.md](.github/plans/2026-10-15-1-new-delisted-stock-history-db.md)。
+
 ## 开发进度
 
 当前 **Phase 0–16 全部完成**，并已修复数据层并发瓶颈与前复权回溯偏差。

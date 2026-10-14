@@ -98,6 +98,7 @@ stock plan/
 | Phase 15 云端部署准备 | ✅ 完成 | requirements.txt（Cloud 只认它）+ `st.secrets` 回退 + 平台化说明 |
 | Phase 16 云端数据快照持久化 | ✅ 完成 | `data-snapshot` 分卷发布/恢复（双 sha256 + 原子替换回滚）+ 云端轻量模式 + 启动自动恢复 |
 | 数据层修复（2026-10-15） | ✅ 完成 | 新浪日线并发化 75.5→13.7 分钟、`--rebuild` 修正前复权回溯、`save_bars` 原子写、计划任务脚本化 |
+| 暂时需求（2026-10-15，分支 `feat/temporary-requirements`） | 🔄 进行中 | ✅ 1 图表交互 / 2 要闻紧凑列表 / 3 个股新闻搜索 / 5a 回测成本自定义 / 5b 过拟合自查 / 5c 退市股数据层；⏳ 4 策略分批与删除（待确认"分客户"定义）/ 6 市场阶段因子+缠论 |
 
 ## 7. 关键决策记录（持续追加）
 
@@ -167,6 +168,13 @@ stock plan/
 | 2026-10-15 | `.ps1` 必须带 **UTF-8 BOM**，任务 XML 必须 **UTF-16** | PowerShell 5.1 对无 BOM 脚本按 GBK 解码，中文注释直接语法报错；任务计划程序要求 UTF-16，否则中文路径失真 |
 | 2026-10-15 | `.streamlit/secrets.toml` 加入 `.gitignore` | 内含 GitHub PAT（Contents 读写），此前未被忽略，`git add -A` 一次就会入库并推送。已确认它从未进入任何提交或远端，**无需轮换** |
 | 2026-10-15 | 复制/搬移项目后必须重跑 `uv sync` | `.venv\Lib\site-packages\stock_plan.pth` 存的是**绝对路径**，复制后仍指向旧目录，`import stock_plan` 会静默加载旧代码（表现为测试假绿、app 读旧数据）。`uv sync --frozen` 会把 editable 安装改指新路径 |
+| 2026-10-15 | 图表统一走 `PLOTLY_CONFIG` + `apply_time_axis`，x 轴改用真日期类型（暂时需求 1） | 原先日期被转成 `str(d)[:10]`，Plotly 当成**分类轴**：刻度位置固定，缩放时不重算密度也不换格式。另外 Streamlit 里 Plotly 默认禁用滚轮缩放，只能框选做阶梯式放大 |
+| 2026-10-15 | 要闻改「紧凑列表 + 详情子视图」，条目存 session_state（暂时需求 2） | 原先每条要闻一个 expander，展开长文会把下方模块（财新按钮、CCTV 日期选择器）顶出屏幕。改用按钮后必然触发 rerun，条目不缓存就会一进详情就丢 |
+| 2026-10-15 | 个股新闻搜索：代码或名称 + 时间跨度 + 外部链接/LLM 联动（暂时需求 3） | `resolve_stock()` 名称命中多只时返回候选让用户选，不猜。同时修掉 `get_news(code, days=7)` 的 days 从未被使用、调用方却把 page_size 当它传入的 bug（条数与跨度双双失效，永远固定 20 条） |
+| 2026-10-15 | 回测交易成本可自定义（UI 用万分之）+ 过拟合自查面板（暂时需求 5a/5b） | 原先佣金万三/印花税千一/滑点千一写死在 `BacktestConfig` 默认值，UI 改不了。自查面板用本次回测的**真实数字**（样本长度、交易笔数、单笔均收益 vs 往返成本）而非固定文案 |
+| 2026-10-15 | `baostock` 作为退市股唯一可用数据源，**惰性导入**（暂时需求 5c） | 新浪源对退市代码全部 `JSONDecodeError`；上交所名单接口 `query.sse.com.cn` 在本网络不可达，改用「历史时点池并集 − 今日在市」推算。惰性导入使应用与云端不必安装 baostock |
+| 2026-10-15 | `is_a_share` 必须按**交易所**判断代码前缀 | 上证指数是 `sh.000001`，只看数字前缀会被当成深市 A 股：不仅虚增股票池，落库成 6 位代码后还与平安银行 `sz.000001` 撞车 |
+| 2026-10-15 | 时点股票池取"最近有数据的交易日"而非自然月末 | 自然月末常落在周末/节假日，baostock 对非交易日返回空——实测最近 2 年的 25 个月末里有 9 个取不到数据（如 2021-10-31 是周日，需回退到 10-29） |
 
 ## 8. 常用命令
 
@@ -188,6 +196,11 @@ uv run python -m stock_plan.data.update_daily
 
 # 全历史重建（修正前复权因子的回溯偏差，约 10 分钟）
 uv run python -m stock_plan.data.update_daily --rebuild
+
+# 退市股数据（消除回测幸存者偏差）
+uv run python -m stock_plan.data.delisted --universe   # 时点股票池（按月，首次约 10 分钟）
+uv run python -m stock_plan.data.delisted --delisted   # 退市股完整历史行情
+uv run python -m stock_plan.data.delisted --all        # 两者都补
 
 # 注册/重注册 Windows 计划任务（需管理员；不提权可加 -ExportOnly 只生成 XML）
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register_tasks.ps1
