@@ -207,3 +207,85 @@ def test_commission_is_configurable():
     assert m_pricey["total_return"] < m_free["total_return"], "提高交易成本后总收益应下降"
     # 零成本档的单笔均收益应高于高成本档
     assert m_free["avg_pnl_pct"] > m_pricey["avg_pnl_pct"]
+
+
+# ---------- 持仓期间退市 / 停牌（暂时需求 5c 的前置修复）----------
+class _HoldScenarioStrategy(Strategy):
+    """只买 600000（"退市股"），600001 仅充当交易日历来源。
+
+    600001 拿 0 分、配合 top_n=1，保证它不会真的被买入，只用来让
+    trading_days 延伸到期权标的行情结束之后 —— 这正是真实回测里的情形。
+    """
+
+    name = "退市场景测试策略"
+    params = {}
+
+    def filter_universe(self, stock_list, bars_map):
+        return [c for c in stock_list["code"].astype(str) if c in bars_map]
+
+    def score(self, df_factors):
+        s = pd.Series(0.0, index=df_factors.index)
+        s[df_factors["code"].astype(str) == "600000"] = 100.0
+        return s
+
+    def entry_price(self, row, atr):
+        return round(row["close"], 2)
+
+    def exit_price(self, entry, atr):
+        # 目标高得不可达、止损低得不可达、不超时 —— 只会因"行情终结"被平仓
+        return entry * 10, entry * 0.01, 9999
+
+
+def _hold_scenario(main_bars: pd.DataFrame, calendar_bars: pd.DataFrame):
+    bars_map = {"600000": main_bars, "600001": calendar_bars}
+    stock_list = _make_stock_list(["600000", "600001"])
+    config = BacktestConfig(
+        start=calendar_bars["date"].min().date(),
+        end=calendar_bars["date"].max().date(),
+        top_n=1,
+        max_hold_days=9999,
+    )
+    return run_backtest(_HoldScenarioStrategy(), config, bars_map, {}, stock_list), config
+
+
+def test_position_force_closed_when_bars_end():
+    """持仓期间行情终结（退市 / 长期停牌）必须强制平仓并归因。
+
+    修复前这个分支不存在：持仓会永远留在 positions 里 —— 每日估值被计 0
+    （资金曲线出现虚假暴跌）、收尾时因为没有当日 K 线而被静默丢弃
+    （既不产生交易记录，成本也不回现金）。
+    """
+    calendar = _make_bars(140, start_price=10.0, drift=0.002)
+    main = _make_bars(100, start_price=10.0, drift=0.002)   # 第 100 根之后没有行情
+    last_bar = main["date"].max()
+
+    result, config = _hold_scenario(main, calendar)
+
+    assert len(result.trades) == 1, "持有到行情终结的持仓必须产生一条平仓记录"
+    t = result.trades.iloc[0]
+    assert t["code"] == "600000"
+    assert t["reason"] == "退市/停牌"
+    # 平仓日必须是最后一个可成交日，而不是回测结束日
+    assert pd.Timestamp(t["exit_date"]) == pd.Timestamp(last_bar)
+    # 资金曲线不能塌掉：被静默丢弃时末值会接近 0
+    assert result.equity_curve.iloc[-1] > config.initial_cash * 0.5
+
+
+def test_temporary_suspension_is_not_force_closed():
+    """临时停牌（后面还有 K 线）不能被当成退市强行平仓。
+
+    这条用例锁死"用 last_bar 判断行情是否终结"的语义：如果实现改成
+    "遇到第一根缺失 K 线就平仓"，持仓会在停牌首日被错误清掉。
+    """
+    calendar = _make_bars(140, start_price=10.0, drift=0.002)
+    full = _make_bars(140, start_price=10.0, drift=0.002)
+    # 第 90~119 根停牌（无 K 线），第 120 根复牌
+    keep = [i for i in range(140) if not (90 <= i < 120)]
+    main = full.iloc[keep].reset_index(drop=True)
+
+    result, config = _hold_scenario(main, calendar)
+
+    reasons = [] if result.trades.empty else result.trades["reason"].tolist()
+    assert "退市/停牌" not in reasons, f"临时停牌被误判为行情终结：{reasons}"
+    # 停牌期间仍按最后一条可用收盘价估值，资金曲线不应崩塌
+    assert result.equity_curve.min() > config.initial_cash * 0.5

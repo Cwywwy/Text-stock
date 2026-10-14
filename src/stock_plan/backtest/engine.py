@@ -143,14 +143,71 @@ def run_backtest(
     # 每周选股：记录上一周买入日，仅在新的一周首个交易日重新选股
     last_rebalance_week: tuple[int, int] | None = None
 
+    # 每只股票最后一条 K 线的日期与收盘价。用于区分两种情况：
+    #   - **临时停牌**：后面还有 K 线（last_bar 晚于今天）→ 继续持有，等复牌
+    #   - **退市/长期停牌（行情彻底结束）**：last_bar 早于今天 → 必须强制平仓，
+    #     否则该持仓会在估值里被计成 0、在收尾时被静默丢弃（成本也不回现金）
+    last_bar: dict[str, tuple[pd.Timestamp | None, float | None]] = {}
+    for _code in codes:
+        _b = date_index[_code]
+        if len(_b):
+            last_bar[_code] = (_b.index[-1], float(_b["close"].iloc[-1]))
+        else:
+            last_bar[_code] = (None, None)
+
+    def _close(code: str, pos: dict, when, close: float, reason: str) -> float:
+        """按给定价格平仓并记录交易，返回平仓后的现金。"""
+        sell_price = close * (1 - config.slippage)
+        proceeds = pos["shares"] * sell_price
+        fee = proceeds * (config.commission + config.stamp_tax)
+        trades.append(
+            {
+                "code": code,
+                "entry_date": pos["entry_date"],
+                "exit_date": when,
+                "entry_price": pos["entry_price"],
+                "exit_price": round(sell_price, 2),
+                "shares": pos["shares"],
+                "pnl": round(proceeds - fee - pos["cost"], 2),
+                "pnl_pct": round((proceeds - fee - pos["cost"]) / pos["cost"] * 100, 2),
+                "reason": reason,
+            }
+        )
+        return cash + proceeds - fee
+
+    def _market_value(ts: pd.Timestamp) -> float:
+        """持仓市值。当天没有 K 线的股票用**最后一条可用收盘价**估值。
+
+        原实现对这种股票计 0，等于把停牌/退市期间的持仓价值凭空抹掉，
+        资金曲线会出现虚假暴跌。
+        """
+        value = 0.0
+        for code, pos in positions.items():
+            bars = date_index[code]
+            if ts in bars.index:
+                value += pos["shares"] * float(bars.loc[ts, "close"])
+            else:
+                _, end_close = last_bar.get(code, (None, None))
+                if end_close is not None:
+                    value += pos["shares"] * end_close
+        return value
+
     for day in trading_days:
         ts = pd.Timestamp(day)
         ts_val = np.datetime64(day)
-        # ---------- 1. 检查持仓：止盈 / 止损 / 持仓天数 ----------
+        # ---------- 1. 检查持仓：止盈 / 止损 / 持仓天数 / 行情终结 ----------
         for code in list(positions.keys()):
             pos = positions[code]
             bars = date_index[code]
             if ts not in bars.index:
+                # 当天没有行情：判断是"临时停牌"还是"行情彻底结束"
+                end_ts, end_close = last_bar.get(code, (None, None))
+                if end_ts is not None and end_close is not None and end_ts < ts:
+                    # 退市或长期停牌：按最后一个可成交价强制平仓并归因。
+                    # 不这样做的话，这个持仓会永远留在 positions 里 —— 估值时被计 0、
+                    # 收尾时被静默丢弃，既不记交易也不把成本退回现金。
+                    cash = _close(code, pos, end_ts.date(), end_close, "退市/停牌")
+                    del positions[code]
                 continue
             row = bars.loc[ts]
             close = float(row["close"])
@@ -166,23 +223,9 @@ def run_backtest(
             hold_days = (day - pos["entry_date"]).days
             hit_max = hold_days >= config.max_hold_days
             if hit_exit or hit_stop or hit_max:
-                # 卖出（含滑点与费用）
-                sell_price = close * (1 - config.slippage)
-                proceeds = pos["shares"] * sell_price
-                fee = proceeds * (config.commission + config.stamp_tax)
-                cash += proceeds - fee
-                trades.append(
-                    {
-                        "code": code,
-                        "entry_date": pos["entry_date"],
-                        "exit_date": day,
-                        "entry_price": pos["entry_price"],
-                        "exit_price": round(sell_price, 2),
-                        "shares": pos["shares"],
-                        "pnl": round(proceeds - fee - pos["cost"], 2),
-                        "pnl_pct": round((proceeds - fee - pos["cost"]) / pos["cost"] * 100, 2),
-                        "reason": "止盈" if hit_exit else ("止损" if hit_stop else "超时"),
-                    }
+                cash = _close(
+                    code, pos, day, close,
+                    "止盈" if hit_exit else ("止损" if hit_stop else "超时"),
                 )
                 del positions[code]
 
@@ -194,12 +237,7 @@ def run_backtest(
             week_key = (iso.year, iso.week)
             if week_key == last_rebalance_week:
                 # 本周已选过，跳过买入（持仓仍按每日止盈止损管理）
-                market_value = 0.0
-                for code, pos in positions.items():
-                    bars = date_index[code]
-                    if ts in bars.index:
-                        market_value += pos["shares"] * float(bars.loc[ts, "close"])
-                equity_curve[day] = cash + market_value
+                equity_curve[day] = cash + _market_value(ts)
                 continue
             last_rebalance_week = week_key
 
@@ -297,37 +335,24 @@ def run_backtest(
                 }
 
         # ---------- 3. 记录当日总资产 ----------
-        market_value = 0.0
-        for code, pos in positions.items():
-            bars = date_index[code]
-            if ts in bars.index:
-                market_value += pos["shares"] * float(bars.loc[ts, "close"])
-        equity_curve[day] = cash + market_value
+        equity_curve[day] = cash + _market_value(ts)
 
-    # 收尾：强制平仓剩余持仓（按最后一天收盘价）
+    # 收尾：强制平仓剩余持仓。
+    # 注意不能只处理"最后一天有 K 线"的股票 —— 停牌/退市的股票在最后一天必然没有
+    # K 线，原实现会把它们静默丢弃（不记交易、成本也不回现金）。
     last_day = trading_days[-1]
-    for code, pos in positions.items():
+    ts_last = pd.Timestamp(last_day)
+    for code, pos in list(positions.items()):
         bars = date_index[code]
-        ts = pd.Timestamp(last_day)
-        if ts in bars.index:
-            close = float(bars.loc[ts, "close"])
-            sell_price = close * (1 - config.slippage)
-            proceeds = pos["shares"] * sell_price
-            fee = proceeds * (config.commission + config.stamp_tax)
-            cash += proceeds - fee
-            trades.append(
-                {
-                    "code": code,
-                    "entry_date": pos["entry_date"],
-                    "exit_date": last_day,
-                    "entry_price": pos["entry_price"],
-                    "exit_price": round(sell_price, 2),
-                    "shares": pos["shares"],
-                    "pnl": round(proceeds - fee - pos["cost"], 2),
-                    "pnl_pct": round((proceeds - fee - pos["cost"]) / pos["cost"] * 100, 2),
-                    "reason": "回测结束平仓",
-                }
-            )
+        if ts_last in bars.index:
+            cash = _close(code, pos, last_day, float(bars.loc[ts_last, "close"]),
+                          "回测结束平仓")
+        else:
+            end_ts, end_close = last_bar.get(code, (None, None))
+            if end_ts is None or end_close is None:
+                continue  # 该股从来没有行情，理论上不会持仓到这里
+            cash = _close(code, pos, end_ts.date(), end_close, "回测结束平仓（行情已终结）")
+        del positions[code]
 
     equity = pd.Series(equity_curve).sort_index()
     # 统一为 DatetimeIndex，便于后续 resample
