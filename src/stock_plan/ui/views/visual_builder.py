@@ -19,7 +19,7 @@ import streamlit as st
 from stock_plan.backtest.engine import BacktestConfig, run_backtest
 from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.data.storage import Storage
-from stock_plan.strategy.custom import CustomStrategy, build_custom_factor_rows
+from stock_plan.strategy.custom import CustomStrategy
 from stock_plan.ui.widgets import PLOTLY_CONFIG, board_filter_ui, equity_curve_fig, page_glossary
 
 # 本页名词速览（R2 亲民化）
