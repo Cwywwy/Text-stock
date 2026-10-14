@@ -262,6 +262,12 @@ def run_backtest(
             code_ptr[code] = p
             if p < 59:  # 至少 60 根 K 线历史
                 continue
+            # 当天必须**有行情**才能作为新候选：停牌与已退市的股票买不进。
+            # 不加这一条的话，已退市股票的指针会停在最后一根 K 线上、带着过期数据
+            # 一直参与打分并占住 top_n 名额 —— 买入环节虽然会跳过它们（当天无 K 线），
+            # 但那天就少买了一只，等于被"僵尸候选"挤掉仓位。
+            if dates[p] != ts_val:
+                continue
             last = factor_index[code].iloc[p]
             if last["volume"] == 0:
                 continue
