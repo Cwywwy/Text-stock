@@ -191,47 +191,72 @@ class DataFetcher:
             )
         return result
 
-    def get_news(self, code: str, days: int = 7) -> list[dict]:
-            """获取个股近期公告/新闻（东方财富公告接口）。
+    def get_news(
+        self, code: str, page_size: int = 20, days: int | None = None
+    ) -> list[dict]:
+        """获取个股公告（东方财富 np-anotice-stock 接口）。
 
-            返回字段：title, time, source, url, content
-            说明：东方财富搜索新闻接口在当前环境不可用（仅返回用户主页），
-            改用公告接口（np-anotice-stock）获取个股公告作为新闻时间线数据源。
-            """
-            import requests
+        参数：
+            code: 6 位股票代码。
+            page_size: 取回条数，接口上限约 100（超出会被服务端截断）。
+            days: 只要最近 N 天内的公告；None 表示不按时间过滤。
+                  接口本身只支持页码/条数，所以日期在本地过滤。
 
-            url = "https://np-anotice-stock.eastmoney.com/api/security/ann"
-            params = {
-                "sr": "-1",
-                "page_size": "20",
-                "page_index": "1",
-                "ann_type": "A",
-                "client_source": "web",
-                "stock_list": code,
-            }
-            headers = {
-                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
-                "referer": f"https://data.eastmoney.com/notices/detail/{code}.html",
-            }
-            try:
-                r = requests.get(url, params=params, headers=headers, timeout=10)
-                data = r.json()
-                items = data.get("data", {}).get("list", []) or []
-                result = []
-                for it in items:
-                    result.append(
-                        {
-                            "title": it.get("title", ""),
-                            "time": it.get("notice_date", ""),
-                            "source": "东方财富公告",
-                            "url": it.get("art_code", ""),
-                            "content": it.get("columns", [{}])[0].get("column_name", "")
-                            if it.get("columns") else "",
-                        }
-                    )
-                return result
-            except Exception:
-                return []
+        返回字段：title, time, source, url, content
+
+        Revision History:
+            2026-10-15  修正参数语义：原第二参数名 days 既未被使用，调用方又把
+                        page_size 当成它传入，导致条数与时间跨度都不生效；
+                        现 page_size 生效，并新增 days 时间跨度过滤。
+        """
+        import requests
+
+        url = "https://np-anotice-stock.eastmoney.com/api/security/ann"
+        params = {
+            "sr": "-1",
+            "page_size": str(max(1, min(int(page_size), 100))),
+            "page_index": "1",
+            "ann_type": "A",
+            "client_source": "web",
+            "stock_list": code,
+        }
+        headers = {
+            "user-agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+            ),
+            "referer": f"https://data.eastmoney.com/notices/detail/{code}.html",
+        }
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=10)
+            items = (r.json().get("data") or {}).get("list") or []
+        except Exception:
+            return []
+
+        result = []
+        for it in items:
+            columns = it.get("columns") or [{}]
+            result.append(
+                {
+                    "title": it.get("title", ""),
+                    "time": it.get("notice_date", ""),
+                    "source": "东方财富公告",
+                    "url": it.get("art_code", ""),
+                    "content": columns[0].get("column_name", ""),
+                }
+            )
+
+        if days:
+            cutoff = pd.Timestamp(date.today() - timedelta(days=int(days)))
+            kept = []
+            for row in result:
+                try:
+                    if pd.Timestamp(str(row["time"])[:10]) >= cutoff:
+                        kept.append(row)
+                except Exception:
+                    kept.append(row)  # 日期解析不了就保留，不静默丢数据
+            result = kept
+        return result
 
 
 def get_latest_price(code: str) -> float | None:

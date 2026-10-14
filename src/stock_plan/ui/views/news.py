@@ -8,6 +8,7 @@ from datetime import date
 
 import streamlit as st
 
+from stock_plan.llm.analyzer import analyze_news
 from stock_plan.news.timeline import (
     get_caixin_news,
     get_cctv_news,
@@ -16,6 +17,7 @@ from stock_plan.news.timeline import (
     get_market_news,
     get_stock_announcements,
     get_suspend_notices,
+    resolve_stock,
 )
 from stock_plan.ui.widgets import page_glossary
 
@@ -30,6 +32,36 @@ NEWS_GLOSSARY = {
 # （尤其是 CCTV 的日期选择器与按钮）顶出屏幕。改为「紧凑列表 + 详情子视图」后，
 # 列表高度可控，下面的控件不会再被挤走（暂时需求 2）。
 _NEWS_PREVIEW_COUNT = 8
+
+# 时间跨度选项（暂时需求 3）：公告接口只支持页码/条数，日期在本地过滤
+_SPAN_DAYS = {
+    "近 3 天": 3,
+    "近 1 周": 7,
+    "近 1 月": 30,
+    "近 3 月": 90,
+    "近 1 年": 365,
+}
+
+
+def _render_external_links(code: str, name: str | None) -> None:
+    """到外部平台搜索该股新闻/舆情的快捷入口（暂时需求 3 的"联动浏览器"）。
+
+    站内的公告接口只能覆盖公告，媒体报道、研报、讨论区需要外部平台，
+    所以这里给出一排直达链接，点开即在新标签页搜索。
+    """
+    from urllib.parse import quote
+
+    keyword = name or code
+    links = [
+        ("东方财富搜索", f"https://so.eastmoney.com/news/s?keyword={quote(keyword)}"),
+        ("百度新闻", f"https://www.baidu.com/s?wd={quote(keyword + ' 新闻')}"),
+        ("雪球讨论", f"https://xueqiu.com/k?q={quote(keyword)}"),
+        ("巨潮公告原文", f"http://www.cninfo.com.cn/new/fulltextSearch?keyWord={quote(keyword)}"),
+    ]
+    cols = st.columns(len(links))
+    for col, (label, url) in zip(cols, links):
+        with col:
+            st.markdown(f"[🔗 {label}]({url})")
 
 
 def _headline(it: dict) -> str:
@@ -70,9 +102,12 @@ def _render_feed_section(
     button_label: str,
     button_key: str,
     spinner_text: str,
-    empty_text: str,
+    empty_text,
 ) -> None:
     """渲染一个「刷新 → 紧凑列表 → 详情子视图」的要闻区块。
+
+    empty_text 可以是字符串，也可以是返回字符串的可调用对象（用于按标的/跨度
+    生成更有用的空状态提示）。
 
     注意：抓到的条目必须存进 session_state。因为「查看全文」是按钮会触发 rerun，
     若条目只存在局部变量里，进入详情视图时就会丢失（原实现用 expander 就地展开，
@@ -87,7 +122,7 @@ def _render_feed_section(
         st.caption("点击上方按钮拉取最新内容。")
         return
     if not items:
-        st.info(empty_text)
+        st.info(empty_text() if callable(empty_text) else empty_text)
         return
 
     idx = st.session_state.get(detail_key)
@@ -117,6 +152,27 @@ def _render_feed_section(
                 st.rerun()
 
 
+def _stock_empty_hint(code: str, span_label: str, days: int) -> str:
+    """某股在所选跨度内没有公告时的提示。
+
+    实测：接口按日期严格降序返回，"没有公告"往往是**真的没有**（例如 600519 最新
+    一条是 2026-08-15，因为半年报之后就没再发）。但用户看到 0 条会以为功能坏了，
+    所以这里顺手取最新一条的日期告诉他，并提示把跨度调大。
+    """
+    try:
+        latest = get_stock_announcements(code, page_size=1, days=None)
+        if latest:
+            d = str(latest[0].get("time", ""))[:10]
+            if d:
+                return (
+                    f"{code} 在{span_label}内没有公告 —— **最新一条是 {d}**，"
+                    f"可以把时间跨度调大再看看。"
+                )
+    except Exception:
+        pass
+    return f"{code} 在{span_label}内没有公告。"
+
+
 def render():
     st.header("📰 新闻舆情时间线")
     st.caption("聚合个股公告、市场要闻、财经日历、分红送转与停复牌信息，辅助盘前决策。")
@@ -124,25 +180,76 @@ def render():
 
     tab1, tab2, tab3, tab4 = st.tabs(["个股公告", "市场要闻", "财经日历", "分红/停牌"])
 
-    # ============ Tab 1: 个股公告 ============
+    # ============ Tab 1: 个股新闻与舆情（暂时需求 3）============
     with tab1:
-        st.subheader("个股公告时间线")
-        code = st.text_input("股票代码", placeholder="如 600519", key="news_code")
-        if st.button("📄 查询公告", key="news_query"):
-            if not code.strip():
-                st.warning("请输入股票代码")
-                return
-            with st.spinner("正在拉取公告…"):
-                items = get_stock_announcements(code.strip())
-            if not items:
-                st.info("未获取到公告数据。")
-            else:
-                st.success(f"共 {len(items)} 条公告")
-                for it in items:
-                    with st.expander(f"[{it['time']}] {it['title']}"):
-                        st.caption(f"来源：{it['source']} ｜ 分类：{it['content'] or '—'}")
-                        if it.get("url"):
-                            st.markdown(f"[查看原文](https://data.eastmoney.com/notices/detail/{code.strip()}.html)")
+        st.subheader("个股新闻与舆情")
+        st.caption(
+            "**代码或名称都能查**（如 `600519` 或 `贵州茅台`）。查到后可进详情读全文，"
+            "也可以一键跳到外部平台，或交给 LLM 做舆情分析。"
+        )
+
+        col_q, col_span = st.columns([2, 1])
+        with col_q:
+            query = st.text_input(
+                "股票代码或名称", placeholder="如 600519 或 贵州茅台", key="news_query_text"
+            )
+        with col_span:
+            span_label = st.selectbox(
+                "时间跨度", list(_SPAN_DAYS), index=3, key="news_span"
+            )
+        days = _SPAN_DAYS[span_label]
+
+        code, name, candidates = resolve_stock(query)
+
+        if candidates:
+            # 名称命中多只时不猜，交给用户选
+            labels = [f"{c}　{n}" for c, n in candidates]
+            pick = st.selectbox(
+                f"「{query}」匹配到 {len(candidates)} 只，请选择",
+                labels,
+                key="news_candidate",
+            )
+            code, name = candidates[labels.index(pick)]
+        elif query.strip() and code is None:
+            st.warning(
+                f"没找到「{query}」对应的股票。可以用 6 位代码，或确认名称是否准确。"
+            )
+
+        if not code:
+            st.caption("输入代码或名称后即可查询公告。")
+            return
+
+        st.markdown(
+            f"当前标的：**{code}　{name or ''}** ｜ 时间跨度：**{span_label}**（{days} 天）"
+        )
+        _render_external_links(code, name)
+
+        # 按"代码 + 跨度"分桶缓存，换标的/换跨度不会串数据
+        items_key = f"news_stock_items_{code}_{days}"
+        detail_key = f"news_stock_detail_{code}_{days}"
+        # 接口单次上限 100 条，这里按跨度给一个合理的取回量
+        page_size = min(100, max(30, days))
+
+        _render_feed_section(
+            items_key=items_key,
+            detail_key=detail_key,
+            fetcher=lambda: get_stock_announcements(code, page_size=page_size, days=days),
+            button_label="🔎 查询该股公告",
+            button_key="news_query",
+            spinner_text="正在拉取公告…",
+            empty_text=lambda: _stock_empty_hint(code, span_label, days),
+        )
+
+        items = st.session_state.get(items_key) or []
+        if items:
+            if st.button("🤖 让 LLM 分析该股舆情", key=f"{items_key}_llm"):
+                with st.spinner("正在分析…"):
+                    st.session_state[f"{items_key}_llm_text"] = analyze_news(
+                        code, name or "", items
+                    )
+            llm_text = st.session_state.get(f"{items_key}_llm_text")
+            if llm_text:
+                st.markdown(llm_text)
 
     # ============ Tab 2: 市场要闻 ============
     with tab2:
