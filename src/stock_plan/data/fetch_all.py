@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="全 A 股数据拉取")
     parser.add_argument("--limit", type=int, default=0, help="只拉前 N 只（0=全部，测试用）")
     parser.add_argument("--years", type=int, default=5, help="拉取近 N 年日线（默认 5）")
-    parser.add_argument("--workers", type=int, default=8, help="并发线程数（默认 8）")
+    parser.add_argument("--workers", type=int, default=16, help="并发线程数（默认 16）")
     parser.add_argument(
         "--force", action="store_true", help="强制重新拉取（默认跳过已有缓存）"
     )

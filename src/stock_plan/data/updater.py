@@ -126,7 +126,7 @@ def merge_bars(storage: Storage, code: str, new_bars: pd.DataFrame) -> int:
 
 def update_incremental(
     days: int = 30,
-    workers: int = 8,
+    workers: int = 16,
     force: bool = False,
     storage: Storage | None = None,
     fetcher: DataFetcher | None = None,
@@ -155,8 +155,11 @@ def update_incremental(
         stock_list = storage.load_stock_list()
 
     all_codes = stock_list["code"].astype(str).tolist() if not stock_list.empty else []
-    cached = [c for c in all_codes if storage.cache_exists(c)]
-    uncached = [c for c in all_codes if not storage.cache_exists(c)]
+    # 单次遍历分桶：原先 cached / uncached 各调一次 cache_exists，等于每只股票 stat 两次
+    cached: list[str] = []
+    uncached: list[str] = []
+    for c in all_codes:
+        (cached if storage.cache_exists(c) else uncached).append(c)
 
     # 幂等预筛：本地已到期望交易日的直接跳过（只读本地文件，不联网）
     todo = []
@@ -223,7 +226,7 @@ def update_incremental(
 def fetch_uncached(
     codes: list[str],
     years: int = 5,
-    workers: int = 8,
+    workers: int = 16,
     storage: Storage | None = None,
     fetcher: DataFetcher | None = None,
     progress: ProgressFn | None = None,
@@ -274,15 +277,94 @@ def fetch_uncached(
     return stats
 
 
+# ---------- 全历史重建（修正前复权回溯） ----------
+
+def rebuild_history(
+    years: int = 5,
+    workers: int = 16,
+    storage: Storage | None = None,
+    fetcher: DataFetcher | None = None,
+    progress: ProgressFn | None = None,
+) -> dict:
+    """重拉全部已缓存股票的完整历史日线并整体覆盖。
+
+    为什么需要这个：
+    前复权价是**回溯性**的 —— 每次分红/送转后，新浪返回的整段历史价格都会按新因子
+    改写。而"增量补最近 N 天再合并"只会覆盖最近那段，更早的行仍停留在旧因子上，
+    结果是历史序列在除权日出现人为跳空，均线/ATR/涨跌幅/回测全线失真。
+    （实测：间隔约 6 周后，000001 全历史偏移 2.19%、601318 偏移 1.74%。）
+
+    为什么这个操作不贵：
+    新浪日线接口每次请求都返回**整份历史文件**（akshare 再按日期裁剪），
+    所以"重拉 5 年"与"补 30 天"的网络成本几乎相同，全量重建是很划算的。
+
+    建议：每次发现持仓/候选股除权后，或每月跑一次。
+    """
+    storage = storage or Storage()
+    fetcher = fetcher or DataFetcher()
+    t0 = time.time()
+
+    start = date.today() - timedelta(days=365 * years)
+    end = date.today()
+    codes = sorted(p.stem for p in storage.bars_dir.glob("*.parquet"))
+
+    stats = {
+        "mode": "rebuild",
+        "total": len(codes),
+        "updated": 0,
+        "failed": 0,
+        "errors": [],
+        "elapsed": 0.0,
+    }
+    _notify(progress, done=0, total=len(codes), ok=0, failed=0, current="")
+
+    lock = threading.Lock()
+    done = ok = failed = 0
+
+    def fetch_one(code: str) -> tuple[str, bool, str]:
+        try:
+            bars = fetcher.get_daily_bars(code, start, end)
+            if bars is None or bars.empty:
+                return code, False, "返回空数据"
+            storage.save_bars(code, bars)  # save_bars 为整体覆盖写，正是重建所需
+            return code, True, ""
+        except Exception as e:
+            return code, False, str(e)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(fetch_one, c): c for c in codes}
+        for fut in as_completed(futures):
+            code, success, err = fut.result()
+            with lock:
+                done += 1
+                if success:
+                    ok += 1
+                else:
+                    failed += 1
+                    stats["errors"].append((code, err))
+                _notify(
+                    progress,
+                    done=done,
+                    total=len(codes),
+                    ok=ok,
+                    failed=failed,
+                    current=code,
+                )
+
+    stats["updated"] = ok
+    stats["failed"] = failed
+    stats["errors"] = stats["errors"][:50]
+    stats["elapsed"] = round(time.time() - t0, 1)
+    _log_run("rebuild", stats)
+    return stats
+
+
 # ---------- 内部工具 ----------
 
 def _last_date(storage: Storage, code: str) -> pd.Timestamp | None:
-    """读取某只股票本地缓存的最新日期（只读 date 列附近，快速判断）。"""
+    """读取某只股票本地缓存的最新日期（只读 date 列，避免整文件解析）。"""
     try:
-        df = storage.load_bars(code)
-        if df.empty:
-            return None
-        return pd.Timestamp(df["date"].max())
+        return storage.last_date(code)
     except Exception:
         return None
 

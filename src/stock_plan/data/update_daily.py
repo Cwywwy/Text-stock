@@ -21,7 +21,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="每日增量数据更新")
     parser.add_argument("--days", type=int, default=30, help="每只股票补拉近 N 个自然日（默认 30）")
     parser.add_argument("--force", action="store_true", help="强制重拉（忽略本地已是最新）")
-    parser.add_argument("--workers", type=int, default=8, help="并发线程数（默认 8）")
+    parser.add_argument("--workers", type=int, default=16, help="并发线程数（默认 16）")
     parser.add_argument(
         "--uncached",
         nargs="*",
@@ -29,26 +29,43 @@ def main() -> None:
         metavar="CODE",
         help="只补拉这些未缓存股票代码（近 5 年全量），不传则执行常规增量更新",
     )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="全历史重建：重拉全部已缓存股票的完整历史并覆盖（修正前复权因子回溯偏差）",
+    )
     args = parser.parse_args()
 
     from stock_plan.data.updater import (
         _write_progress,
         fetch_uncached,
         make_progress_writer,
+        rebuild_history,
         update_incremental,
     )
 
-    mode = "uncached" if args.uncached is not None else "incremental"
+    if args.rebuild:
+        mode = "rebuild"
+    elif args.uncached is not None:
+        mode = "uncached"
+    else:
+        mode = "incremental"
     progress = make_progress_writer(mode)
 
-    print("开始增量数据更新 ..." if mode == "incremental" else f"开始补拉未缓存股票 {args.uncached} ...")
+    print(
+        "开始全历史重建（修正前复权回溯）..."
+        if mode == "rebuild"
+        else ("开始增量数据更新 ..." if mode == "incremental" else f"开始补拉未缓存股票 {args.uncached} ...")
+    )
     error: str | None = None
     stats: dict | None = None
     try:
-        if mode == "incremental":
+        if mode == "rebuild":
+            stats = rebuild_history(workers=args.workers, progress=progress)
+        elif mode == "incremental":
             stats = update_incremental(days=args.days, workers=args.workers, force=args.force, progress=progress)
         else:
-            stats = fetch_uncached(codes=args.uncached, progress=progress)
+            stats = fetch_uncached(codes=args.uncached, workers=args.workers, progress=progress)
     except Exception as e:  # 确保异常也落到进度文件，UI 能显示失败原因
         error = str(e)
         raise
@@ -57,7 +74,10 @@ def main() -> None:
 
     if stats is None:
         return
-    if mode == "incremental":
+    if mode == "rebuild":
+        print(f"全历史重建 {stats['total']} 只：成功 {stats['updated']} 只，"
+              f"失败 {stats['failed']} 只，耗时 {stats['elapsed']}s")
+    elif mode == "incremental":
         print(f"期望最新交易日: {stats['expected_date']}")
         print(f"已缓存 {stats['total_cached']} 只 | 已是最新跳过 {stats['current']} 只")
         print(f"本次更新 {stats['updated']} 只，失败 {stats['failed']} 只，耗时 {stats['elapsed']}s")

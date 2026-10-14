@@ -9,16 +9,67 @@
 
 Revision History:
     2026-09-04  serialise Sina V8 decoding to prevent MiniRacer crashes
+    2026-10-15  per-thread V8 context; the global lock no longer serialises HTTP
 """
 from __future__ import annotations
 
+import os
+import threading
 from datetime import date, datetime, timedelta
 from threading import Lock
 
 import akshare as ak
 import pandas as pd
+import py_mini_racer
 
-SINA_DAILY_LOCK = Lock()
+# ---------------------------------------------------------------------------
+# 新浪日线的 V8 并发问题
+#
+# akshare 的 stock_zh_a_daily 每次调用都会 new 一个 py_mini_racer.MiniRacer()
+# 来解密新浪返回的 JS。mini-racer 的 V8 上下文不是线程安全的，多线程**并发创建**
+# 会触发原生崩溃（partition_address_space.cc）。
+#
+# 原先的应对是用一把全局锁把整段调用串行化。但那段调用里包含 3 个串行 HTTP 请求
+# （日线 blob、outstanding_share、前复权因子），于是网络也被一起串行化：
+# 实测 8 线程相对单线程只有 1.03x 加速，全市场 5553 只要 78~104 分钟。
+#
+# 正确做法：V8 上下文本身可以复用，只要"每个线程一个、各自串行使用"即可。
+# 这里把 MiniRacer 换成线程本地单例，并且**只把"创建"这一步**加锁保护 ——
+# 创建每线程仅发生一次，竞争可忽略，而网络请求完全并发。
+#
+# 兜底：若仍需旧的全局串行行为，设 STOCK_PLAN_SINA_LOCK=1。
+# ---------------------------------------------------------------------------
+_thread_local = threading.local()
+_v8_create_lock = Lock()
+_RealMiniRacer = py_mini_racer.MiniRacer
+
+
+class _ThreadLocalMiniRacer:
+    """MiniRacer 的线程本地单例：每线程创建一个 V8 上下文并复用。
+
+    创建动作由 _v8_create_lock 串行化，避免多线程同时初始化 V8 触发的原生崩溃；
+    上下文的使用始终发生在创建它的那一个线程里，因此不存在并发使用同一个上下文。
+    """
+
+    def __new__(cls, *args, **kwargs):
+        ctx = getattr(_thread_local, "v8", None)
+        if ctx is None:
+            with _v8_create_lock:  # 只保护"创建"，不保护网络与解码
+                ctx = _RealMiniRacer(*args, **kwargs)
+            _thread_local.v8 = ctx
+        return ctx
+
+
+def _install_thread_local_v8() -> None:
+    """把 akshare 内部使用的 py_mini_racer.MiniRacer 换成线程本地单例。"""
+    if py_mini_racer.MiniRacer is not _ThreadLocalMiniRacer:
+        py_mini_racer.MiniRacer = _ThreadLocalMiniRacer
+
+
+_install_thread_local_v8()
+
+# 默认 None（并发）。仅当显式设置 STOCK_PLAN_SINA_LOCK=1 时才启用旧的全局串行锁。
+SINA_DAILY_LOCK = Lock() if os.environ.get("STOCK_PLAN_SINA_LOCK") == "1" else None
 
 
 def _to_sina_symbol(code: str) -> str:
@@ -75,8 +126,15 @@ class DataFetcher:
         symbol = _to_sina_symbol(code)
         start_str = start.strftime("%Y%m%d") if isinstance(start, date) else start
         end_str = end.strftime("%Y%m%d") if isinstance(end, date) else end
-        # AKShare 的新浪解码器会创建 V8 上下文，mini-racer 在并发初始化时会原生崩溃。
-        with SINA_DAILY_LOCK:
+        # 默认并发调用：线程本地 V8 上下文已消除"并发创建"这一崩溃成因，
+        # 因此不再需要把 3 个串行 HTTP 请求一起锁起来（那会让并发完全失效）。
+        # 如需退回旧的全局串行锁，设置环境变量 STOCK_PLAN_SINA_LOCK=1。
+        if SINA_DAILY_LOCK is not None:
+            with SINA_DAILY_LOCK:
+                df = ak.stock_zh_a_daily(
+                    symbol=symbol, start_date=start_str, end_date=end_str, adjust="qfq"
+                )
+        else:
             df = ak.stock_zh_a_daily(
                 symbol=symbol, start_date=start_str, end_date=end_str, adjust="qfq"
             )

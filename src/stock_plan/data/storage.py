@@ -14,6 +14,7 @@ Revision History:
 """
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -80,12 +81,19 @@ class Storage:
         return self.bars_dir / f"{code}.parquet"
 
     def save_bars(self, code: str, df: pd.DataFrame) -> None:
-        """保存日线行情到 Parquet。df 需含 BAR_COLUMNS 字段。"""
+        """保存日线行情到 Parquet。df 需含 BAR_COLUMNS 字段。
+
+        先写临时文件再 os.replace 原子替换：增量更新/全历史重建会在 Streamlit
+        运行期间改写同一个文件，直接覆盖会让并发读取方读到写了一半的 parquet。
+        """
         if df is None or df.empty:
             return
         df = df[BAR_COLUMNS].copy()
         df["date"] = pd.to_datetime(df["date"])
-        df.to_parquet(self._bars_path(code), index=False)
+        target = self._bars_path(code)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        df.to_parquet(tmp, index=False)
+        os.replace(tmp, target)  # 同目录内替换，POSIX/NTFS 上均为原子操作
 
     def load_bars(self, code: str) -> pd.DataFrame:
         """读取日线行情。若不存在返回空 DataFrame。"""
@@ -99,6 +107,23 @@ class Storage:
     def cache_exists(self, code: str) -> bool:
         """判断该股票日线缓存是否存在。"""
         return self._bars_path(code).exists()
+
+    def last_date(self, code: str) -> pd.Timestamp | None:
+        """只读取 date 列，返回该股票缓存的最新交易日。
+
+        比 load_bars 整文件读取便宜：增量更新的幂等预筛要对全市场 5000+ 只股票
+        逐个判断"是否已是最新"，整文件读会白白解析十余列数据。
+        """
+        path = self._bars_path(code)
+        if not path.exists():
+            return None
+        try:
+            col = pd.read_parquet(path, columns=["date"])
+        except Exception:
+            return None
+        if col.empty:
+            return None
+        return pd.Timestamp(pd.to_datetime(col["date"]).max())
 
     def bars_count(self) -> int:
         """已缓存日线的股票数量。"""

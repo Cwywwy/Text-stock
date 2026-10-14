@@ -11,6 +11,7 @@ wheels/
 
 # Secrets
 .env
+.streamlit/secrets.toml
 streamlit_out.log
 streamlit_err.log
 *.log
@@ -19,9 +20,13 @@ streamlit_err.log
 data/raw/
 data/processed/
 data/db/
+data/logs/
 
 # 快照发布临时 worktree
 .snapshot_worktree/
+
+# 计划任务旧版本备份（一次性产物，不入库）
+scripts/backup/
 
 # Tooling caches
 .pytest_cache/
