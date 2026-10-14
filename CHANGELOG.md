@@ -139,7 +139,18 @@
   - 新增 `tests/test_factor_parity.py` 4 个用例锁死 schema 一致；
     **反向验证：stash 掉修正 → 4 failed，恢复 → 4 passed**
   - 过程中我自己写错三版用例（不可判别 / 用错 API / 测错方向），均已修正并记录
-- 验证：`compileall` 全包 0 错误；`pytest` **134 passed**；12 页 AppTest 全绿
+- **复审（2026-10-15 续）：未发现新 bug，审计出现收敛迹象**
+  - 补上**数值级**一致性用例 `test_factor_values_match_between_paths`：
+    `mom_ret`（`iloc[p-20]` vs `iloc[-21]`）、`high20_ratio`（`rolling(20).max()` vs
+    `iloc[-20:].max()`）、`avg_amount20`（`rolling(20).mean()` vs `tail(20).mean()`）
+    在同一根 K 线上窗口完全相同、数值一致 ✓
+    `tests/test_factor_parity.py` 现 5 个用例，反向验证（`git checkout` 取回修正前版本）
+    → **5 failed**，恢复 → **5 passed**
+  - 扫描 7 个策略文件引用的因子列：**全部落在 21 列统一 schema 内**，
+    不存在"读了 schema 外的列 → 规则在两条路径上都不生效"这类更隐蔽的问题
+  - 确认动态列名 `ma{周期}` 的取值受 `_MA_CHOICES = (0,5,7,10,20,30,60)` 约束，
+    且两条 LLM 路径都经过 `normalize_config`，schema 覆盖全部合法值 ✓
+- 验证：`compileall` 全包 0 错误；`pytest` **135 passed**；12 页 AppTest 全绿
 
 ## 2026-10-15
 

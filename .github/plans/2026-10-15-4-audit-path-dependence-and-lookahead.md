@@ -164,7 +164,53 @@
 3. 第三版测错了方向：`avg_amount20` 原本**只在实盘路径**有、缺的是**引擎**，
    于是改成走回测、在 `score()` 里用同规则 + `top_n=1` 放大排序效果。
 
-## 十、效应量测量结果（已完成）
+## 十、复审（2026-10-15 续）：收敛迹象
+
+发现 5 修完后又做了一轮系统性复审，**未发现新 bug**。三项检查：
+
+### 1) 数值级一致性（不只是列集）
+
+两条路径用不同写法算同一个量，容易差一格，因此补了**数值**比对用例
+（`test_factor_values_match_between_paths`）：
+
+| 因子 | 引擎写法 | 实盘写法 |
+|---|---|---|
+| `mom_ret` | `iloc[p-20]` | `iloc[-21]` |
+| `high20_ratio` | `rolling(20).max()` | `iloc[-20:].max()` |
+| `avg_amount20` | `rolling(20).mean()` | `tail(20).mean()` |
+
+结论：**在同一根 K 线上三者窗口完全相同、数值一致** ✓
+（`p` 为最后一行时 `p-20 == -21`；`rolling(20)` 与 `iloc[-20:]` 覆盖同样 20 根）
+`tests/test_factor_parity.py` 现为 **5 个用例**，反向验证（`git checkout` 取回修正前版本）
+→ **5 failed**，恢复 → **5 passed**。
+
+### 2) 策略引用的因子列是否都在统一 schema 里
+
+这是比发现 5 更隐蔽的一类：若某策略读了 schema 里没有的列，那条规则在**两条路径上都不会生效**
+（两边一致地缺列，永远看不出差异）。用脚本扫描 7 个策略文件：
+
+| 文件 | 引用列数 | 结论 |
+|---|---|---|
+| `breakout.py` / `builtin.py` / `custom.py` / `masters.py` / `meanreversion.py` / `momentum.py` / `value.py` | 6~12 | ✅ **全部落在 21 列 schema 内** |
+
+### 3) 动态列名 `ma{周期}` 的取值范围
+
+`custom.py` 用 `ma{fast}` / `ma{slow}` / `ma{dev_ma}`，列名取决于**用户参数**，
+所以必须确认取值受限：
+
+- `codegen.py`: `_MA_CHOICES = (0, 5, 7, 10, 20, 30, 60)`
+- `normalize_config` 会把越界值重置（`dev_ma` 回落 20，快慢线回落 0）
+- **两条 LLM 路径都经过 `normalize_config`**（`analyzer.py:131`、`analyzer.py:224`）
+- schema 覆盖 ma5/7/10/20/30/60 ✓
+
+结论：不存在"用户填了 15 日均线导致规则被静默跳过"的情况 ✓
+
+### 仍未审的模块
+
+`analysis/holding.py`、`llm/analyzer.py` 的业务逻辑（只查了它的配置归一化路径）、
+`ui/views/visual_builder.py`。下轮或后续覆盖。
+
+## 十一、效应量测量结果（已完成）
 
 用 `_scratch/effect_size.py`：8 组配对随机子样本（每组 80% 的在市股，再并入窗口内
 全部 190 只退市股），以及一条与选股路径无关的前瞻收益比较。

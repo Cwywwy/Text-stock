@@ -195,3 +195,62 @@ def test_engine_provides_avg_amount20_so_liquidity_rule_applies() -> None:
         f"top_n=1 时应选中流动性达标的那只，实际成交 {traded} —— "
         "说明引擎的候选行缺少 avg_amount20（或数值不是当日口径）"
     )
+
+
+def test_factor_values_match_between_paths() -> None:
+    """两条路径不仅列集要一致，**数值也必须一致**。
+
+    两边用不同写法算同一个量，容易差一格：
+      mom_ret     引擎 `iloc[p-20]`            实盘 `iloc[-21]`
+      high20_ratio 引擎 `rolling(20).max()`    实盘 `iloc[-20:].max()`
+      avg_amount20 引擎 `rolling(20).mean()`   实盘 `tail(20).mean()`
+    在同一根 K 线上这些都该相等（p 为最后一行时三者窗口完全相同）。
+    本用例把"末日终值"逐列比对，任何差一格都会暴露。
+    """
+    bars_map = {"600000": _bars(n=200, seed=11)}
+    stock_list = _stock_list(["600000"])
+    fund_map = {"600000": {"value_score": 66.0, "growth_score": 55.0, "quality_score": 77.0}}
+
+    engine_row: dict = {}
+
+    class RowSpy(Strategy):
+        name = "数值探针"
+        params = {}
+
+        def filter_universe(self, stock_list, bars_map):
+            return [c for c in stock_list["code"].astype(str) if c in bars_map]
+
+        def score(self, df_factors):
+            self.seen = df_factors[df_factors["code"].astype(str) == "600000"]
+            if not self.seen.empty:
+                engine_row.clear()
+                engine_row.update(self.seen.iloc[-1].to_dict())
+            return pd.Series(1.0, index=df_factors.index)
+
+        def entry_price(self, row, atr):
+            return round(row["close"], 2)
+
+        def exit_price(self, entry, atr):
+            return entry * 10, entry * 0.01, 9999
+
+    cfg = BacktestConfig(
+        start=bars_map["600000"]["date"].min().date(),
+        end=bars_map["600000"]["date"].max().date(),
+        rebalance_freq="daily", top_n=1, max_hold_days=9999,
+    )
+    run_backtest(RowSpy(), cfg, bars_map, fund_map, stock_list)
+
+    live = build_factor_rows(["600000"], bars_map, fund_map).iloc[0]
+    assert engine_row, "前提：回测确实产生了候选行"
+
+    numeric = [
+        "close", "atr14", "ma20", "ma60", "rsi14", "vol_ratio", "mom_ret",
+        "high20_ratio", "avg_amount20", "macd", "macd_signal",
+        "trend_score", "fund_score", "ma5", "ma7", "ma10", "ma30",
+    ]
+    diffs = []
+    for col in numeric:
+        a, b = float(engine_row[col]), float(live[col])
+        if a != pytest.approx(b, rel=1e-9, abs=1e-9):
+            diffs.append(f"{col}: 回测={a} 实盘={b}")
+    assert not diffs, "两条路径的因子数值不一致：\n  " + "\n  ".join(diffs)
