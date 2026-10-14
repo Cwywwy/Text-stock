@@ -369,6 +369,13 @@ def update_universes(years: int = 5, force: bool = False) -> dict:
             stats["empty"] += 1
             continue
         save_universe(day, codes)
+        # 清掉同一自然月里命名不同的历史文件：早期按月爬取的版本用"实际交易日"命名
+        # （如 2024-04-25），重构后统一用月末命名（2024-04-30）。若不清掉，同一个
+        # 月会同时存在两份池子，读取时互相污染（实测导致某月虚增 125 只）。
+        for stale in UNIVERSE_DIR.glob(f"{ts.year:04d}-{ts.month:02d}-*.parquet"):
+            if stale.name != _universe_path(day).name:
+                stale.unlink()
+                stats["stale_removed"] = stats.get("stale_removed", 0) + 1
         stats["saved"] += 1
         print(f"  {day}: {len(codes)} 只", flush=True)
     stats["elapsed"] = round(time.time() - t0, 1)
