@@ -98,7 +98,24 @@
   - **未做**：分客户保存。三种方案与工作量已写入
     `.github/plans/2026-10-15-3-new-strategy-grouping-and-per-customer.md`，
     等确认后再实施；注意其中 owner 方案只是便于分类，**不是安全边界**
-- 验证：`compileall` 全包 0 错误；`pytest` **124 passed**；12 页 AppTest 全绿
+- **审计：未来函数与路径依赖**（见 `.github/plans/2026-10-15-4-audit-path-dependence-and-lookahead.md`）
+  - ✅ 干净：`factors/technical.py` 的指标全为因果（无未来函数）；
+    `signal/generator.py` 盘前取最后一根已完成 K 线正确；`filter.py` 的 `MIN_BARS=60`
+    保证指标预热期不会流入打分
+  - ⚠️ **发现 1（未修，已加代码内警告）**：`filter_universe` 用 `stock_list["is_st"]`
+    （= **今天**的状态）排除 ST，而引擎开跑前一次性建池 → **用 2026 年的 ST 状态决定
+    2022 年能不能买**。修它需要 ST 时点历史（现无此数据源），故在 `factors/filter.py`
+    模块文档写入醒目警告
+  - ⚠️ **发现 2（方法论，更重要）**：候选池只增 3.75% 就让总收益差 **+20.97pp**，
+    而成交股票重合度仅 **Jaccard 0.226**（换掉 77%）、被测试的 ST 股自己只成交 8 笔。
+    引擎经确认是确定性的（同输入两次差 0.0000pp）。**结论：单次 A/B 的差异由路径依赖
+    主导，不能当成效应量。** 这推翻了我上一轮"幸存者偏差 −0.02pp ≈ 0"的说法 ——
+    那只说明"噪声范围内看不出差异"
+  - 🔧 **发现 3（已修）**：`_rsi` 的 `fillna(50)` 把"只涨不跌"的极限值 100 填成中性 50，
+    使连续涨停的最强动量反而拿到 `trend_score` 的「50≤rsi≤70 → +20 分」奖励。
+    实测影响面 590/7,472,101 股票-日（0.0079%）。修正后新增
+    `tests/test_technical_edges.py` 6 个用例，反向验证（stash 掉修正）→ 2 failed
+- 验证：`compileall` 全包 0 错误；`pytest` **130 passed**；12 页 AppTest 全绿
 
 ## 2026-10-15
 

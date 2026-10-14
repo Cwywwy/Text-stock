@@ -8,6 +8,24 @@
 2. 停牌股票（最新交易日成交量为 0 或没有日线数据）
 3. 流动性差的股票（近 20 个交易日平均成交额 < 5000 万元）
 4. 上市时间过短的次新股（日线数据不足 60 根，无法计算 ma60）
+
+⚠️ **ST 过滤是"今天的"状态，用于回测时构成未来函数**（2026-10-15 审计发现）
+------------------------------------------------------------------
+本模块用 `stock_list["is_st"]` 判断 ST，而回测里的 `stock_list` 来自
+`Storage.load_stock_list()`，也就是 `SELECT * FROM stock_list` —— **只有今天的状态**。
+引擎（`backtest/engine.py`）在开跑前一次性调用本函数建立候选池，于是：
+
+    用 2026 年的 ST 状态，决定了 2022 年能不能买。
+
+股票被戴帽 ST 往往正是因为前期跌得多，所以这是一种**前瞻性偏差**。
+目前**没有修正**，因为缺少 ST 的时点历史（`stock_list` 只有当前状态，
+baostock 也不提供）；要修必须新增数据源。
+
+另外要小心：**不要用单次 A/B 的收益差来量化这个偏差**。实测同一策略、同一区间，
+仅把 201 只今天的 ST 股放回候选池（池子 +3.75%），总收益就差 +20.97pp，
+但成交股票的 Jaccard 重合度只有 **0.226** —— 差异主要来自选股被大面积重排
+（路径依赖），而不是 ST 股本身的业绩（它们只成交 8 笔）。详见
+`.github/plans/2026-10-15-4-audit-path-dependence-and-lookahead.md`。
 """
 from __future__ import annotations
 
@@ -24,6 +42,9 @@ def filter_universe(
 ) -> list[str]:
     """硬过滤，返回通过筛选的股票代码列表。
 
+    ⚠️ 第 1 步用的是 `stock_list["is_st"]`，即**今天**的 ST 状态。
+    用于回测时会构成未来函数，详见模块文档。
+
     参数：
         stock_list: 全 A 股列表（含 code/name/is_st 列）。
         bars_map:   {code: 日线 DataFrame}，只包含有缓存的股票。
@@ -31,7 +52,7 @@ def filter_universe(
     返回：
         通过所有过滤条件的股票代码列表（list[str]）。
     """
-    # 1. 排除 ST 股票
+    # 1. 排除 ST 股票（注意：这是今天的 ST 状态，回测时是未来信息）
     st_codes = set(stock_list.loc[stock_list["is_st"] == 1, "code"].astype(str))
     # 2. 排除没有日线缓存的股票
     candidates = [c for c in bars_map if c not in st_codes]
