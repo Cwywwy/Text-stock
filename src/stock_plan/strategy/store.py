@@ -4,8 +4,12 @@
 保存后的策略在今日信号 / 回测 / 策略对比页的下拉框立即可选。
 
 Revision History:
-    2026-10-15  新增 tags 列（策略分组，暂时需求 4）与批量删除 delete_strategies；
+    2026-10-15  新增 tags 列（策略分组）与批量删除 delete_strategies；
                 老库通过 PRAGMA table_info + ALTER TABLE 轻量迁移，已有策略不丢。
+    2026-10-15  新增 owner 列与「当前客户」概念（暂时需求 4 的"分客户保存"）。
+                ⚠️ owner 只是**便于分类**的自由标签，**不是安全边界**，
+                不能用于对外服务的权限控制（详见
+                .github/plans/2026-10-15-3-new-strategy-grouping-and-per-customer.md）。
 """
 from __future__ import annotations
 
@@ -16,6 +20,10 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 STRATEGY_DB = PROJECT_ROOT / "data" / "db" / "strategies.db"
+
+# 默认归属：本机单用户场景下的"客户"
+DEFAULT_OWNER = "local"
+_SETTING_CURRENT_OWNER = "current_owner"
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, decl: str) -> None:
@@ -37,13 +45,67 @@ def _conn() -> sqlite3.Connection:
             unsupported_json TEXT DEFAULT '[]',
             notes TEXT DEFAULT '',
             tags TEXT DEFAULT '',
+            owner TEXT DEFAULT 'local',
             created_at TEXT,
             updated_at TEXT
         )"""
     )
-    # 老库迁移：tags 是 2026-10-15 新增的分组字段
+    # 键值设置表（当前存放"当前客户"），与策略同库以便一起备份/迁移
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )"""
+    )
+    # 老库迁移：tags / owner 都是 2026-10-15 新增
     _ensure_column(conn, "strategies", "tags", "TEXT DEFAULT ''")
+    _ensure_column(conn, "strategies", "owner", "TEXT DEFAULT 'local'")
     return conn
+
+
+# ---------- 设置（当前客户） ----------
+
+def get_setting(key: str, default: str = "") -> str:
+    with _conn() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row[0] if row is not None and row[0] is not None else default
+
+
+def set_setting(key: str, value: str) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+
+def current_owner() -> str:
+    """当前"客户"（归属标签）。未设置时为 `local`。
+
+    ⚠️ 这只是便于分类的自由字符串，**不是身份认证**。
+    """
+    return (get_setting(_SETTING_CURRENT_OWNER, DEFAULT_OWNER) or DEFAULT_OWNER).strip() or DEFAULT_OWNER
+
+
+def set_current_owner(owner: str) -> str:
+    name = (owner or "").strip() or DEFAULT_OWNER
+    set_setting(_SETTING_CURRENT_OWNER, name)
+    return name
+
+
+def all_owners() -> list[str]:
+    """出现过的全部归属（去重，包含当前客户）。"""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT owner FROM strategies WHERE owner IS NOT NULL AND owner != ''"
+            " ORDER BY owner"
+        ).fetchall()
+    owners = [r[0] for r in rows]
+    cur = current_owner()
+    if cur not in owners:
+        owners.append(cur)
+    return owners
 
 
 def normalize_tags(raw) -> str:
@@ -73,18 +135,27 @@ def save_strategy(
     unsupported: list | None = None,
     notes: str = "",
     tags="",
+    owner: str | None = None,
 ) -> bool:
-    """保存/覆盖一个策略（按名字主键）。tags 为分组标签（逗号分隔字符串或列表）。"""
+    """保存/覆盖一个策略（按名字主键）。
+
+    tags 为分组标签（逗号分隔字符串或列表）；owner 为归属（客户），
+    不传则用"当前客户"。
+
+    **归属冲突规则**：同名策略已存在时**不改变其 owner** —— 避免 A 客户保存
+    同名策略时把 B 客户的策略悄悄划到自己名下。要改归属请显式调 `set_owner()`。
+    """
     name = (name or "").strip()
     if not name or not config:
         return False
+    owner = (owner if owner is not None else current_owner()).strip() or DEFAULT_OWNER
     now = datetime.now().isoformat(timespec="seconds")
     with _conn() as conn:
         conn.execute(
             """INSERT INTO strategies
-               (name, config_json, source, proposal_code, unsupported_json, notes, tags,
+               (name, config_json, source, proposal_code, unsupported_json, notes, tags, owner,
                 created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(name) DO UPDATE SET
                  config_json=excluded.config_json, source=excluded.source,
                  proposal_code=excluded.proposal_code,
@@ -99,11 +170,23 @@ def save_strategy(
                 json.dumps(unsupported or [], ensure_ascii=False),
                 notes or "",
                 normalize_tags(tags),
+                owner,
                 now,
                 now,
             ),
         )
     return True
+
+
+def set_owner(name: str, owner: str) -> bool:
+    """显式改某个策略的归属（客户）。"""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE strategies SET owner = ?, updated_at = ? WHERE name = ?",
+            ((owner or "").strip() or DEFAULT_OWNER,
+             datetime.now().isoformat(timespec="seconds"), name),
+        )
+    return cur.rowcount > 0
 
 
 def set_tags(name: str, tags) -> bool:
@@ -121,7 +204,7 @@ def load_strategy(name: str) -> dict | None:
     with _conn() as conn:
         row = conn.execute(
             "SELECT name, config_json, source, proposal_code, unsupported_json, notes,"
-            " tags, created_at FROM strategies WHERE name = ?",
+            " tags, owner, created_at FROM strategies WHERE name = ?",
             (name,),
         ).fetchone()
     if row is None:
@@ -134,26 +217,30 @@ def load_strategy(name: str) -> dict | None:
         "unsupported": json.loads(row[4]),
         "notes": row[5],
         "tags": row[6] or "",
-        "created_at": row[7],
+        "owner": row[7] or DEFAULT_OWNER,
+        "created_at": row[8],
     }
 
 
-def list_strategies(tag: str | None = None) -> dict[str, dict]:
+def list_strategies(tag: str | None = None, owner: str | None = None) -> dict[str, dict]:
     """全部已保存策略：{name: record}，按创建时间倒序。
 
-    tag 非空时只返回带该标签的策略（策略分组，暂时需求 4）。
+    tag 非空时只返回带该标签的策略（策略分组）。
+    owner 非空时只返回归属该客户的策略（暂时需求 4 的"分客户保存"）。
     """
+    where, params = [], []
+    if tag:
+        where.append("',' || tags || ',' LIKE ?")
+        params.append(f"%,{tag},%")
+    if owner is not None:
+        where.append("owner = ?")
+        params.append(owner)
+    sql = "SELECT name FROM strategies"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY created_at DESC"
     with _conn() as conn:
-        if tag:
-            rows = conn.execute(
-                "SELECT name FROM strategies WHERE ',' || tags || ',' LIKE ?"
-                " ORDER BY created_at DESC",
-                (f"%,{tag},%",),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT name FROM strategies ORDER BY created_at DESC"
-            ).fetchall()
+        rows = conn.execute(sql, params).fetchall()
     return {r[0]: load_strategy(r[0]) for r in rows}
 
 
@@ -174,14 +261,23 @@ def delete_strategy(name: str) -> bool:
     return cur.rowcount > 0
 
 
-def delete_strategies(names) -> int:
-    """批量删除，返回实际删除条数（暂时需求 4：多余策略清理）。"""
+def delete_strategies(names, owner: str | None = None) -> int:
+    """批量删除，返回实际删除条数（暂时需求 4：多余策略清理）。
+
+    owner 非空时**只删归属该客户的策略** —— 防止在"当前客户 A"的界面上
+    误删 B 客户的策略。返回值小于请求数量即表示有跨客户的项被跳过。
+    """
     targets = [str(n) for n in (names or []) if str(n).strip()]
     if not targets:
         return 0
+    marks = ",".join("?" * len(targets))
+    sql = f"DELETE FROM strategies WHERE name IN ({marks})"
+    params: list = list(targets)
+    if owner is not None:
+        sql += " AND owner = ?"
+        params.append(owner)
     with _conn() as conn:
-        marks = ",".join("?" * len(targets))
-        cur = conn.execute(f"DELETE FROM strategies WHERE name IN ({marks})", targets)
+        cur = conn.execute(sql, params)
     return cur.rowcount
 
 

@@ -139,3 +139,102 @@ def test_migration_is_idempotent(tmp_db) -> None:
     store.save_strategy("A1", CFG, tags="x")
     for _ in range(3):
         assert store.load_strategy("A1")["tags"] == "x"
+
+
+# ---------- owner（分客户保存，暂时需求 4） ----------
+def test_owner_defaults_to_local(tmp_db) -> None:
+    assert store.current_owner() == store.DEFAULT_OWNER == "local"
+    store.save_strategy("A1", CFG)
+    assert store.load_strategy("A1")["owner"] == "local"
+
+
+def test_current_owner_persists_and_scopes_saves(tmp_db) -> None:
+    """「当前客户」要能持久化（存 settings 表），且保存时自动带上它。"""
+    store.set_current_owner("客户-张三")
+    # 新建连接也要读得到（不是内存状态）
+    assert store.current_owner() == "客户-张三"
+    store.save_strategy("A1", CFG)
+    assert store.load_strategy("A1")["owner"] == "客户-张三"
+
+    store.set_current_owner("客户-李四")
+    store.save_strategy("A2", CFG)
+    assert store.load_strategy("A2")["owner"] == "客户-李四"
+    # 清空应回落默认
+    store.set_current_owner("   ")
+    assert store.current_owner() == "local"
+
+
+def test_list_strategies_filter_by_owner(tmp_db) -> None:
+    store.save_strategy("A1", CFG, owner="客户-张三")
+    store.save_strategy("A2", CFG, owner="客户-张三")
+    store.save_strategy("A3", CFG, owner="客户-李四")
+    assert set(store.list_strategies(owner="客户-张三")) == {"A1", "A2"}
+    assert set(store.list_strategies(owner="客户-李四")) == {"A3"}
+    assert set(store.list_strategies(owner="不存在")) == set()
+    assert set(store.list_strategies()) == {"A1", "A2", "A3"}
+    # 与标签筛选可叠加
+    store.set_tags("A1", "短线")
+    assert set(store.list_strategies(tag="短线", owner="客户-张三")) == {"A1"}
+    assert set(store.list_strategies(tag="短线", owner="客户-李四")) == set()
+
+
+def test_all_owners_includes_current(tmp_db) -> None:
+    store.save_strategy("A1", CFG, owner="客户-张三")
+    store.set_current_owner("客户-王五")
+    owners = store.all_owners()
+    assert "客户-张三" in owners and "客户-王五" in owners
+
+
+def test_same_name_does_not_steal_owner(tmp_db) -> None:
+    """**归属冲突规则**：同名策略已存在时不得改变其 owner。
+
+    否则 A 客户保存一个同名策略，就会把 B 客户的策略悄悄划到自己名下，
+    接着在自己的列表里看到它、甚至删掉它。
+    """
+    store.save_strategy("A1", CFG, owner="客户-张三", notes="张三的")
+    # 李四用同名保存（内容不同）
+    store.save_strategy("A1", {"weights": {"x": 2.0}}, owner="客户-李四", notes="李四的")
+    rec = store.load_strategy("A1")
+    assert rec["owner"] == "客户-张三", "同名保存不得夺走归属"
+    assert rec["notes"] == "李四的", "其余字段仍按最新覆盖（沿用原有语义）"
+
+
+def test_set_owner_reassigns(tmp_db) -> None:
+    store.save_strategy("A1", CFG, owner="客户-张三")
+    assert store.set_owner("A1", "客户-李四") is True
+    assert store.load_strategy("A1")["owner"] == "客户-李四"
+    assert store.set_owner("不存在", "x") is False
+
+
+def test_delete_strategies_cannot_cross_owner(tmp_db) -> None:
+    """批量删除必须限定在当前客户，不能误删别人的策略。"""
+    store.save_strategy("A1", CFG, owner="客户-张三")
+    store.save_strategy("A2", CFG, owner="客户-李四")
+    # 在"张三"的身份下尝试同时删掉李四的 A2
+    deleted = store.delete_strategies(["A1", "A2"], owner="客户-张三")
+    assert deleted == 1, "只应删掉归属于自己的那一只"
+    assert store.load_strategy("A1") is None
+    assert store.load_strategy("A2") is not None, "李四的策略必须还在"
+
+
+def test_owner_migration_from_old_db(tmp_db) -> None:
+    """老库（既没有 tags 也没有 owner）打开后应自动补列且不丢数据。"""
+    conn = sqlite3.connect(tmp_db)
+    conn.execute(
+        """CREATE TABLE strategies (
+            name TEXT PRIMARY KEY, config_json TEXT NOT NULL, source TEXT DEFAULT 'manual',
+            proposal_code TEXT DEFAULT '', unsupported_json TEXT DEFAULT '[]',
+            notes TEXT DEFAULT '', created_at TEXT, updated_at TEXT
+        )"""
+    )
+    conn.execute(
+        "INSERT INTO strategies (name, config_json, created_at) VALUES (?, ?, ?)",
+        ("旧策略", '{"weights": {"trend": 1.0}}', "2026-09-01T10:00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    rec = store.load_strategy("旧策略")
+    assert rec is not None and rec["config"] == {"weights": {"trend": 1.0}}
+    assert rec["tags"] == ""
+    assert rec["owner"] == "local", "老数据应落到默认归属"

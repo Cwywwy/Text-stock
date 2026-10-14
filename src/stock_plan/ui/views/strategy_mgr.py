@@ -100,8 +100,8 @@ def render():
         """把提示存进 session_state 再 rerun —— 直接 st.success 会被 rerun 丢掉。"""
         st.session_state["_strategy_flash"] = msg
 
-    saved_records = store.list_strategies()
-    if saved_records:
+    all_records = store.list_strategies()
+    if all_records:
         st.markdown("---")
         st.markdown("### 📁 已保存策略")
         st.caption("由「LLM 策略生成」或「策略拼装」页保存的正式策略，今日信号/回测/对比页可直接选用。")
@@ -110,18 +110,48 @@ def render():
         if flash:
             st.success(flash)
 
-        # ---- 分组标签筛选（暂时需求 4：策略分批）----
-        tags = store.all_tags()
+        # ---- 当前客户（暂时需求 4：分客户保存）----
+        st.markdown("**当前客户（策略归属）**")
+        oc1, oc2, oc3 = st.columns([3, 1, 2])
+        with oc1:
+            owner_input = st.text_input(
+                "当前客户", value=store.current_owner(), key="owner_current",
+                label_visibility="collapsed",
+                help=(
+                    "策略按「客户」归属隔离查看与批量删除：列表只显示当前客户的策略，"
+                    "批量删除也只作用于当前客户，不会误删别人的。"
+                    "⚠️ 这只是**便于分类的标签**，不是权限控制 —— 换个名字就能看到全部。"
+                ),
+            )
+        with oc2:
+            if st.button("切换", key="owner_switch"):
+                store.set_current_owner(owner_input)
+                _flash(f"已切换到「{store.current_owner()}」。")
+                st.rerun()
+        with oc3:
+            owners = store.all_owners()
+            st.caption("已出现的客户：" + "、".join(owners))
+        cur_owner = store.current_owner()
+
+        # ---- 分组标签筛选（暂时需求 4：策略分批），在当前客户范围内 ----
+        scoped = store.list_strategies(owner=cur_owner)
+        tags = sorted({t.strip() for r in scoped.values()
+                       for t in (r.get("tags") or "").split(",") if t.strip()})
         picked_tag = st.selectbox(
             "按标签筛选", ["（全部）"] + tags, key="saved_tag_filter",
             help="标签在下方「批量管理」里为策略填写，用于把策略分批管理。",
         )
-        if picked_tag != "（全部）":
-            saved_records = store.list_strategies(tag=picked_tag)
-            st.caption(f"标签「{picked_tag}」下共 {len(saved_records)} 个策略。")
+        saved_records = (
+            scoped if picked_tag == "（全部）"
+            else {k: v for k, v in scoped.items() if picked_tag in (v.get("tags") or "").split(",")}
+        )
+        st.caption(
+            f"客户「{cur_owner}」下共 {len(scoped)} 个策略"
+            + (f"，其中标签「{picked_tag}」的 {len(saved_records)} 个。" if picked_tag != "（全部）" else "。")
+        )
 
         if not saved_records:
-            st.info("该标签下没有策略。")
+            st.info(f"客户「{cur_owner}」下没有符合条件的策略。可在上方切换客户。")
         else:
             saved_name = st.selectbox(
                 "选择已保存策略", list(saved_records.keys()), key="saved_strategy_pick"
@@ -130,6 +160,7 @@ def render():
             st.markdown(
                 f"**来源**：{rec['source']}　|　**创建时间**：{rec['created_at']}"
                 + (f"　|　**标签**：{rec['tags']}" if rec.get("tags") else "")
+                + f"　|　**归属**：{rec.get('owner') or 'local'}"
             )
             if rec.get("notes"):
                 st.caption(f"AI 取值逻辑：{rec['notes']}")
@@ -157,54 +188,69 @@ def render():
 
         # ---- 批量管理：总览 + 标签 + 批量删除（暂时需求 4）----
         with st.expander(
-            f"🧹 批量管理（共 {len(store.list_strategies())} 个已保存策略）", expanded=False
+            f"🧹 批量管理（客户「{cur_owner}」共 {len(scoped)} 个；全库 {len(all_records)} 个）",
+            expanded=False,
         ):
-            all_recs = store.list_strategies()
-            st.dataframe(
-                [
-                    {
-                        "名称": r["name"],
-                        "来源": r["source"],
-                        "标签": r.get("tags") or "—",
-                        "创建": str(r.get("created_at") or "")[:19],
-                    }
-                    for r in all_recs.values()
-                ],
-                use_container_width=True,
-                hide_index=True,
-            )
-
-            st.markdown("**为单个策略设置标签**")
-            tcol1, tcol2, tcol3 = st.columns([2, 2, 1])
-            with tcol1:
-                tag_target = st.selectbox(
-                    "策略", list(all_recs.keys()), key="tag_edit_target"
+            all_recs = scoped
+            # 先给下面那个"批量删除"按钮的依赖项兜底默认值 ——
+            # 当前客户下没有策略时，下面的 multiselect 不会被执行；
+            # 若不预置，`disabled=not (victims and confirm)` 会抛
+            # "cannot access local variable 'victims'"（切换到新客户名就会遇到）
+            victims: list = []
+            confirm = False
+            if not all_recs:
+                st.caption("当前客户下没有策略。")
+            else:
+                st.dataframe(
+                    [
+                        {
+                            "名称": r["name"],
+                            "归属": r.get("owner") or "local",
+                            "来源": r["source"],
+                            "标签": r.get("tags") or "—",
+                            "创建": str(r.get("created_at") or "")[:19],
+                        }
+                        for r in all_recs.values()
+                    ],
+                    use_container_width=True,
+                    hide_index=True,
                 )
-            with tcol2:
-                tag_value = st.text_input(
-                    "标签（多个用逗号分隔）",
-                    value=all_recs[tag_target].get("tags") or "",
-                    key="tag_edit_value",
-                    help="例如：客户-张三, 短线。用于把策略分批管理。",
-                )
-            with tcol3:
-                st.caption("")
-                if st.button("💾 保存标签", key="tag_save"):
-                    store.set_tags(tag_target, tag_value)
-                    _flash(f"「{tag_target}」标签已更新。")
-                    st.rerun()
 
-            st.markdown("**批量删除多余策略**")
-            victims = st.multiselect(
-                "选择要删除的策略（可多选）", list(all_recs.keys()), key="bulk_delete_pick"
-            )
-            confirm = st.checkbox(
-                f"我确认删除这 {len(victims)} 个策略（不可撤销）",
-                key="bulk_delete_confirm",
-                disabled=not victims,
+                st.markdown("**为单个策略设置标签**")
+                tcol1, tcol2, tcol3 = st.columns([2, 2, 1])
+                with tcol1:
+                    tag_target = st.selectbox(
+                        "策略", list(all_recs.keys()), key="tag_edit_target"
+                    )
+                with tcol2:
+                    tag_value = st.text_input(
+                        "标签（多个用逗号分隔）",
+                        value=all_recs[tag_target].get("tags") or "",
+                        key="tag_edit_value",
+                        help="例如：短线, 波段。用于把策略分批管理。",
+                    )
+                with tcol3:
+                    st.caption("")
+                    if st.button("💾 保存标签", key="tag_save"):
+                        store.set_tags(tag_target, tag_value)
+                        _flash(f"「{tag_target}」标签已更新。")
+                        st.rerun()
+
+                st.markdown("**批量删除多余策略**")
+                st.caption(
+                    f"只列出并只删除客户「{cur_owner}」的策略 —— 不会误删其他客户的。"
+                )
+                victims = st.multiselect(
+                    "选择要删除的策略（可多选）", list(all_recs.keys()), key="bulk_delete_pick"
+                )
+                confirm = st.checkbox(
+                    f"我确认删除这 {len(victims)} 个策略（不可撤销）",
+                    key="bulk_delete_confirm",
+                    disabled=not victims,
             )
             if st.button("🗑️ 批量删除", key="bulk_delete", disabled=not (victims and confirm)):
-                n = store.delete_strategies(victims)
+                # 限定在当前客户，store 层还会再校验一次归属
+                n = store.delete_strategies(victims, owner=cur_owner)
                 _flash(f"已删除 {n} 个策略。")
                 st.rerun()
     else:

@@ -177,7 +177,23 @@
     但 **PowerShell 5.1 的 `**` 只匹配一层目录**，`ui/views/`（两层）从未被搜到。
     已用 ripgrep 重做关键扫描：baostock 惰性导入、无负向 shift/居中窗口/`except: pass`
     等结论**均不受影响**；"死代码"那条证据不全已更正
-- 验证：`compileall` 全包 0 错误；`pytest` **135 passed**；12 页 AppTest 全绿
+- **暂时需求 4 收尾：分客户保存（按方案 B — owner 归属标签）**
+  - `strategies` 表新增 `owner` 列（老库自动迁移、默认 `local`）+ 同库 `settings` 表存放"当前客户"
+  - `store.current_owner()` / `set_current_owner()` / `set_owner()` / `all_owners()`；
+    `list_strategies(owner=...)` 按客户过滤；`save_strategy` 不传 owner 时自动用当前客户
+  - **归属冲突规则**：同名策略保存时**不改变 owner**（避免把别人的策略悄悄划到自己名下），
+    改归属须显式 `set_owner()`；`delete_strategies(names, owner=...)` 限定范围，
+    返回数小于请求数即表示有跨客户项被跳过
+  - 策略管理页新增「当前客户」切换；列表、标签筛选、批量删除都在该客户范围内；
+    总览表增加「归属」列；帮助文字里明确写出**这不是权限控制**
+  - 新增 8 个用例（默认归属、当前客户持久化、按客户过滤、同名不夺归属、改归属、
+    跨客户删除被拦、老库迁移到默认归属）。AppTest 实测：切到「客户-张三」只看到张三的、
+    批量删除候选也只有张三的；绕过界面直接请求跨客户删除 → 只删掉 1 个，别人的仍在
+  - 🐛 **修掉我自己在这次改动中引入的崩溃**：给批量管理加客户范围包裹 `if/else` 时，
+    把 `victims = st.multiselect(...)` 留在了 `else` 里而用它的按钮在外层 →
+    **切换到没有策略的新客户名就抛 `cannot access local variable 'victims'`**。
+    AppTest 验证时抓到，已给 `victims`/`confirm` 预置默认值
+- 验证：`compileall` 全包 0 错误；`pytest` **143 passed**；12 页 AppTest 全绿
 
 ## 2026-10-15
 
