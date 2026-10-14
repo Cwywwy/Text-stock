@@ -36,6 +36,12 @@ from stock_plan.data.storage import PROJECT_ROOT
 
 BARS_DIR = PROJECT_ROOT / "data" / "processed" / "bars"
 SNAPSHOT_BRANCH = "data-snapshot"
+# Release 的 tag（固定不变，因此下载基地址稳定；可用 DATA_SNAPSHOT_TAG 覆盖）
+SNAPSHOT_TAG = "data-snapshot"
+# 快照发布后端：release（默认，GitHub Releases 资产）或 branch（旧的孤儿分支）
+DEFAULT_BACKEND = "release"
+API_ROOT = "https://api.github.com"
+UPLOAD_ROOT = "https://uploads.github.com"
 # 默认发布/恢复目标仓库（与部署仓库一致；可用环境变量 DATA_SNAPSHOT_REPO 覆盖）
 DEFAULT_REPO = "Cwywwy/Text-stock"
 # GitHub raw 分卷单文件硬限制 100MB，取 90MB 留余量
@@ -161,22 +167,223 @@ def validate_manifest(manifest: dict) -> list[str]:
 
 # ---------- 发布（本机） ----------
 
-def publish(
-    repo_url: str | None = None,
+def release_base_url(repo: str | None = None, tag: str | None = None) -> str:
+    """GitHub Release 资产的下载基地址。
+
+    与 raw_base_url 用法一致：拼 `{base}/manifest.json` 与 `{base}/{分卷名}` 即可下载 ——
+    因为 Release 资产地址正是 `{base}/{资产名}`。相比孤儿分支，这条路的好处是：
+    不往 git 历史里塞 300MB blob，且资产 URL 不经过 raw 的 CDN 缓存（force push 后
+    短期内可能仍取到旧内容）。
+    """
+    repo = (repo or os.getenv("DATA_SNAPSHOT_REPO") or DEFAULT_REPO).strip("/")
+    tag = tag or os.getenv("DATA_SNAPSHOT_TAG") or SNAPSHOT_TAG
+    return f"https://github.com/{repo}/releases/download/{tag}"
+
+
+def snapshot_base_url(backend: str | None = None) -> str:
+    """按后端返回快照下载基地址（release 默认 / branch 为旧方案）。"""
+    backend = (
+        backend or os.getenv("STOCK_PLAN_SNAPSHOT_BACKEND") or DEFAULT_BACKEND
+    ).strip().lower()
+    return raw_base_url() if backend == "branch" else release_base_url()
+
+
+# ---------- GitHub API（发布 Release 用） ----------
+
+def _gh_request(
+    method: str,
+    url: str,
+    token: str,
+    body=None,
+    content_type: str = "application/json",
+    timeout: int = 120,
+) -> dict:
+    """调 GitHub REST API。body 为 dict 时按 JSON 发送，为 bytes 时按二进制发送。"""
+    import urllib.error
+    import urllib.request
+
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8") if content_type == "application/json" else body
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("X-GitHub-Api-Version", "2022-11-28")
+    req.add_header("User-Agent", "stock-plan-snapshot")
+    if data is not None:
+        req.add_header("Content-Type", content_type)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError(f"GitHub API {method} {url} 失败：HTTP {e.code} {detail}") from e
+    return json.loads(raw.decode("utf-8")) if raw else {}
+
+
+def _get_release(repo: str, tag: str, token: str) -> dict | None:
+    """取指定 tag 的 Release；不存在返回 None。
+
+    注意 404 在 _gh_request 里会被包成 RuntimeError，所以这里直接查列表再匹配 tag，
+    避免把"还没有 Release"当成错误。
+    """
+    releases = _gh_request(f"GET", f"{API_ROOT}/repos/{repo}/releases?per_page=100", token)
+    for rel in releases or []:
+        if rel.get("tag_name") == tag:
+            return rel
+    return None
+
+
+def _list_assets(repo: str, release_id: int, token: str) -> list[dict]:
+    assets = _gh_request(
+        "GET", f"{API_ROOT}/repos/{repo}/releases/{release_id}/assets?per_page=100", token
+    )
+    return assets or []
+
+
+def _upload_asset(repo: str, release_id: int, name: str, content: bytes, token: str) -> dict:
+    from urllib.parse import quote
+
+    url = f"{UPLOAD_ROOT}/repos/{repo}/releases/{release_id}/assets?name={quote(name)}"
+    return _gh_request("POST", url, token, body=content,
+                       content_type="application/octet-stream", timeout=900)
+
+
+def _delete_asset(repo: str, asset_id: int, token: str) -> None:
+    _gh_request("DELETE", f"{API_ROOT}/repos/{repo}/releases/assets/{asset_id}", token)
+
+
+def resolve_token(token: str | None = None) -> str:
+    """取 GitHub token：显式参数 → 环境变量 → `.streamlit/secrets.toml`。
+
+    最后这一层是必需的：本机计划任务（daily_job.ps1 → publish_snapshot.py）不经过
+    Streamlit，读不到 `st.secrets`，若只认环境变量，定时发布会直接报缺少 token。
+    """
+    if token:
+        return str(token).strip()
+    env = (os.getenv("DATA_SNAPSHOT_TOKEN") or "").strip()
+    if env:
+        return env
+    secrets = PROJECT_ROOT / ".streamlit" / "secrets.toml"
+    if secrets.exists():
+        import re
+
+        try:
+            m = re.search(
+                r'DATA_SNAPSHOT_TOKEN\s*=\s*"([^"]+)"',
+                secrets.read_text(encoding="utf-8"),
+            )
+        except Exception:
+            m = None
+        if m:
+            return m.group(1).strip()
+    return ""
+
+
+def publish_to_release(
+    manifest: dict,
+    build_dir: Path,
+    extra_files: dict[str, bytes] | None = None,
+    repo: str | None = None,
+    tag: str | None = None,
+    token: str | None = None,
+) -> dict:
+    """把快照发布为 GitHub Release 资产。
+
+    **原子性靠 manifest 充当"提交指针"**，顺序刻意如下：
+      1. 以**带版本号**的名字上传新分卷（`bars-<stamp>.partNN`）—— 不覆盖任何旧资产；
+      2. 替换小体积的附带文件（如公共策略 JSON）；
+      3. **替换 `manifest.json`** —— 这一步才是切换点，只有新分卷全部就位后才做；
+      4. 删掉不再被引用的旧分卷与旧 manifest。
+    因此上传中途失败时，线上仍是完整的旧快照；而成功切换后，Release 里只保留一份
+    数据（约 300MB），不会像每天 force push 那样累积。
+    """
+    token = resolve_token(token)
+    if not token:
+        raise RuntimeError(
+            "缺少 GitHub token，无法发布 Release。三种提供方式任选："
+            "DATA_SNAPSHOT_TOKEN 环境变量、.streamlit/secrets.toml（本机已配置）、"
+            "或 Streamlit Cloud 的 Secrets。"
+        )
+    repo = (repo or os.getenv("DATA_SNAPSHOT_REPO") or DEFAULT_REPO).strip("/")
+    tag = tag or os.getenv("DATA_SNAPSHOT_TAG") or SNAPSHOT_TAG
+
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    # 分卷改成带版本号的名字，manifest 里也要同步引用这个名字
+    renamed_parts = []
+    for p in manifest["parts"]:
+        suffix = p["file"].rsplit("part", 1)[-1]
+        renamed_parts.append({**p, "file": f"bars-{stamp}.part{suffix}"})
+    release_manifest = {**manifest, "parts": renamed_parts, "tag": tag}
+
+    rel = _get_release(repo, tag, token)
+    if rel is None:
+        rel = _gh_request(
+            "POST", f"{API_ROOT}/repos/{repo}/releases", token,
+            body={
+                "tag_name": tag,
+                "name": f"数据快照 {tag}",
+                "body": "由本机 stock_plan 自动发布的行情数据快照（分卷 zip + manifest 双 sha256）。",
+                "draft": False,
+                "prerelease": False,
+            },
+        )
+    release_id = rel["id"]
+    existing = {a["name"]: a for a in _list_assets(repo, release_id, token)}
+
+    # 1) 上传新分卷
+    for p in renamed_parts:
+        src = build_dir / p["file"].replace(f"bars-{stamp}.part", "bars.zip.part")
+        _upload_asset(repo, release_id, p["file"], src.read_bytes(), token)
+
+    # 2) 附带文件（体积小，直接替换）
+    keep_names = {p["file"] for p in renamed_parts} | {"manifest.json"}
+    for name, content in (extra_files or {}).items():
+        if Path(name).name != name:
+            raise ValueError(f"附加快照文件名不合法：{name}")
+        if name in existing:
+            _delete_asset(repo, existing[name]["id"], token)
+        _upload_asset(repo, release_id, name, content, token)
+        keep_names.add(name)
+
+    # 3) 切换点：替换 manifest.json
+    replaced = 0
+    if "manifest.json" in existing:
+        _delete_asset(repo, existing["manifest.json"]["id"], token)
+        replaced += 1
+    _upload_asset(
+        repo, release_id, "manifest.json",
+        json.dumps(release_manifest, ensure_ascii=False, indent=2).encode("utf-8"), token,
+    )
+
+    # 4) 清理被取代的旧资产（旧分卷等）
+    for name, asset in existing.items():
+        if name not in keep_names:
+            _delete_asset(repo, asset["id"], token)
+            replaced += 1
+
+    return {
+        "bars_count": manifest["bars_count"],
+        "zip_bytes": manifest["zip_bytes"],
+        "parts": len(renamed_parts),
+        "backend": "release",
+        "tag": tag,
+        "release_id": release_id,
+        "replaced_assets": replaced,
+    }
+
+
+def _publish_to_branch(
+    build_dir: Path,
+    manifest: dict,
     worktree_dir: Path | None = None,
     extra_files: dict[str, bytes] | None = None,
 ) -> dict:
-    """打包并 force push 到 data-snapshot 孤儿分支（单 commit，不占仓库历史）。
+    """旧的发布方式：force push 到 data-snapshot 孤儿分支（保留作为回退）。
 
-    返回 {"bars_count", "zip_bytes", "parts", "branch"}。
+    缺点是每天都往仓库里塞一份约 300MB 的 blob（GitHub 侧何时回收不可控），
+    且 raw.githubusercontent.com 有 CDN 缓存，force push 后短期内可能仍取到旧快照。
     """
-    from stock_plan.data.updater import LOG_DIR
-
-    build_dir = LOG_DIR / "snapshot_build"
-    if build_dir.exists():
-        shutil.rmtree(build_dir)
-    manifest = build_snapshot(BARS_DIR, build_dir)
-
     wt = worktree_dir or (PROJECT_ROOT / ".snapshot_worktree")
     if wt.exists():
         shutil.rmtree(wt, ignore_errors=True)
@@ -209,7 +416,46 @@ def publish(
         shutil.rmtree(build_dir, ignore_errors=True)
 
     return {"bars_count": manifest["bars_count"], "zip_bytes": manifest["zip_bytes"],
-            "parts": len(manifest["parts"]), "branch": SNAPSHOT_BRANCH}
+            "parts": len(manifest["parts"]), "backend": "branch", "branch": SNAPSHOT_BRANCH}
+
+
+def publish(
+    repo_url: str | None = None,
+    worktree_dir: Path | None = None,
+    extra_files: dict[str, bytes] | None = None,
+    backend: str | None = None,
+    build_only: bool = False,
+) -> dict:
+    """打包快照并按后端发布。
+
+    backend 默认取 `STOCK_PLAN_SNAPSHOT_BACKEND`，未设置时用 **GitHub Releases**
+    （`publish_to_release`）；传 `"branch"` 可回退到旧的孤儿分支方式。
+    `build_only=True` 时只打包不发布（测试/排查用）。
+    """
+    from stock_plan.data.updater import LOG_DIR
+
+    build_dir = LOG_DIR / "snapshot_build"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+    manifest = build_snapshot(BARS_DIR, build_dir)
+
+    if build_only:
+        return {
+            "bars_count": manifest["bars_count"],
+            "zip_bytes": manifest["zip_bytes"],
+            "parts": len(manifest["parts"]),
+            "backend": "build-only",
+            "build_dir": str(build_dir),
+        }
+
+    resolved = (backend or os.getenv("STOCK_PLAN_SNAPSHOT_BACKEND") or DEFAULT_BACKEND).strip().lower()
+    if resolved == "branch":
+        return _publish_to_branch(build_dir, manifest, worktree_dir, extra_files)
+    try:
+        return publish_to_release(manifest, build_dir, extra_files)
+    finally:
+        shutil.rmtree(build_dir, ignore_errors=True)
+
 
 
 def local_branch_exists(branch: str) -> bool:
@@ -330,6 +576,28 @@ def restore_from_url(base_url: str, bars_dir: Path, tmp_dir: Path,
             "created_at": manifest["created_at"], "restored_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
 
+def restore_with_fallback(
+    bases: list[str],
+    bars_dir: Path,
+    tmp_dir: Path,
+    progress=None,
+    part_workers: int = 4,
+) -> dict:
+    """依次尝试多个快照基地址，返回第一个成功的结果。
+
+    用于发布后端切换期：优先取 GitHub Release 资产，取不到时回退到旧的
+    data-snapshot 分支 —— 这样"改了发布方式"不会让云端在迁移窗口内拿不到数据。
+    """
+    errors: list[str] = []
+    for base in bases:
+        try:
+            return restore_from_url(base, bars_dir, tmp_dir, progress=progress,
+                                    part_workers=part_workers)
+        except Exception as e:  # 单个地址失败就换下一个
+            errors.append(f"{base} → {str(e)[:140]}")
+    raise RuntimeError("所有快照地址均恢复失败：" + " ｜ ".join(errors))
+
+
 def bootstrap_if_needed(ui: bool = False) -> dict | None:
     """app 启动恢复入口：bars 为空且快照可达时执行恢复。
 
@@ -340,7 +608,11 @@ def bootstrap_if_needed(ui: bool = False) -> dict | None:
     if BARS_DIR.exists() and len(list(BARS_DIR.glob("*.parquet"))) >= MIN_BARS_READY:
         return None
 
-    base = raw_base_url()
+    # 首选当前后端（默认 Release），失败再回退到另一种地址
+    bases: list[str] = [snapshot_base_url()]
+    for alt in (release_base_url(), raw_base_url()):
+        if alt not in bases:
+            bases.append(alt)
 
     def _report(done: int, total: int) -> None:
         if not ui:
@@ -360,7 +632,7 @@ def bootstrap_if_needed(ui: bool = False) -> dict | None:
             with st.status("⬇️ 正在从云端快照恢复行情数据（首次访问约 1~3 分钟）…", expanded=True) as status:
                 st.write("检测到本地无缓存数据，正在自动恢复，完成后页面自动可用。")
                 st.session_state["_snapshot_progress"] = st.progress(0.0)
-                stats = restore_from_url(base, BARS_DIR, tmp_dir, progress=_report)
+                stats = restore_with_fallback(bases, BARS_DIR, tmp_dir, progress=_report)
                 status.update(label="✅ 数据快照恢复完成", state="complete", expanded=False)
             return stats
         except Exception as e:
@@ -368,4 +640,4 @@ def bootstrap_if_needed(ui: bool = False) -> dict | None:
 
             st.warning(f"数据快照恢复失败：{e}。可稍后在「🔄 数据更新」页重试或手动增量更新。")
             return None
-    return restore_from_url(base, BARS_DIR, tmp_dir, progress=_report)
+    return restore_with_fallback(bases, BARS_DIR, tmp_dir, progress=_report)
