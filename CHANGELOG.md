@@ -88,7 +88,17 @@
     （-9.88% vs -9.90%），交易笔数 1008 vs 1011
   - **结论修正**："退市股占 3.5%"本身**不等于**偏差。偏差取决于策略会不会挑中它们，
     因此是**策略相关**的；以后必须用"同一策略 + include_delisted 开关"实测
-- 验证：`compileall` 全包 0 错误；`pytest` **114 passed**；12 页 AppTest 全绿
+- **暂时需求 4（部分）— 策略分组标签 + 批量删除**（`ea9e22b`）
+  - `strategies` 表新增 `tags` 列，老库轻量迁移不丢数据；按标签筛选用
+    `',' || tags || ',' LIKE '%,tag,%'` 保证**精确匹配**（「客户-张三」不命中「客户-张三丰」）
+  - 新增 `normalize_tags` / `set_tags` / `all_tags` / `delete_strategies`
+  - 策略管理页新增标签筛选 + 「🧹 批量管理」（总览表格 / 标签编辑 / 多选+二次确认批量删除）
+  - 修一个 UX 缺陷：`st.success(...)` 紧跟 `st.rerun()` 导致**提示被丢弃、用户看不到确认**
+    （AppTest 里 success 列表为空暴露出来的），改为 session_state flash，共 3 处
+  - **未做**：分客户保存。三种方案与工作量已写入
+    `.github/plans/2026-10-15-3-new-strategy-grouping-and-per-customer.md`，
+    等确认后再实施；注意其中 owner 方案只是便于分类，**不是安全边界**
+- 验证：`compileall` 全包 0 错误；`pytest` **124 passed**；12 页 AppTest 全绿
 
 ## 2026-10-15
 
