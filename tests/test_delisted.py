@@ -142,3 +142,67 @@ def test_universe_parquet_is_tiny(tmp_path, monkeypatch) -> None:
     codes = [f"{600000 + i:06d}" for i in range(5000)]
     path = delisted.save_universe("2026-01-30", codes)
     assert path.stat().st_size < 200 * 1024
+
+
+# ---------- 回测样本接入（Storage.load_market_maps） ----------
+def _market_with_delisted(tmp_path, delist_first: str = "2024-01-01"):
+    """建一个临时市场：一只在市股 + 一只退市股（行情 20 个交易日）。"""
+    from stock_plan.data.storage import Storage
+
+    st = Storage(bars_dir=tmp_path / "bars", db_path=tmp_path / "meta.db")
+    dates = pd.bdate_range("2024-01-01", periods=20)
+    bars = pd.DataFrame(
+        {
+            "date": dates, "open": 10.0, "high": 10.5, "low": 9.5, "close": 10.0,
+            "volume": 1000.0, "amount": 10000.0, "turnover": 0.01,
+        }
+    )
+    st.save_bars("600000", bars)
+    st.save_bars("600001", bars)
+    st.save_stock_list(
+        pd.DataFrame(
+            [{"code": "600000", "name": "在市股", "industry": "",
+              "list_date": "2000-01-01", "is_st": 0}]
+        )
+    )
+    st.save_delisted(
+        [{
+            "code": "600001", "name": "退市股", "exchange": "SH",
+            "list_date": "2000-01-01", "delist_date": "2024-02-01",
+            "first_bar": delist_first, "last_bar": str(dates[-1].date()),
+            "bars_count": len(dates), "source": "test",
+        }]
+    )
+    return st
+
+
+def test_load_market_maps_can_include_delisted(tmp_path) -> None:
+    """include_delisted 默认关闭；打开后退市股才进入样本。
+
+    默认关闭是刻意的：一旦纳入，原先的系统性高估会被去掉，回测结果和历史调参
+    结论都会变，不能无声生效。
+    """
+    st = _market_with_delisted(tmp_path)
+
+    _, bars_off, _ = st.load_market_maps(start="2024-01-01", end="2024-12-31")
+    assert "600001" not in bars_off, "默认不应把退市股纳入样本"
+
+    sl_on, bars_on, _ = st.load_market_maps(
+        start="2024-01-01", end="2024-12-31", include_delisted=True
+    )
+    assert "600001" in bars_on
+    assert "600001" in set(sl_on["code"].astype(str)), (
+        "退市股必须出现在 stock_list 里，否则策略的 filter_universe 看不见它"
+    )
+    row = sl_on[sl_on["code"].astype(str) == "600001"].iloc[0]
+    assert int(row["is_st"]) == 0, "退市股不能被 ST 规则剔掉"
+
+
+def test_delisted_excluded_when_window_disjoint(tmp_path) -> None:
+    """回测窗口与退市股行情完全不重叠时不应纳入（避免加载无关数据）。"""
+    st = _market_with_delisted(tmp_path, delist_first="2024-06-01")
+
+    _, bars, _ = st.load_market_maps(
+        start="2020-01-01", end="2021-12-31", include_delisted=True
+    )
+    assert "600001" not in bars

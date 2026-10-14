@@ -45,6 +45,7 @@ def _cached_backtest(
     params_json: str, rebalance_freq: str, market_timing: bool, max_hold_days: int,
     boards_json: str = "[]", exclude_st: bool = True,
     commission_w: float = 3.0, stamp_tax_w: float = 10.0, slippage_w: float = 10.0,
+    include_delisted: bool = False,
 ):
     """带缓存回测（10 分钟内不重复计算）。
 
@@ -64,6 +65,7 @@ def _cached_backtest(
         start=start, end=end, lead_days=180,
         boards=boards, exclude_st=exclude_st,
         max_codes=CLOUD_MAX_CODES if is_cloud() else None,
+        include_delisted=include_delisted,
     )
 
     params = json.loads(params_json) if params_json else None
@@ -136,6 +138,12 @@ def _render_overfit_guide(metrics: dict, config_dict: dict) -> None:
             st.warning("⚠ " + text)
 
     st.info("还没做过样本外验证？去「⚖️ 策略对比」页的 **Walk-Forward** 标签跑一次。")
+
+    if not config_dict.get("include_delisted"):
+        st.caption(
+            "⚠️ 本次未包含已退市股票：样本里只有今天还活着的公司，收益会被系统性高估"
+            "（实测 5 年窗口约 3.5% 的标的在此期间退市）。勾选「包含已退市股票」可消除这一偏差。"
+        )
 
     with st.expander("怎么避免过拟合（6 条）"):
         st.markdown(
@@ -402,6 +410,18 @@ def render():
             f"一笔交易要先赚 {round_trip_cost_pct:.2f}% 才回本。换手率越高，这笔成本越致命。"
         )
 
+    include_delisted = st.checkbox(
+        "包含已退市股票（消除幸存者偏差）",
+        value=False,
+        key="bt_include_delisted",
+        help=(
+            "默认关闭。开启后回测样本会包含窗口内退市的股票——它们正是跌到退市的那批，"
+            "原先被完全排除，导致收益被系统性高估（实测 5 年窗口约 3.5% 的标的在此期间退市）。"
+            "需要先用 `python -m stock_plan.data.delisted --delisted` 补齐退市股行情。"
+            "注意：开启后回测结果会明显变化，历史调参结论需要重跑。"
+        ),
+    )
+
     if st.button("▶️ 运行回测", type="primary"):
         if start >= end:
             st.error("开始日期必须早于结束日期")
@@ -426,6 +446,7 @@ def render():
                 float(commission_w),
                 float(stamp_tax_w),
                 float(slippage_w),
+                bool(include_delisted),
             )
             if not metrics:
                 st.warning("回测无数据。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")
@@ -444,6 +465,7 @@ def render():
                     "commission_w": float(commission_w),
                     "stamp_tax_w": float(stamp_tax_w),
                     "slippage_w": float(slippage_w),
+                    "include_delisted": bool(include_delisted),
                 }
 
     # 从 session_state 渲染结果（若已运行过回测）

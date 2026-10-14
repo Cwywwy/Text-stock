@@ -147,6 +147,40 @@ class Storage:
         return len(list(self.bars_dir.glob("*.parquet")))
 
     # ---------- 回测/信号统一加载（内存受限环境友好） ----------
+    def delisted_listing(
+        self, start: pd.Timestamp | str | None = None, end: pd.Timestamp | str | None = None
+    ) -> pd.DataFrame:
+        """已退市股票构成的"股票列表"（字段与 stock_list 对齐）。
+
+        只保留与 [start, end] 有重叠的退市股 —— 也就是在该回测窗口内还交易过的。
+        这样回测样本才会包含"跌到退市的那批"，而不是只有今天还活着的股票
+        （即消除幸存者偏差）。
+
+        注意 is_st 一律给 0：退市股本来就必须留在样本里，不能因为 ST 规则被剔掉。
+        """
+        cols = ["code", "name", "industry", "list_date", "is_st"]
+        empty = pd.DataFrame(columns=cols)
+        d = self.load_delisted()
+        if d.empty:
+            return empty
+
+        first = pd.to_datetime(d["first_bar"], errors="coerce")
+        last = pd.to_datetime(d["last_bar"], errors="coerce")
+        keep = pd.Series(True, index=d.index)
+        if start is not None:
+            lo = pd.Timestamp(start)
+            keep &= last.isna() | (last >= lo)
+        if end is not None:
+            hi = pd.Timestamp(end)
+            keep &= first.isna() | (first <= hi)
+        if not keep.any():
+            return empty
+
+        out = d.loc[keep, ["code", "name", "list_date"]].copy()
+        out["industry"] = ""
+        out["is_st"] = 0
+        return out[cols].reset_index(drop=True)
+
     def load_market_maps(
         self,
         start: pd.Timestamp | str | None = None,
@@ -155,6 +189,7 @@ class Storage:
         boards: list[str] | None = None,
         exclude_st: bool = True,
         max_codes: int | None = None,
+        include_delisted: bool = False,
     ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame], dict[str, dict]]:
         """按需装配回测/信号数据（stock_list, bars_map, fund_map）。
 
@@ -164,6 +199,10 @@ class Storage:
         - 数量上限：max_codes 生效时对代码等间隔抽样（云端轻量模式使用）。
 
         start/end 为 None 时加载全历史，行为与旧版全量加载一致。
+
+        include_delisted=True 时把**已退市股票**也纳入样本（暂时需求 5c）。默认关闭，
+        因为这会显著改变回测结果（原先的系统性高估被去掉），历史调参结论需要重跑。
+        前置条件：回测引擎必须能处理"持仓期间行情终结"，该修复已完成。
         """
         stock_list = self.load_stock_list()
         if stock_list.empty:
@@ -176,6 +215,16 @@ class Storage:
         from stock_plan.factors.board import filter_codes_by_boards
 
         codes = filter_codes_by_boards(codes, boards)
+
+        extra_list = pd.DataFrame()
+        if include_delisted:
+            extra_list = self.delisted_listing(start=start, end=end)
+            if not extra_list.empty:
+                extra_codes = filter_codes_by_boards(
+                    extra_list["code"].astype(str).tolist(), boards
+                )
+                codes = sorted(set(codes) | set(extra_codes))
+
         if max_codes is not None and len(codes) > max_codes:
             step = -(-len(codes) // max_codes)  # 向上取整，等间隔抽样保留板块分布
             codes = codes[::step]
@@ -196,6 +245,12 @@ class Storage:
             if df.empty:
                 continue
             bars_map[code] = df.reset_index(drop=True)
+
+        # 退市股要出现在 stock_list 里，策略的 filter_universe 才会把它们当候选
+        if not extra_list.empty:
+            present = extra_list[extra_list["code"].astype(str).isin(bars_map)]
+            if not present.empty:
+                stock_list = pd.concat([stock_list, present], ignore_index=True)
 
         fund_map = {c: f for c in bars_map if (f := self.load_fundamentals(c)) is not None}
         return stock_list, bars_map, fund_map
