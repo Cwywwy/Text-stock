@@ -71,6 +71,23 @@ class Storage:
                 )
                 """
             )
+            # 退市股元数据（暂时需求 5c）：用于消除回测的幸存者偏差
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS delisted_stocks (
+                    code TEXT PRIMARY KEY,
+                    name TEXT,
+                    exchange TEXT,
+                    list_date TEXT,
+                    delist_date TEXT,
+                    first_bar TEXT,
+                    last_bar TEXT,
+                    bars_count INTEGER,
+                    source TEXT,
+                    updated_at TEXT
+                )
+                """
+            )
 
     def _conn(self) -> sqlite3.Connection:
         """打开数据库连接（每次调用新建，避免线程/进程共享问题）。"""
@@ -182,6 +199,49 @@ class Storage:
 
         fund_map = {c: f for c in bars_map if (f := self.load_fundamentals(c)) is not None}
         return stock_list, bars_map, fund_map
+
+    # ---------- 退市股元数据（暂时需求 5c） ----------
+    def save_delisted(self, rows: list[dict]) -> int:
+        """写入/更新退市股元数据。返回写入条数。
+
+        字段：code, name, exchange, list_date, delist_date, first_bar, last_bar,
+              bars_count, source（缺失的键写空值）
+        """
+        if not rows:
+            return 0
+        now = pd.Timestamp.now().isoformat()
+        payload = []
+        for r in rows:
+            payload.append(
+                (
+                    str(r.get("code", "")),
+                    str(r.get("name") or ""),
+                    str(r.get("exchange") or ""),
+                    str(r.get("list_date") or ""),
+                    str(r.get("delist_date") or ""),
+                    str(r.get("first_bar") or ""),
+                    str(r.get("last_bar") or ""),
+                    int(r.get("bars_count") or 0),
+                    str(r.get("source") or ""),
+                    now,
+                )
+            )
+        with self._conn() as conn:
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO delisted_stocks
+                (code, name, exchange, list_date, delist_date,
+                 first_bar, last_bar, bars_count, source, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                payload,
+            )
+        return len(payload)
+
+    def load_delisted(self) -> pd.DataFrame:
+        """读取退市股元数据表。"""
+        with self._conn() as conn:
+            return pd.read_sql_query("SELECT * FROM delisted_stocks", conn)
 
     # ---------- 财务指标（SQLite） ----------
     def save_fundamentals(self, code: str, data: dict) -> None:
