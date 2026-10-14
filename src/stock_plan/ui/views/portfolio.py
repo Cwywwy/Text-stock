@@ -113,6 +113,10 @@ def _render_cached():
     # ---------- 走势图 ----------
     _render_chart(res)
 
+    # ---------- 缠论结构（暂时需求 6 后半） ----------
+    with st.expander("🧩 缠论结构分析（笔 / 中枢 / 三买）", expanded=False):
+        _render_chan_structure(res)
+
     # ---------- 单股重回测 ----------
     st.subheader("📈 重新回测参考")
     if st.button("用该策略回测这只股票（近一年）"):
@@ -138,6 +142,55 @@ def _render_cached():
                 apply_time_axis(fig)
                 st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
             st.caption("单股回测仅反映该策略在这只股票上的历史表现，样本单一，参考意义有限。")
+
+
+def _render_chan_structure(res) -> None:
+    """缠论结构辅助分析（暂时需求 6 后半）。
+
+    只展示**机械可算**的结构：包含处理后的分型、笔、中枢，以及机械判定的三买。
+    并显式声明未实现的部分，避免把「识别出中枢」误当成买卖信号。
+    """
+    from stock_plan.factors.chan import chan_analysis
+
+    bars = res.get("bars")
+    if bars is None or bars.empty:
+        return
+
+    result = chan_analysis(bars)
+    st.markdown("**🧩 缠论结构（辅助参考）**")
+    if not result.strokes:
+        st.caption("K 线不足或结构不完整，未形成有效的笔。")
+        return
+
+    cols = st.columns(4)
+    cols[0].metric("笔", len(result.strokes))
+    cols[1].metric("中枢", len(result.pivots))
+    cols[2].metric("分型", len(result.fractals))
+    cols[3].metric("三买", len(result.third_buys))
+
+    if result.pivots:
+        pv = result.pivots[-1]
+        st.markdown(pv.describe())
+        st.caption(
+            f"价格在 [{pv.zd:.2f}, {pv.zg:.2f}] 这个区间里反复 → 中枢。"
+            "站上上沿才算真正离开，跌回区间内则说明离开失败。"
+        )
+        last_close = float(bars["close"].iloc[-1])
+        if last_close > pv.zg:
+            st.caption(f"当前收盘 {last_close:.2f} 在中枢**上沿之上**。")
+        elif last_close < pv.zd:
+            st.caption(f"当前收盘 {last_close:.2f} 在中枢**下沿之下**。")
+        else:
+            st.caption(f"当前收盘 {last_close:.2f} **仍在中枢区间内**（方向未选择）。")
+
+    if result.third_buys:
+        tb = result.third_buys[-1]
+        st.success(f"最近一个「三买」：{tb.describe()}")
+    else:
+        st.caption("近期没有出现三买（价格未在离开中枢后站稳于上沿之上）。")
+
+    for line in result.explain[-1:]:
+        st.caption(f"⚠️ {line}")
 
 
 def _render_chart(res):
