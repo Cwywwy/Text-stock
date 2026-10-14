@@ -46,6 +46,26 @@ def _param_widget(key: str, value):
     )
 
 
+def _config_rows(cfg: dict) -> list[dict]:
+    """把策略配置摊平成「类别/参数/值」三列，供 st.dataframe 展示。
+
+    ⚠️ `值` 必须**统一成字符串**（2026-10-15 修）：权重与买卖价参数是数字，而规则的
+    取值是"启用/关闭"，混在一起会得到 dtype=object 的列，Streamlit 内部的
+    `pyarrow.Table.from_pandas` 会抛
+    `ArrowInvalid: Could not convert '启用' with type str: tried to convert to double`
+    —— 而 **Streamlit 会吞掉这个异常**，于是页面上表格直接不显示、`at.exception` 也看不到
+    （AppTest 保存的是原始对象，不经过 Arrow 序列化，因此这个坑只有真实渲染路径才暴露）。
+    """
+    rows: list[dict] = []
+    for k, v in (cfg.get("weights") or {}).items():
+        rows.append({"类别": "权重", "参数": k, "值": str(v)})
+    for k, v in (cfg.get("rules") or {}).items():
+        rows.append({"类别": "规则", "参数": k, "值": "启用" if v else "关闭"})
+    for k, v in (cfg.get("params") or {}).items():
+        rows.append({"类别": "买卖价参数", "参数": k, "值": str(v)})
+    return rows
+
+
 def render():
     st.header("⚙️ 策略管理")
     st.caption("查看各策略的完整讲解并调整参数。参数按策略分别保存，应用到今日信号与回测。")
@@ -165,13 +185,7 @@ def render():
             if rec.get("notes"):
                 st.caption(f"AI 取值逻辑：{rec['notes']}")
             cfg = rec["config"]
-            rows = []
-            for k, v in cfg.get("weights", {}).items():
-                rows.append({"类别": "权重", "参数": k, "值": v})
-            for k, v in cfg.get("rules", {}).items():
-                rows.append({"类别": "规则", "参数": k, "值": "启用" if v else "关闭"})
-            for k, v in cfg.get("params", {}).items():
-                rows.append({"类别": "买卖价参数", "参数": k, "值": v})
+            rows = _config_rows(cfg)
             st.dataframe(rows, use_container_width=True, hide_index=True)
             unsupported = rec.get("unsupported") or []
             if unsupported:

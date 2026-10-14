@@ -211,6 +211,10 @@ GitHub Releases：tag = data-snapshot（资产：manifest.json + bars-<时间戳
 - **云端轻量模式**：检测到云端时增量更新并发降为 3 线程、全量拉取仅 1 年（容器 2.7GB 内存防超限）
 - **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`
   （`--build-only` 只打包不推送，用于排查）
+- **项目自检**：`python scripts/acceptance.py`（约 30 秒，27 项：环境依赖 / 测试套件 /
+  12 页渲染 / 数据完整性 / 策略库结构 / 定时任务定义 / 敏感文件 / 应用健康）。
+  加 `--full` 额外做快照打包往返校验（逐卷 sha256 + 拼接重现整包哈希）。
+  报告写入 `data/logs/acceptance.txt`；退出码非 0 表示有检查未通过
 - **恢复快照**：云端页面 →「🔄 数据更新」→「☁️ 从云端快照恢复数据」
 - **令牌来源**：显式参数 → `DATA_SNAPSHOT_TOKEN` 环境变量 → `.streamlit/secrets.toml`
   （本机计划任务不经过 Streamlit，靠最后这一层读取）

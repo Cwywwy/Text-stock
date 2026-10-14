@@ -36,6 +36,52 @@
   实测：缓存各 1 行零值 → 经 `load_bars` 出来 0 行
 - 验证：`compileall` 全包 0 错误；`pytest` **148 passed**；12 页 AppTest 全绿
 
+## 2026-10-15
+
+### 新增项目自检脚本 `scripts/acceptance.py`
+
+把本项目审计与验收期的结论**固化成可重复运行的一条命令**，以后改动后随时复验，不再依赖一次性脚本：
+
+```
+python scripts/acceptance.py            # 常规自检（约 30 秒）
+python scripts/acceptance.py --full     # 额外做快照打包往返校验
+python scripts/acceptance.py --no-pytest
+```
+
+覆盖 9 组共 27 项：环境与依赖（含 py_mini_racer）／测试套件／12 页渲染／数据完整性
+（零值行已被 `load_bars` 清洗、日期唯一递增、OHLC 自洽、退市股与时点池）／快照打包往返
+（`--full`：逐卷 sha256 + 拼接重现 `zip_sha256`）／策略库 schema（tags/owner/settings）／
+定时任务定义（UTF-16、参数名）／敏感文件（未跟踪、已忽略、历史无记录）／应用健康检查。
+报告写入 `data/logs/acceptance.txt`，退出码非 0 表示有检查未通过。
+
+### 修复：策略详情表的值列混合类型会触发 Streamlit 内部 Arrow 错误
+
+- **现象**：`值` 列混装数字（权重/买卖价参数）与字符串（规则的"启用/关闭"）→ dtype=object。
+  Streamlit 内部 `pyarrow.Table.from_pandas` 抛
+  `ArrowInvalid: Could not convert '启用' with type str: tried to convert to double`
+- **修法**：抽出 `_config_rows(cfg)` 并把该列**统一成字符串**（`str(v)`）
+- **更正我自己的一个未经验证的说法**：我一度写成"用户看不到表"。实测发现该异常被 Streamlit
+  吞掉后**自行退化处理**，元素仍在、列被强制成 pandas 的 `string` 扩展类型，
+  数据也能正常显示。所以严重程度是"**日志里有内部错误、行为脆弱**"，而不是"表格不见了"。
+  这条判定我没有逐帧验证过用户视角，故按实测证据改口径
+- **验证**：新增 `tests/test_strategy_mgr_table.py` 5 个用例，直接断言行构造函数输出同一种
+  dtype、且能被 Arrow 序列化；**反向验证**（把该列改回混合类型）→ **3 failed**，恢复 → 5 passed
+
+### 记录一个失败的验证尝试（避免以后重复踩）
+
+我原想在自检里加一条"所有页面上的表格都能被 Arrow 序列化"的通用守卫，但**两次都空转**
+（在故意改回混合类型的代码上仍报通过）：
+
+1. 对 `at.dataframe` 元素试 `pa.Table.from_pandas` —— 走到元素时该列已被强制成
+   pandas 的 `string` 扩展类型，序列化会成功；
+2. 捕获 logging 记录 / 重定向 stderr —— 该 `ArrowInvalid` 两处都不出现。
+
+**结论：AppTest 看不出这类"表格内部转换失败"。** 我把这两条空转的守卫**删掉**了
+（探测不到它声称要检查的失败，比没有守卫更糟），改为依赖有判别力的单元测试，
+并在脚本里写明知情局限。
+
+- 验证：`compileall` 全包 0 错误；`pytest` **153 passed**；自检 **27/27 通过**；12 页 AppTest 全绿
+
 ## 2026-10-15（第二批：暂时需求 1 / 2 / 3 / 5a / 5b / 5c）
 
 - **暂时需求 1 — 图表缩放与刻度密度**（`4634bb3`）
