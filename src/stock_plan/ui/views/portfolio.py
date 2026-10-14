@@ -6,13 +6,15 @@
 """
 from __future__ import annotations
 
+import pandas as pd
+
 import plotly.graph_objects as go
 import streamlit as st
 
 from stock_plan.analysis.holding import diagnose_holding, single_stock_backtest
 from stock_plan.data.storage import Storage
 from stock_plan.strategy import store
-from stock_plan.ui.widgets import page_glossary
+from stock_plan.ui.widgets import apply_time_axis, PLOTLY_CONFIG, page_glossary
 
 HOLD_GLOSSARY = {
     "持仓诊断": "把你手上的股票交给系统检查：赚了还是亏了、拿了多久、趋势好不好，再对照策略规则给个建议。",
@@ -128,12 +130,13 @@ def _render_cached():
             eq = bt["equity"]
             if eq is not None and not eq.empty:
                 fig = go.Figure(go.Scatter(
-                    x=[str(d)[:10] for d in eq.index], y=eq.values, mode="lines",
+                    x=pd.to_datetime(eq.index), y=eq.values, mode="lines",
                     line=dict(color="#1f77b4", width=2), name="单股回测",
                 ))
                 fig.update_layout(height=320, margin=dict(l=40, r=20, t=30, b=30),
                                   yaxis_title="资产（元）", xaxis_title="日期")
-                st.plotly_chart(fig, use_container_width=True)
+                apply_time_axis(fig)
+                st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
             st.caption("单股回测仅反映该策略在这只股票上的历史表现，样本单一，参考意义有限。")
 
 
@@ -145,7 +148,7 @@ def _render_chart(res):
     tt = res["t_trade"]
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=[str(d)[:10] for d in t["date"]], y=t["close"],
+        x=pd.to_datetime(t["date"]), y=t["close"],
         mode="lines", name="收盘价", line=dict(color="#1f77b4", width=2),
     ))
     fig.add_hline(y=res["buy_price"], line_dash="dot", line_color="purple",
@@ -165,4 +168,5 @@ def _render_chart(res):
         title=f"{res['code']} 近 120 个交易日走势（现价 {cur['close']:.2f}）",
         yaxis_title="价格（元）", xaxis_title="日期",
     )
-    st.plotly_chart(fig, use_container_width=True)
+    apply_time_axis(fig)
+    st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)

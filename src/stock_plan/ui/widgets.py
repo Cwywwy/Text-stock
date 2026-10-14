@@ -1,6 +1,9 @@
-"""共享 UI 组件 — 板块筛选控件 + 名词速览 + 收益曲线图。
+"""共享 UI 组件 — 板块筛选控件 + 名词速览 + 图表交互与收益曲线图。
 
 供今日信号/回测/对比/策略拼装等页面复用（V4 需求 R2/R3/R5）。
+
+图表交互（暂时需求 1）：所有 Plotly 图表统一走 PLOTLY_CONFIG，并通过
+apply_time_axis 使用**真正的日期轴**，使刻度密度随缩放连续重算。
 """
 from __future__ import annotations
 
@@ -9,6 +12,62 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from stock_plan.factors.board import BOARDS, BOARD_DESC, filter_universe_ui
+
+# ---------------------------------------------------------------------------
+# 统一的 Plotly 交互配置（暂时需求 1：操作更便捷、缩放更连续）
+#
+# Streamlit 里 Plotly 图默认**不能用滚轮缩放**，只能框选做"阶梯式"放大，
+# 而且双击、复位、导出都不顺手。这里统一打开：
+#   - scrollZoom：滚轮 = 连续缩放，滚轮位置即缩放中心（最直接的"连续调整"）
+#   - doubleClick=reset：双击回到全览
+#   - dragmode=pan：拖拽默认平移而不是框选，框选缩放仍可用 Shift+拖拽
+#   - 去掉与选股无关的 select2d/lasso2d/autoScale2d 按钮，工具条更清爽
+# ---------------------------------------------------------------------------
+PLOTLY_CONFIG: dict = {
+    "scrollZoom": True,
+    "displaylogo": False,
+    "doubleClick": "reset",
+    "showTips": True,
+    "modeBarButtonsToRemove": ["select2d", "lasso2d", "autoScale2d"],
+    "toImageButtonOptions": {
+        "format": "png",
+        "filename": "stock_plan_chart",
+        "scale": 2,
+    },
+}
+
+# 按缩放跨度自动切换日期格式（dtickrange 单位是毫秒 / "M1" 这类区间字符串）
+_DATE_TICKFORMATSTOPS = [
+    dict(dtickrange=[None, 604800000], value="%m-%d"),        # < 1 周
+    dict(dtickrange=[604800000, "M1"], value="%m-%d"),        # 1 周 ~ 1 月
+    dict(dtickrange=["M1", "M12"], value="%Y-%m"),            # 1 月 ~ 1 年
+    dict(dtickrange=["M12", None], value="%Y"),               # > 1 年
+]
+
+
+def apply_time_axis(fig: go.Figure, title: str = "日期", rangeslider: bool = False) -> go.Figure:
+    """把 x 轴设为真正的日期轴。
+
+    原先不少图表把日期转成 `str(d)[:10]` 再画，Plotly 会当成**分类轴**：分类轴的
+    刻度位置是固定的，缩放时既不重算密度也不换格式，所以出现"放大后标签仍挤在一起
+    或仍很稀疏"。改用 DatetimeIndex 后，Plotly 会随缩放连续重算刻度间隔与格式
+    （见 _DATE_TICKFORMATSTOPS），配合 PLOTLY_CONFIG 的 scrollZoom 即为连续缩放。
+
+    rangeslider=True 时在图下方加一条可拖拽的区间选择条（另一种连续缩放方式），
+    会额外占用高度，默认关闭。
+    """
+    fig.update_xaxes(
+        type="date",
+        title_text=title,
+        tickformatstops=_DATE_TICKFORMATSTOPS,
+        rangeslider=dict(visible=bool(rangeslider)),
+        showspikes=True,
+        spikemode="across",
+        spikethickness=1,
+        spikedash="dot",
+        spikecolor="#888888",
+    )
+    return fig
 
 
 def board_filter_ui(key_prefix: str = "uni") -> tuple[list[str], bool]:
@@ -64,7 +123,9 @@ def equity_curve_fig(equity: pd.Series) -> go.Figure | None:
         return None
     pct = (equity / base - 1) * 100
     peak = pct.cummax()
-    x = [str(d)[:10] for d in pct.index]
+    # 用真正的日期类型（不是 'YYYY-MM-DD' 字符串）：字符串会被 Plotly 当成分类轴，
+    # 缩放下刻度密度与格式不会重算。
+    x = pd.to_datetime(pct.index)
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=x, y=peak, mode="lines", name="历史最高点",
@@ -74,13 +135,14 @@ def equity_curve_fig(equity: pd.Series) -> go.Figure | None:
         x=x, y=pct, mode="lines", name="累计收益率",
         fill="tonexty", fillcolor="rgba(214,39,40,0.18)",
         line=dict(color="#1f77b4", width=2),
-        hovertemplate="%{x}<br>累计收益率 %{y:.2f}%<extra></extra>",
+        hovertemplate="%{x|%Y-%m-%d}<br>累计收益率 %{y:.2f}%<extra></extra>",
     ))
     fig.update_layout(
         height=400,
         margin=dict(l=40, r=20, t=30, b=30),
         yaxis_title="累计收益率（%）",
-        xaxis_title="日期",
         hovermode="x unified",
+        dragmode="pan",
     )
+    apply_time_axis(fig, title="日期", rangeslider=True)
     return fig

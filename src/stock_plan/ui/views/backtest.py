@@ -25,7 +25,7 @@ from stock_plan.backtest.report import make_report
 from stock_plan.data.storage import Storage
 from stock_plan.llm.analyzer import review_backtest
 from stock_plan.strategy.registry import create_strategy
-from stock_plan.ui.widgets import board_filter_ui, page_glossary
+from stock_plan.ui.widgets import apply_time_axis, PLOTLY_CONFIG, board_filter_ui, page_glossary
 
 # 本页名词速览（R2 亲民化）
 BACKTEST_GLOSSARY = {
@@ -106,7 +106,7 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
         fig = go.Figure()
         fig.add_trace(
             go.Scatter(
-                x=[p["date"] for p in report["equity_curve"]],
+                x=pd.to_datetime([p["date"] for p in report["equity_curve"]]),
                 y=[p["value"] for p in report["equity_curve"]],
                 mode="lines",
                 name="总资产",
@@ -119,7 +119,8 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
             yaxis_title="资产（元）",
             xaxis_title="日期",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        apply_time_axis(fig)
+        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
     # 收益曲线（R3 需求：累计收益率 % + 回撤区域标注）
     st.subheader("📈 收益曲线（动态变化）")
@@ -127,12 +128,12 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
         "蓝线是「累计收益率」：从回测第一天算起，账户总共赚/亏了百分之几。"
         "红色阴影是「回撤」：从阶段最高点跌下来的幅度，阴影越深说明中途跌得越狠。"
     )
-    from stock_plan.ui.widgets import equity_curve_fig
+    from stock_plan.ui.widgets import apply_time_axis, equity_curve_fig
 
     eq = result.equity_curve if result is not None else None
     fig_ret = equity_curve_fig(eq)
     if fig_ret is not None:
-        st.plotly_chart(fig_ret, use_container_width=True)
+        st.plotly_chart(fig_ret, use_container_width=True, config=PLOTLY_CONFIG)
     else:
         st.info("回测数据不足，无法绘制收益曲线。")
 
@@ -156,7 +157,7 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
             margin=dict(l=40, r=20, t=30, b=30),
             yaxis_title="收益率（%）",
         )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True, config=PLOTLY_CONFIG)
 
     # 回撤区间
     st.subheader("回撤区间")
@@ -193,7 +194,7 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
             margin=dict(l=40, r=20, t=30, b=30),
             yaxis_title="笔数",
         )
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(fig3, use_container_width=True, config=PLOTLY_CONFIG)
 
     # 退出原因归因
     st.subheader("退出原因归因")
@@ -238,7 +239,7 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
             colorbar=dict(title="收益%"),
         ))
         fig4.update_layout(height=300, margin=dict(l=40, r=20, t=30, b=30))
-        st.plotly_chart(fig4, use_container_width=True)
+        st.plotly_chart(fig4, use_container_width=True, config=PLOTLY_CONFIG)
 
     # 最近交易明细
     st.subheader("最近交易")
