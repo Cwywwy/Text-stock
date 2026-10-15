@@ -36,13 +36,19 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 LOG_DIR = PROJECT_ROOT / "data" / "logs"
 REPORT = LOG_DIR / "acceptance.txt"
 
-_results: list[tuple[str, bool, str]] = []
+_results: list[tuple[str, bool | None, str]] = []
 
 
 def check(name: str, ok: bool, detail: str = "") -> bool:
     _results.append((name, bool(ok), detail))
     print(f"  {'✅' if ok else '❌'} {name}" + (f" — {detail}" if detail else ""), flush=True)
     return bool(ok)
+
+
+def note(name: str, detail: str = "") -> None:
+    """记为"跳过"：不计入通过数，也不导致退出码非 0。"""
+    _results.append((name, None, detail))
+    print(f"  ⏭️ {name}" + (f" — {detail}" if detail else ""), flush=True)
 
 
 # --------------------------------------------------------------------------
@@ -323,7 +329,11 @@ def check_secrets() -> None:
 # 9) 应用健康
 # --------------------------------------------------------------------------
 def check_app_health(url: str = "http://127.0.0.1:8501/_stcore/health") -> None:
-    print("\n[9] 应用健康（可选，未运行则提示）")
+    """应用健康检查。**应用没运行时记为"跳过"、不算失败** —— 它只是可选的在线检查，
+    不该让离线环境的自检整体失败（原先实现把它记成失败、但提示文字写着"非失败项"，
+    说法与行为不一致，2026-10-15 修正）。
+    """
+    print("\n[9] 应用健康（可选，未运行则跳过）")
     import urllib.error
     import urllib.request
 
@@ -333,8 +343,7 @@ def check_app_health(url: str = "http://127.0.0.1:8501/_stcore/health") -> None:
             body = r.read().decode("utf-8", "replace").strip()
         check("Streamlit 健康检查 200", r.status == 200, f"{r.status} {body}")
     except Exception as e:  # noqa: BLE001
-        check("Streamlit 健康检查 200", False,
-              f"未运行或不可达（{type(e).__name__}）—— 非失败项，启动后再跑即可")
+        note("Streamlit 健康检查 200", f"未运行或不可达（{type(e).__name__}）于 {url} → 跳过")
 
 
 # --------------------------------------------------------------------------
@@ -342,6 +351,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="项目自检")
     ap.add_argument("--full", action="store_true", help="额外做快照打包往返校验")
     ap.add_argument("--no-pytest", action="store_true", help="跳过测试套件")
+    ap.add_argument("--app-url", default="http://127.0.0.1:8501/_stcore/health",
+                    help="应用健康检查地址；不可达时该项记为跳过（不影响退出码）")
     args = ap.parse_args()
 
     print("=" * 72)
@@ -358,20 +369,32 @@ def main() -> int:
     check_strategy_store()
     check_scheduled_tasks()
     check_secrets()
-    check_app_health()
+    check_app_health(args.app_url)
 
-    passed = sum(1 for _, ok, _ in _results if ok)
+    # ok 为 None 表示"跳过"（例如应用没在运行）——不计入通过数，也不导致退出码非 0
+    passed = sum(1 for _, ok, _ in _results if ok is True)
+    skipped = [n for n, ok, _ in _results if ok is None]
     total = len(_results)
-    failed = [n for n, ok, _ in _results if not ok]
+    failed = [n for n, ok, _ in _results if ok is False]
     print("\n" + "=" * 72)
-    print(f"结果：{passed}/{total} 通过" + (f"；未通过：{failed}" if failed else "；全部通过 ✅"))
+    line = f"结果：{passed}/{total - len(skipped)} 通过"
+    if skipped:
+        line += f"；{len(skipped)} 项跳过（{', '.join(skipped)}）"
+    line += f"；未通过：{failed}" if failed else "；全部通过 ✅"
+    print(line)
     print("=" * 72)
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(
         f"项目自检 {datetime.now():%Y-%m-%d %H:%M:%S}\n"
-        + "\n".join(f"[{'PASS' if ok else 'FAIL'}] {n} {d}" for n, ok, d in _results)
-        + f"\n\n合计 {passed}/{total}\n",
+        + "\n".join(
+            f"[{'SKIP' if ok is None else ('PASS' if ok else 'FAIL')}] {n} {d}"
+            for n, ok, d in _results
+        )
+        + f"\n\n合计 {passed}/{total - len(skipped)} 通过"
+        + (f"，{len(skipped)} 项跳过" if skipped else "")
+        + "\n",
         encoding="utf-8",
     )
     print(f"报告已写入 {REPORT}")
