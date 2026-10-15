@@ -26,3 +26,18 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+# 只从 tests/ 收集用例。
+#
+# 为什么必须限定（2026-10-15 实测）：项目根下还有一个 Text/ —— 711.6 MB 的解压副本
+# （被 .gitignore 忽略、未被 git 跟踪、带自己的 .git），它内部也有一份 tests/。
+# 不限定范围时，pytest 会先导入 Text/tests/test_*.py，先把 test_backtest /
+# test_llm_codegen / test_snapshot / test_updater 这几个模块名注册掉；随后再收集
+# tests/ 下的同名文件就报 "import file mismatch" 并**直接中断整轮收集**
+# （实测：4 errors，0 passed）。于是文档里写的 `pytest`（应 153 passed）根本跑不起来。
+#
+# 这里只限定收集范围，**不删除任何东西** —— Text/ 的去留由用户决定。
+# 注意 `pytest tests/xxx.py` 这种显式传路径的调用不受 testpaths 影响；
+# scripts/acceptance.py 传的正是 `tests/`，所以它的自检结果不受本改动影响。
+testpaths = ["tests"]

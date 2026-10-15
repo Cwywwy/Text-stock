@@ -4,6 +4,26 @@
 
 ## 2026-10-15
 
+### 修复：不带参数的 `pytest` 会中断收集（`Text/` 副本的同名模块冲突）
+
+- **问题**：`pytest`（不带参数）报 4 个 `import file mismatch`，**中断整轮收集（0 passed）**，
+  于是"改完跑 `pytest`（应 153+ passed）"这条验证跑不起来。
+  根因是项目根下还有一个 `Text/` —— 711.6 MB 的解压副本，它**是个独立的 git 仓库**
+  （自带 `.git`），被 `.gitignore:30` 忽略、外层仓库**跟踪 0 个文件**；
+  它内部也有一份 `tests/`，会**抢先注册** `test_backtest` / `test_llm_codegen` /
+  `test_snapshot` / `test_updater` 四个模块名，随后收集 `tests/` 下的同名文件即冲突
+- **修法**：`pyproject.toml` 新增 `[tool.pytest.ini_options]` 的 `testpaths = ["tests"]`。
+  **只限定收集范围，不删除任何东西** —— `Text/` 的去留仍由用户决定
+  （它是独立仓库，且用户此前对同类重复副本明确选择保留）
+- **验证（双向）**：
+  - 修复前：`pytest` → ❌ `4 errors`、**0 passed**、收集被中断
+  - 修复后：`pytest` → ✅ **153 passed**（4.94s）
+  - 显式 `pytest tests` → ✅ 153 passed（显式路径优先于 `testpaths`，不受影响）
+  - `scripts/acceptance.py --full` → ✅ 仍 **36/36**（`[2] 测试套件` = 153 passed）
+  - `compileall -q src/stock_plan` → ✅ 0 错误
+- 说明：`INSTRUCTION.md` 第 8 节记录的本来就是 `uv run pytest tests/`（该命令一直可用），
+  本次修的是"**不带参数**"这一种写法。本改动**不改变任何回测结果**
+
 ### 端到端验收（本轮）
 
 - **快照离线往返完整性 ✅**：重新打包 5890 只 → 369.0 MB / 5 卷；
