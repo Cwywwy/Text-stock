@@ -448,6 +448,34 @@ testpaths = ["tests"]
 所以每次 store 调用都会留下一个未关闭的 sqlite 连接（复验时表现为临时库文件被占用、
 `unlink` 报 `WinError 32`）。Streamlit 长驻进程下会缓慢累积句柄。
 
+### 7.6 空转守卫（V1~V5）与 D1 的实测（只抄断言、喂坏产物，不改仓库）
+
+方法：把这些守卫的**断言原样抄过来**，喂给"坏产物"，看是否照样通过 ——
+坏产物也能通过，就说明该守卫没有判别力。脚本：`D:\DeepSeekHarness\.dsh-tmp\verify_guards.py`。
+
+| 守卫 | 喂进去的坏产物 | 结果 |
+|---|---|---|
+| V1 `test_generate_runnable_script_importable_text` | 只含那三个子串、第 2 行就 `raise NameError` 的假脚本 | ❌ **三条断言全过** → 空转 |
+| V4 `test_generate_annotated_code_contains_values` | 只含 `CONFIG 4.5 测试策略`、没有任何 rules/params 段的假输出 | ❌ **三条全过** → 删掉整段也拦不住 |
+| V2 `test_generate_strategy_config_mock` | 一个**完全无视用户描述**的坏 mock（用户说持有 15 天，它返回默认 30） | ❌ **三条全过** → 这正是 D5 能长期存活的原因 |
+| V3 断言宽度 | 下界放到 0.0（真实契约 0.5，实测 `atr_n_stop(-5) → 0.5`）、权重用到 2.0（注释写 0~1） | ❌ 都过 → 拦不住下界被放宽，且注释与实现不一致 |
+| V5 `acceptance.py:check_pages` | 直接看代码：`.click()` **0 次**，不断言 session_state / 数据库 | ❌ 只渲染不交互 → 覆盖不到"生成/保存"链路 |
+
+**D1 的实证 —— 项目自己保存的策略就是活例子**：
+
+- 已保存策略 `MA5金叉MA30策略` 的 `hold_days = **15**`，而 `ui/views/backtest.py:384` 与
+  `ui/views/compare.py:143` 的 `max_hold_days` 默认值是 **30**
+  （只有 `visual_builder.py:64` 用 `strategy.params["hold_days"]`，是对的）
+- 即：用户在回测页选中**自己保存的这条策略**，跑的是**持有 30 天**的版本，
+  而不是策略声明的 15 天 —— "生成 → 回测"名实不符**在仓库现有数据上就能复现**
+  （另一条 `我的自定义策略` 恰好是 30，所以 2 条里只有 1 条受影响，这也说明它平时不易被察觉）
+
+**D3 的复核（读代码，未调用任何联网函数）**：`ui/views/llm.py:168-188` 的按钮处理器
+**先**调 `submit_public_strategy(...)`（需 token + 网络），**成功之后**才
+`store.save_strategy(...)` 落本地；`except (RuntimeError, ValueError)` 只弹错误提示、
+**本地库不落盘** → 没网/没 token 时**一条策略都存不下**，与用户初衷
+"突发奇想时能在项目内直接完成"正面冲突。
+
 ---
 
 ## 8. 验收标准（每次改动都要做，项目约定）
