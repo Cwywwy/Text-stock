@@ -476,6 +476,16 @@ testpaths = ["tests"]
 **本地库不落盘** → 没网/没 token 时**一条策略都存不下**，与用户初衷
 "突发奇想时能在项目内直接完成"正面冲突。
 
+**D7 的复核（读代码）**：`ui/views/backtest.py:42` 是 `@st.cache_data(ttl=600)`，
+缓存键就是它那 14 个显式参数（`strategy_name` / `params_json` / 各成本项 …）——
+**不含策略的 config（weights/rules）**；而 config 是在**函数体内**由
+`resolve_strategy()` 从库里读的。所以"改一条已保存策略的权重/规则、名字不变"时，
+**缓存键不变 → 最长 600 秒（10 分钟）内仍返回旧结果**。`ttl=600` 也印证了"10 分钟"这个说法。
+
+**D9 的复核（grep）**：`llm/client.py` 里与调用控制相关的只有 `temperature=0.3` 一处；
+搜 `timeout` / `max_tokens` / `retry` / `usage` / `prompt_tokens` / `completion_tokens`
+**全部 0 命中** → 无超时、无重试、无 token/费用可观测（额度耗尽时表现为"页面毫无反应"，见 D2）。
+
 ---
 
 ## 8. 验收标准（每次改动都要做，项目约定）
