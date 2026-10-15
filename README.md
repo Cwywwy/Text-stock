@@ -28,6 +28,30 @@ uv run streamlit run src/stock_plan/ui/app.py
 
 浏览器打开 http://localhost:8501 即可使用。
 
+## 项目自检
+
+```bash
+python scripts/acceptance.py --full
+```
+
+以后任何改动后跑这一条，就能复验全部 37 项结论（环境/测试/12 页/数据完整性/快照往返/策略库/定时任务/敏感文件/应用健康），报告落在 `data/logs/acceptance.txt`。
+
+```bash
+python scripts/acceptance.py             # 32 项（本机实测约 18 秒）
+python scripts/acceptance.py --full      # 37 项，额外做快照打包往返校验（约 22 秒）
+python scripts/acceptance.py --no-pytest # 27 项，跳过测试套件（约 12 秒）
+```
+
+- **耗时为本机实测**（行情缓存 5890 只、每次冷启动一个 Python 进程），换机器或数据量变化会不同
+- **退出码**：`0` = 全部通过，非 `0` = 有检查未通过（可用于 CI 或提交前钩子）
+- **为什么会有这个脚本**：本项目历史上出现过多个"跑通但结果不可信"的问题 —— 例如已退市股票
+  占住候选名额（仅此一条就让同期回测总收益从 −5.23% 变成 −9.88%）、大盘代理对原始股价取平均、
+  持仓在行情终结时被静默丢弃。这些结论当初是靠一次性脚本验证的，本脚本把它们固化下来，
+  以后每次改动跑一遍就能确认没有被推翻
+- **已知局限**：`AppTest` 看不出"表格内部 Arrow 转换失败"这类问题（异常被 Streamlit 吞掉，
+  且元素里的列已被强制转换）。这类问题由 `tests/test_strategy_mgr_table.py` 直接断言
+  行构造函数的 dtype 来拦
+
 ## 项目结构
 
 ```
@@ -211,10 +235,6 @@ GitHub Releases：tag = data-snapshot（资产：manifest.json + bars-<时间戳
 - **云端轻量模式**：检测到云端时增量更新并发降为 3 线程、全量拉取仅 1 年（容器 2.7GB 内存防超限）
 - **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`
   （`--build-only` 只打包不推送，用于排查）
-- **项目自检**：`python scripts/acceptance.py`（约 30 秒，27 项：环境依赖 / 测试套件 /
-  12 页渲染 / 数据完整性 / 策略库结构 / 定时任务定义 / 敏感文件 / 应用健康）。
-  加 `--full` 额外做快照打包往返校验（逐卷 sha256 + 拼接重现整包哈希）。
-  报告写入 `data/logs/acceptance.txt`；退出码非 0 表示有检查未通过
 - **恢复快照**：云端页面 →「🔄 数据更新」→「☁️ 从云端快照恢复数据」
 - **令牌来源**：显式参数 → `DATA_SNAPSHOT_TOKEN` 环境变量 → `.streamlit/secrets.toml`
   （本机计划任务不经过 Streamlit，靠最后这一层读取）
