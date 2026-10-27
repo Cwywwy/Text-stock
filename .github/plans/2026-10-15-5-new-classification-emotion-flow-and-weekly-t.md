@@ -796,4 +796,34 @@ LLM 页只留两个 tab。端到端套用测试覆盖 ATR/止盈/止损/持有�
 不复权，与 qfq 序列不能混存，需改数据模型，风险大于收益。
 **复验入口**：`pytest` **203 passed**；`scripts/acceptance.py --full` 应 37/37（13 页）。
 
+### 12.8 数据日期体检 + 增量窗口缺口保护（2026-10-28，Phase 22）
 
+用户两问：「在数据更新里加入确认当前数据日期，确保目前的数据用的是哪一天的」、
+「上一次的数据应该已经超过 30 天前，现在增量更新还有用吗」。第二问直接问出一个**真实缺陷**。
+
+**实测（2026-10-28 05:49）**：行情最新交易日 **2026-10-27**（`latest_expected_trade_date()` 同日，
+当前 05:49 早于收盘，当日线本来就没有）；5916 只里 **5568 只**已到最新交易日，**344 只**落后 7 天以上
+（全部是退市/长期停牌）；分类快照 2026-10、情绪快照 2026-10-28（2 天）、公告 0 条（无持仓无自选）。
+→ **结论：本轮数据是新的，增量更新有效**；用户看到的"超过 30 天"是印象，不是当前状态。
+
+**缺陷**：`update_incremental(days=30)` 的窗口是固定的。若机器停用 60 天，只补最近 30 天，
+中间 30 天永久缺失，而日志显示成功 —— 属于"静默丢数据"，比报错更危险。
+
+**修法**：
+1. 新增 `src/stock_plan/data/freshness.py`：`scan_bars()`（32 线程，实测 **8.2 秒**扫 5916 只）→
+   `data/processed/bars/_freshness.json` 缓存；`status()` 汇总四处日期；CLI
+   `python -m stock_plan.data.freshness [--refresh] [--json]`。
+2. `updater.update_incremental` 开头 `gap = 今天 − 本地最新交易日`；`gap > days` 时
+   `days = gap + 5`（重叠 5 天用于去重），`logger.warning` 记录，`stats` 增
+   `window_days` / `data_lag_days`；结束后自动 `refresh_marker()`。
+3. `ui/views/update_center.py::_data_status` 重写为「数据日期体检」：结论行 + 四指标 +
+   其他三类数据 + 落后股票说明 + `🔍 重新扫描数据日期`。
+
+**验证**：`tests/test_freshness.py` 7 项；`pytest` **210 passed**；
+`reverse_check_freshness.py` **5/5**；`acceptance.py --full` **37/37**；
+AppTest 实测页面：`行情最新交易日=2026-10-27 / 期望=2026-10-27 / 已更新到最新交易日=5568/5916 / 落后 7 天以上=344`。
+
+**两处自我纠正（记录为教训）**：
+- `current` 初版写成「能读出 date 列就算新」→ 5916/5916 恒等、指标零信息；改为「最后交易日 == 最新交易日」后 5568/5916。
+- 初版 marker 固定指向生产 bars 目录 → 4 个单元测试各扫一次真实数据，`pytest` 从 6 秒涨到 **59 秒**；
+  改为 `marker_path(bars_dir)` 跟随 `storage.bars_dir` 后回到 **7.2 秒**。
