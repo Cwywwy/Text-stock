@@ -239,6 +239,10 @@ stock plan/
 | 2026-10-28 | 回测/对比/拼装三处 UI **自动**传入财务快照日，不暴露给用户 | 这是数据完整性问题，不是策略参数；让用户能关掉就等于允许"自欺欺人地跑出历史高收益"（实测可虚高 48pp） |
 | 2026-10-28 | Walk-Forward 窗口配置改用 `dataclasses.replace(base_config, ...)` | 手工构造只透传 5 个字段，资金/佣金/印花税/滑点全被重置回默认（实测 100 万本金窗口起点变 99,917），据此得出的 OOS 结论全部失义 |
 | 2026-10-28 | 度量"某缺陷值多少收益"时**只做同一路径的敏感性对比**，不写成效应量 | 单次 A/B 的差值混着"持仓路径改变"的噪声（同策略总收益跑动标准差 15pp）。所以文里只写"会变、方向、量级"，并明确声明不能当作某缺陷的收益贡献 |
+| 2026-10-28 | pe/pb 由**本地重算**（缓存最新收盘价 × 已入库 eps/bvps）回填，不重抓财务数据 | 全表 5579 只重抓要几十分钟，本地重算 58.6s；且 eps/bvps 不变时重抓只是重复劳动。根因是调用方漏传 `latest_price`，两处调用已补传，以后新抓的股票自动带 pe/pb |
+| 2026-10-28 | `refresh_valuation` **不更新** `updated_at` | `updated_at` 是 PIT 快照日（`fundamentals_snapshot_date()` 用它划前视边界）；pe/pb 是"旧 eps × 新价格"，改这个时间戳会让快照日漂到今天、使历史回测里的财务中性化失效 |
+| 2026-10-28 | 估值回填纳入 `daily_job.ps1` 每日一步（失败只告警） | pe/pb 随价格每天变化，不重算就一直是回填那天收盘价算出来的，越放越失真；失败时估值分退回中性 50，不影响行情主链路 |
+| 2026-10-28 | 财务因子在历史回测里等于"关闭"（因为只有一份当前快照），**这是正确的**，不是 bug | 按 PIT 正确处理，快照日之前的任何一天用今天抓到的财报都是未来数据；实测回填后历史回测数字逐位不变。要真正回测基本面需要带报告期的历史财务库（计划书 §12.5 遗留） |
 
 ## 8. 常用命令
 
@@ -278,6 +282,10 @@ uv run python -m stock_plan.data.market_snapshot --list       # 列出已保存�
 uv run python -m stock_plan.data.announcements --days 7
 uv run python -m stock_plan.data.announcements --add 600519 --note 观察仓
 uv run python -m stock_plan.data.announcements --show
+
+# 估值回填（pe/pb；用缓存最新收盘价 × 已入库 eps/bvps，约 60 秒，已并入 daily_job）
+uv run python scripts/fill_pe_pb.py
+uv run python scripts/fill_pe_pb.py --dry-run   # 只看覆盖率
 
 # 注册/重注册 Windows 计划任务（需管理员；不提权可加 -ExportOnly 只生成 XML）
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register_tasks.ps1

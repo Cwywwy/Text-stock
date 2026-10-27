@@ -143,6 +143,11 @@ try {
         Write-Log "警告：增量更新未全部成功（退出码 $code）"
     }
 
+    # pe/pb 是「最新收盘价 ÷ 快照里的 eps/bvps」，行情更新后重算一遍才跟得上价格。
+    # 不重抓财务数据（全表 5579 只约 60s）；失败只告警，估值分退回中性，不影响行情链路。
+    $code = Invoke-Step '估值回填（pe/pb）' @('scripts\fill_pe_pb.py')
+    if ($code -ne 0) { Write-Log "警告：估值回填未成功（退出码 $code），估值分将退回中性" }
+
     # 情绪/公告是补充数据，失败只告警，不影响行情主链路的成败判定。
     # 周末没有盘面数据，跳过情绪快照（避免写入空快照把"最新交易日"指针带偏）。
     if ((Get-Date).DayOfWeek -notin @('Saturday', 'Sunday')) {

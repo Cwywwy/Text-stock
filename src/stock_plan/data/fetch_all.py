@@ -67,7 +67,14 @@ def main() -> None:
         try:
             bars = fetcher.get_daily_bars(code, start, end)
             storage.save_bars(code, bars)
-            fin = fetcher.get_fundamentals(code)
+            # 必须传最新收盘价，否则 pe/pb 算不出来（2026-10-28 修正：原先不传 →
+            # 全表 NULL → 估值分恒 50，价值类策略"便宜"这一维一直是死的）
+            latest_price = (
+                float(bars["close"].iloc[-1])
+                if bars is not None and not bars.empty
+                else None
+            )
+            fin = fetcher.get_fundamentals(code, latest_price=latest_price)
             storage.save_fundamentals(code, fin)
             return code, True, ""
         except Exception as e:  # 单只失败不影响整体

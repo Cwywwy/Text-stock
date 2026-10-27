@@ -368,6 +368,54 @@ class Storage:
         cols = [d[0] for d in conn.execute("SELECT * FROM fundamentals").description]
         return dict(zip(cols, row))
 
+    def last_close(self, code: str) -> float | None:
+        """取该股票缓存日线的最后一根收盘价；无缓存返回 None。"""
+        try:
+            bars = self.load_bars(code)
+        except Exception:
+            return None
+        if bars is None or bars.empty:
+            return None
+        close = bars["close"].iloc[-1]
+        return None if pd.isna(close) else float(close)
+
+    def refresh_valuation(self, code: str, price: float | None = None) -> bool:
+        """用最新收盘价重算 pe/pb 并回写，不重新抓财务数据。
+
+        为什么需要单独一个方法（2026-10-28）：
+        `fetcher.get_fundamentals()` 只有传了 `latest_price` 才会算 pe/pb，而
+        `fetch_all.py` / `updater.py` 两处调用都**没传**，于是 `fundamentals` 表里
+        pe/pb 两列**全表为 NULL**（实测 5553 行全空），估值分恒等于 50，价值类策略的
+        "便宜"这一维一直是死的。这里用缓存里已有的日线收盘价 × 已入库的 eps/bvps
+        重算，不需要再跑一遍网络抓取（5553 只重抓要几十分钟，重算只要几十秒）。
+
+        注意：**不更新 updated_at**。eps/bvps 仍是那次快照抓到的值，
+        `updated_at` 表示"财务数据的抓取日"，用它当 PIT 分界（见
+        `fundamentals_snapshot_date()`）；pe/pb 只是同一份 eps/bvps 乘以当前价，
+        改这个时间戳会让"快照日"漂移到今天，反而破坏前视修正。
+
+        返回：是否写入了有效值（eps/bvps 缺失或价格缺失时返回 False）。
+        """
+        row = self.load_fundamentals(code)
+        if not row:
+            return False
+        if price is None:
+            price = self.last_close(code)
+        if price is None or price <= 0:
+            return False
+        eps = row.get("eps")
+        bvps = row.get("bvps")
+        pe = (price / eps) if eps not in (None, 0) else None
+        pb = (price / bvps) if bvps not in (None, 0) else None
+        if pe is None and pb is None:
+            return False
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE fundamentals SET pe = ?, pb = ? WHERE code = ?",
+                (pe, pb, code),
+            )
+        return True
+
     def fundamentals_snapshot_date(self):
         """财务指标快照的抓取日期（全表 updated_at 的最大日期），取不到返回 None。
 

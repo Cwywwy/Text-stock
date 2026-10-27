@@ -249,7 +249,15 @@ def fetch_uncached(
             bars = fetcher.get_daily_bars(code, start, end)
             storage.save_bars(code, bars)
             try:
-                storage.save_fundamentals(code, fetcher.get_fundamentals(code))
+                # 传最新收盘价才能算出 pe/pb（2026-10-28 修正，原先不传导致全表 NULL）
+                latest_price = (
+                    float(bars["close"].iloc[-1])
+                    if bars is not None and not bars.empty
+                    else None
+                )
+                storage.save_fundamentals(
+                    code, fetcher.get_fundamentals(code, latest_price=latest_price)
+                )
             except Exception:
                 pass  # 财务失败不影响日线入库
             return code, True, ""
