@@ -107,13 +107,20 @@ def generate_strategy_config(description: str, client: Optional[LLMClient] = Non
     c = client or get_client()
     system = _SYSTEM_STRATEGY_CFG + _vocab_text()
 
-    def _empty(reason: str, mode: str) -> dict:
+    def _empty(reason: str, mode: str, error: str = "") -> dict:
+        """失败时的返回结构。
+
+        关键点：带上 `error` 字段。原实现只返回 `config={}`，而 UI 的渲染条件是
+        `if result.get("config")` —— 于是失败时页面**一片空白**，连一句原因都不显示，
+        用户只能反复点按钮。现在把"为什么失败"传上去由页面显式展示。
+        """
         return {
             "config": {},
             "unknown": [],
             "unsupported": [],
             "proposal_code": "",
             "reason": reason,
+            "error": error or reason,
             "mode": mode,
         }
 
@@ -123,7 +130,12 @@ def generate_strategy_config(description: str, client: Optional[LLMClient] = Non
     raw = c.chat(system, description)
     data, err = _parse_json_dict(raw)
     if err:
-        return _empty(f"LLM 输出解析失败（{err}），请重试或换个描述。", "llm")
+        detail = getattr(c, "last_error", "") or ""
+        return _empty(
+            f"LLM 输出解析失败（{err}），请重试或换个描述。",
+            "llm",
+            error=f"调用 LLM 未拿到合法 JSON：{detail or raw[:200]}",
+        )
 
     from stock_plan.strategy.codegen import normalize_config
 
@@ -174,6 +186,40 @@ def _parse_json_dict(text: str) -> tuple[dict | None, str]:
     return None, "未找到合法 JSON"
 
 
+def _keyword_number(desc: str, keywords: tuple[str, ...]) -> tuple[float | None, bool]:
+    """在关键词附近找最贴近的数字，返回 (数值, 是否带百分号)。
+
+    为什么要"前后都找、取更近的"：中文里数字常在关键词**前面**
+    （「涨 10% 止盈」），而朴素的 `止盈[^\\d]{0,4}(\\d+)` 只会往后看，
+    在「涨 10% 止盈，跌 5% 止损」这种并列句里会跨过逗号抓到**另一个**数字。
+    前后各看 10 个字符、谁离关键词近用谁，能稳定命中正确的那一个。
+    """
+    import re
+
+    best: tuple[int, float, bool] | None = None
+    for kw in keywords:
+        for m in re.finditer(re.escape(kw), desc):
+            # 往后看：允许中间夹 0~4 个非数字字符（如「是 10%」「：10」）
+            tail = desc[m.end(): m.end() + 10]
+            tm = re.match(r"[^\d%]{0,4}(\d+(?:\.\d+)?)\s*(%?)", tail)
+            if tm:
+                # 距离按"真正隔了几个字符"算，不能用匹配串长度——
+                # 否则前面带 % 的数字会被算得更远，反而输给后面紧贴的长串。
+                gap = tm.start(1)
+                if best is None or gap < best[0]:
+                    best = (gap, float(tm.group(1)), tm.group(2) == "%")
+            # 往前看：如「涨 10% 止盈」，数字在关键词之前
+            head = desc[max(0, m.start() - 12): m.start()]
+            hm = re.search(r"(\d+(?:\.\d+)?)\s*(%?)\s*[^\d%]{0,4}$", head)
+            if hm:
+                gap = len(head) - hm.end(1)
+                if best is None or gap < best[0]:
+                    best = (gap, float(hm.group(1)), hm.group(2) == "%")
+    if best is None:
+        return None, False
+    return best[1], best[2]
+
+
 def _mock_strategy_config(description: str) -> dict:
     """离线规则模式：关键词启发式生成配置（无 LLM 也可用）。"""
     import re
@@ -193,13 +239,27 @@ def _mock_strategy_config(description: str) -> dict:
     m = re.search(r"持有\s*(\d{1,3})\s*天", desc)
     if m:
         raw["hold_days"] = int(m.group(1))
-    # 止盈止损（按 ATR 倍数描述）
-    m = re.search(r"止盈[^\d]{0,4}(\d+(?:\.\d+)?)", desc)
-    if m:
-        raw["atr_m_exit"] = float(m.group(1))
-    m = re.search(r"止损[^\d]{0,4}(\d+(?:\.\d+)?)", desc)
-    if m:
-        raw["atr_n_stop"] = float(m.group(1))
+    # 止盈止损：系统词表里只有「ATR 倍数」口径（atr_m_exit / atr_n_stop），
+    # 而用户口语常说百分比（"涨 10% 止盈"）。这两者量纲完全不同：
+    # 10% 填进 ATR 倍数会被当成"涨了 10 个日常波动幅度"，等于永不触发。
+    #
+    # 旧的写法是 `止盈[^\d]{0,4}(\d+)`：在「涨 10% 止盈，跌 5% 止损」上，
+    # 因为 止盈 后面紧跟的是"，跌 "，正则跨过了它抓到**止损那个 5**，
+    # 于是 10%/5% 双双丢失、atr_m_exit 变成 5。这里改成：
+    # 在关键词**前后都找**最近的数字，取距离更近的那个，并记录是否带 %。
+    tp_value, tp_is_pct = _keyword_number(desc, ("止盈", "盈利", "目标盈利"))
+    sl_value, sl_is_pct = _keyword_number(desc, ("止损", "亏损", "认赔"))
+    pct_notes: list[str] = []
+    if tp_value is not None:
+        if tp_is_pct:
+            pct_notes.append(f"止盈 {tp_value:g}%")
+        else:
+            raw["atr_m_exit"] = tp_value
+    if sl_value is not None:
+        if sl_is_pct:
+            pct_notes.append(f"止损 {sl_value:g}%")
+        else:
+            raw["atr_n_stop"] = sl_value
     # RSI 区间
     m = re.search(r"RSI[^\d]{0,6}(\d{1,3})", desc, re.IGNORECASE)
     if m:
@@ -245,12 +305,19 @@ def _mock_strategy_config(description: str) -> dict:
             "description": f"以下参数不在系统词表中，已忽略：{', '.join(unknown)}",
             "suggestion": "可从描述中删去，或日后把该能力加入系统词表。",
         })
+    if pct_notes:
+        unsupported.append({
+            "name": "按百分比止盈止损",
+            "description": f"描述里用了百分比口径（{'、'.join(pct_notes)}），但系统词表只有「ATR 倍数」口径，未写入配置。",
+            "suggestion": "改成「止盈 3.5 倍 ATR / 止损 2 倍 ATR」这类描述，或在「策略拼装」页手动调 ATR 倍数（1% 涨跌幅 ≈ 0.25 倍 ATR，可作换算参考）。",
+        })
     return {
         "config": config,
         "unknown": unknown,
         "unsupported": unsupported,
         "proposal_code": "",
         "reason": "离线关键词匹配生成；配置 .env 启用真实 LLM 后效果更佳。",
+        "error": "",
         "mode": "mock",
     }
 

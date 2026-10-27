@@ -27,11 +27,20 @@ class LLMClient:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         model: Optional[str] = None,
+        timeout: float = 30.0,
+        max_retries: int = 1,
     ):
         cfg = get_llm_config()
         self.api_key = api_key or cfg.api_key
         self.base_url = base_url or cfg.base_url or "https://api.openai.com/v1"
         self.model = model or cfg.model or "gpt-4o-mini"
+        # 必须显式给超时：openai SDK 的默认超时是 600 秒且带自动重试，
+        # 网络不通时页面会卡十几分钟（Streamlit 里表现为"一直转圈"），
+        # 用户以为程序死了。这里压到 30 秒、只重试 1 次。
+        self.timeout = float(timeout)
+        self.max_retries = int(max_retries)
+        # 最近一次调用失败的原因（供上层把"为什么降级"显示给用户，而不是静默）
+        self.last_error: str = ""
         # 三项配置齐全才尝试真实调用，否则 mock
         self.mock = not (self.api_key and (base_url or cfg.base_url))
         self._client = None
@@ -39,9 +48,15 @@ class LLMClient:
             try:
                 from openai import OpenAI
 
-                self._client = OpenAI(api_key=self.api_key, base_url=self.base_url)
-            except Exception:
+                self._client = OpenAI(
+                    api_key=self.api_key,
+                    base_url=self.base_url,
+                    timeout=self.timeout,
+                    max_retries=self.max_retries,
+                )
+            except Exception as exc:
                 self.mock = True
+                self.last_error = f"{type(exc).__name__}: {exc}"
 
     @property
     def status_text(self) -> str:
@@ -51,8 +66,14 @@ class LLMClient:
         return f"已连接：{self.model} @ {self.base_url}"
 
     def chat(self, system: str, user: str, temperature: float = 0.3) -> str:
-        """发送对话请求，返回回复文本。mock 模式下返回降级提示。"""
+        """发送对话请求，返回回复文本。mock 模式下返回降级提示。
+
+        注意：调用失败时**不抛异常**（UI 需要继续渲染），但会把原因记到
+        `self.last_error`，上层可据此告诉用户"这次是网络/额度问题，不是策略问题"。
+        之前这里静默吞掉异常，导致页面只显示一句"解析失败"，排查全靠猜。
+        """
         if self.mock:
+            self.last_error = self.last_error or "LLM 未配置（.env 缺 LLM_API_KEY / LLM_BASE_URL）"
             return self._mock_reply(system, user)
         try:
             resp = self._client.chat.completions.create(
@@ -62,9 +83,12 @@ class LLMClient:
                     {"role": "user", "content": user},
                 ],
                 temperature=temperature,
+                timeout=self.timeout,
             )
+            self.last_error = ""
             return resp.choices[0].message.content or ""
         except Exception as e:  # 网络/额度等异常时降级
+            self.last_error = f"{type(e).__name__}: {e}"
             return self._mock_reply(system, user, error=str(e))
 
     @staticmethod

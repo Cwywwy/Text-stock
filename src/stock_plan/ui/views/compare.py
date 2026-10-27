@@ -59,19 +59,25 @@ def _cached_compare(
 
     factories = {name: (lambda cls=cls: cls()) for name, cls in STRATEGIES.items()}
     for n in store.list_strategies():
-        if n not in STRATEGIES:  # 已保存策略（LLM 生成/拼装页保存）一并纳入对比
-            factories[n] = lambda n=n: store.resolve_strategy(n)
+        # 已保存策略（LLM 生成/拼装页保存）一并纳入对比。重名时用「（自存）」
+        # 后缀区分，否则用户自存的同名策略会被这一行静默丢掉、只剩内置版本。
+        label = store.display_name(n)
+        factories[label] = lambda label=label: store.resolve_strategy(label)
 
     results = {}
     for name, factory in factories.items():
         strat = factory()
+        # 策略自带的 hold_days 优先于页面滑杆：LLM/拼装页保存时写的"持有 N 天"
+        # 是策略定义的一部分。原先一律用滑杆默认值 30，导致对比里的自存策略
+        # 与它自己的回测结果对不上（一个持 15 天、一个持 30 天）。
+        strat_hold = int((getattr(strat, "params", {}) or {}).get("hold_days") or 0)
         config = BacktestConfig(
             start=date.fromisoformat(start),
             end=date.fromisoformat(end),
             initial_cash=initial_cash,
             rebalance_freq=rebalance_freq,
             market_timing=market_timing,
-            max_hold_days=max_hold_days,
+            max_hold_days=strat_hold or max_hold_days,
         )
         result = run_backtest(strat, config, bars_map, fund_map, stock_list)
         metrics = calc_metrics(result.equity_curve, result.trades)
@@ -140,7 +146,10 @@ def render():
         with col5:
             market_timing = st.checkbox("大盘择时", value=True, key="cmp_timing")
         with col6:
-            max_hold_days = st.number_input("最大持仓天数", 5, 120, 30, step=5, key="cmp_hold")
+            max_hold_days = st.number_input(
+                "最大持仓天数", 5, 120, 30, step=5, key="cmp_hold",
+                help="对**没有**自带 hold_days 的策略生效；保存策略时设过持仓天数的，用策略自己的值。",
+            )
 
         if st.button("▶️ 运行对比", type="primary", key="cmp_run"):
             if start >= end:

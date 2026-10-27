@@ -45,7 +45,7 @@ def _cached_backtest(
     params_json: str, rebalance_freq: str, market_timing: bool, max_hold_days: int,
     boards_json: str = "[]", exclude_st: bool = True,
     commission_w: float = 3.0, stamp_tax_w: float = 10.0, slippage_w: float = 10.0,
-    include_delisted: bool = False,
+    include_delisted: bool = False, config_sig: str = "",
 ):
     """带缓存回测（10 分钟内不重复计算）。
 
@@ -54,6 +54,9 @@ def _cached_backtest(
     - stamp_tax_w  印花税，仅卖出收，默认 10（= 0.001，即千分之一）
     - slippage_w   滑点，买卖都收，默认 10（= 0.001）
     这些参数参与缓存键，改动后会自动重算。
+    config_sig 是所选策略的**配置指纹**（JSON）。它不参与计算，但必须进缓存键：
+    策略配置是在函数体内按名字从数据库读的，不会出现在上面的显式参数里，
+    少了它就会出现"改了策略参数、回测结果却不变"的假象（最多持续 10 分钟）。
     """
     import json
 
@@ -375,13 +378,31 @@ def render():
     with col4:
         initial_cash = st.number_input("初始资金", 10_000, 10_000_000, 100_000, step=10_000)
 
+    # 已保存策略可能自带 hold_days（LLM 生成 / 策略拼装保存时写进 params 的）。
+    # 原先这里的默认值写死 30，于是"选中自己保存的持 15 天策略"实际跑的是持 30 天
+    # 版本——用户以为在验证自己的策略，其实验证的是另一个东西，还以为参数没生效。
+    import json as _json
+
+    _raw_name = store.strip_display_name(strategy_name)
+    _saved_rec = store.load_strategy(_raw_name) or {}
+    _saved_cfg = _saved_rec.get("config") or {}
+    _hold_default = int((_saved_cfg.get("params") or {}).get("hold_days") or 30)
+    _hold_default = max(5, min(120, _hold_default))
+    # 配置指纹：参与回测缓存键。原先缓存键只有 14 个显式参数、不含策略配置，
+    # 而配置是在函数体内从数据库读的 → 改了权重/规则后，最长 10 分钟仍拿旧结果。
+    config_sig = _json.dumps(_saved_cfg, ensure_ascii=False, sort_keys=True)
+
     col5, col6, col7, col8 = st.columns(4)
     with col5:
         rebalance_freq = st.selectbox("选股频率", ["weekly", "daily"], index=0)
     with col6:
         market_timing = st.checkbox("大盘择时（低于 MA20 减半仓）", value=True)
     with col7:
-        max_hold_days = st.number_input("最大持仓天数", 5, 120, 30, step=5)
+        max_hold_days = st.number_input(
+            "最大持仓天数", 5, 120, _hold_default, step=5,
+            key=f"bt_hold_{_raw_name}",
+            help="默认取所选策略自带的天数（保存策略时的 hold_days）；可手动覆盖。",
+        )
     with col8:
         st.caption("")
 
@@ -453,6 +474,7 @@ def render():
                 float(stamp_tax_w),
                 float(slippage_w),
                 bool(include_delisted),
+                config_sig=config_sig,
             )
             if not metrics:
                 st.warning("回测无数据。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")

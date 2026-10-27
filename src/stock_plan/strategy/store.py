@@ -282,23 +282,57 @@ def delete_strategies(names, owner: str | None = None) -> int:
 
 
 def strategy_options() -> list[str]:
-    """内置策略 + 已保存策略（UI 下拉框用）。"""
+    """内置策略 + 已保存策略（UI 下拉框用）。
+
+    为什么不能简单用 `n for n in list_strategies() if n not in STRATEGIES`：
+    用户保存的策略一旦和内置策略同名（例如都把名字取作「趋势跟随策略」），
+    就会被过滤掉、在下拉框里**根本不出现**——用户觉得自己保存的那条丢了，
+    选到的其实是内置版本。这里给同名项加「（自存）」后缀，两条都能选。
+    """
     from stock_plan.strategy.registry import STRATEGIES
 
-    return list(STRATEGIES.keys()) + [
-        n for n in list_strategies() if n not in STRATEGIES
-    ]
+    opts = list(STRATEGIES.keys())
+    for n in list_strategies():
+        label = display_name(n)
+        if label not in opts:
+            opts.append(label)
+    return opts
+
+
+# 已保存策略与内置策略同名时，下拉框里的区分后缀
+SAVED_SUFFIX = "（自存）"
+
+
+def display_name(name: str) -> str:
+    """把已保存策略名转成下拉框显示名（与内置同名时加后缀）。"""
+    from stock_plan.strategy.registry import STRATEGIES
+
+    return f"{name}{SAVED_SUFFIX}" if name in STRATEGIES else name
+
+
+def strip_display_name(label: str) -> str:
+    """剥掉显示后缀，还原成数据库里的策略名。"""
+    return label[: -len(SAVED_SUFFIX)] if label.endswith(SAVED_SUFFIX) else label
 
 
 def resolve_strategy(name: str, params: dict | None = None):
-    """按名字实例化策略：内置走注册表，已保存走 CustomStrategy(config)。"""
+    """按名字实例化策略：内置走注册表，已保存走 CustomStrategy(config)。
+
+    名字可带「（自存）」后缀——带后缀即明确指定**用户自己保存的那条**，
+    否则保持旧语义（内置优先）。这样既不会让内置策略被同名自存策略顶掉，
+    也能让用户选中自己的版本。
+    """
     from stock_plan.strategy.custom import CustomStrategy
     from stock_plan.strategy.registry import create_strategy
 
-    if name in load_registry_names():
-        return create_strategy(name, params)
-    rec = load_strategy(name)
+    explicit_saved = name.endswith(SAVED_SUFFIX)
+    raw = strip_display_name(name)
+    if not explicit_saved and raw in load_registry_names():
+        return create_strategy(raw, params)
+    rec = load_strategy(raw)
     if rec is None:
+        if raw in load_registry_names():  # 带后缀但库里没存 → 退回内置，避免直接崩
+            return create_strategy(raw, params)
         raise KeyError(f"策略不存在：{name}")
     strategy = CustomStrategy(rec["config"])
     if params:
