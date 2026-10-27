@@ -21,7 +21,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="每日增量数据更新")
     parser.add_argument("--days", type=int, default=30, help="每只股票补拉近 N 个自然日（默认 30）")
     parser.add_argument("--force", action="store_true", help="强制重拉（忽略本地已是最新）")
-    parser.add_argument("--workers", type=int, default=16, help="并发线程数（默认 16）")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=32,
+        help="并发线程数（默认 32；实测 32 线程复用连接可达 ~18 只/秒，48 线程不再更快）",
+    )
     parser.add_argument(
         "--uncached",
         nargs="*",

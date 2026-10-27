@@ -124,7 +124,7 @@ def render():
     if all_records:
         st.markdown("---")
         st.markdown("### 📁 已保存策略")
-        st.caption("由「LLM 策略生成」或「策略拼装」页保存的正式策略，今日信号/回测/对比页可直接选用。")
+        st.caption("在「策略拼装」页手工拼装或让 AI 生成后保存的正式策略，今日信号/回测/对比页可直接选用。")
 
         flash = st.session_state.pop("_strategy_flash", None)
         if flash:
@@ -269,4 +269,4 @@ def render():
                 st.rerun()
     else:
         st.markdown("---")
-        st.caption("还没有已保存策略。可到「LLM 智能分析 → 策略生成」用自然语言生成并保存。")
+        st.caption("还没有已保存策略。可到「策略拼装」页用一句话让 AI 生成，或手工拼装后保存。")

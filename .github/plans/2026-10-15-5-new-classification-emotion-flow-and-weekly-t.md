@@ -765,4 +765,35 @@ FAIL，**7/7 有判别力**）；`pytest tests` → **195 passed**。
 `scripts/measure_engine_defect_impact.py`（重跑上面三张表）；`scripts/acceptance.py --full`
 **37/37**。
 
+### 12.7 功能取舍与抓取提速（2026-10-28，Phase 21）
+
+用户三条修正：删做T回测、LLM 生成搬进策略拼装、增量更新太慢。
+
+**① 删除做T回测**：删 `ui/views/t_backtest.py`、`backtest/t_trade.py`、`tests/test_t_trade.py`，
+导航 14 → 13 页，`acceptance.py` PAGES 同步。保留 `analysis/holding.py` 的「做T建议」
+（持仓诊断在用）。理由：独立模拟器口径与主引擎不同、并排摆放易误解；实测参考价值低
+（8 只蓝筹 ×119 交易日仅 1 笔、T 贡献 −0.04pp）。
+
+**② LLM 生成搬进策略拼装**：新建 `ui/strategy_ai.py`（`render_ai_strategy_section`），
+拼装页顶部展开区 + 「套用到下面表单」（写 `session_state` + 按滑杆步长就近取整并提示）；
+LLM 页只留两个 tab。端到端套用测试覆盖 ATR/止盈/止损/持有天数四个值。
+
+**③ 增量更新提速（用户痛点：>30 分钟）**：先测量再改，结论是**瓶颈在 TLS 握手**——
+每只 3 个请求、网络占 88.6%、V8+pandas 11.4%、parquet 1%。
+
+| 措施 | 依据 | 收益 |
+|---|---|---|
+| `data/http_pool.py` 线程本地 keep-alive + 30s 超时 | 3.2KB 的请求比 82KB 的还慢 → 慢在握手不在带宽 | 串行 729→121ms；16 线程 8.78→15.6 只/秒 |
+| 股票列表当天只刷一次 | 新浪 spot 70 页约 20s、列表一天只变一次 | 省约 20s/轮 |
+| 预筛 `last_date` 并行 | 5ms×5550=28s 串行 | 降到 2~3s |
+| workers 16→32，云端 `CLOUD_WORKERS` 3→8 | 32 线程饱和约 18 只/秒；云端 1GB/2vCPU | 全市场约 11.7 → 5.5 分钟 |
+
+**A/B 实测**（300 只真实行情，同机同 force 重拉）：旧 7.92 只/秒 → 新 16.8 只/秒（**2.1×**）。
+**不影响回测与选股**：改动只在抓取层。
+**反向验证**：`scripts/reverse_check_update_speed.py` **5/5 有判别力**；
+`tests/test_update_speed.py` 8 项（Session 复用/线程隔离/还原/超时注入/列表缓存/预筛一致）。
+**未采用**：`stock_zh_a_spot()` 一次补当天一根（15.7s/全市场）——只有最后交易日一根且
+不复权，与 qfq 序列不能混存，需改数据模型，风险大于收益。
+**复验入口**：`pytest` **203 passed**；`scripts/acceptance.py --full` 应 37/37（13 页）。
+
 
