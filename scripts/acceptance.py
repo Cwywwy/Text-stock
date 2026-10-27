@@ -104,7 +104,7 @@ def check_pytest() -> None:
 # --------------------------------------------------------------------------
 PAGES = [
     ("今日信号", "today"), ("持仓诊断", "portfolio"), ("模拟交易", "paper"),
-    ("回测结果", "backtest"), ("策略对比", "compare"), ("做T回测", "t_backtest"),
+    ("回测结果", "backtest"), ("策略对比", "compare"),
     ("策略拼装", "visual_builder"),
     ("策略管理", "strategy_mgr"), ("四大师研究", "four_masters"), ("LLM 智能分析", "llm"),
     ("新闻舆情", "news"), ("市场情绪", "market"), ("新手指南", "guide"),
