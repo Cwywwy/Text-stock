@@ -263,6 +263,9 @@ stock plan/
 | 2026-10-28 | `current` 定义为「最后交易日 == 全市场最新交易日」 | 最初写成「能读出 date 列就算新」，结果 5916/5916 恒等、指标零信息；改后 5568/5916，剩下 344 只是退市/停牌，正是要看的事实 |
 | 2026-10-28 | 增量窗口落后时自动扩到 `gap+5` 天 | 固定 30 天窗口下，停用两个月再更新会「成功」但永久丢中间几十天；不落后时保持 30 天，避免每次多抓白变慢 |
 | 2026-10-28 | marker 路径跟着 `storage.bars_dir` 走 | 固定指向生产目录会让 4 个单元测试各扫一次真实数据，`pytest` 从 6 秒涨到 59 秒 |
+| 2026-10-28 | 「从 0 重建」用 `fetch_uncached(codes)` 显式传全市场列表，**不用** `rebuild_history()` | `rebuild_history()` 只遍历已缓存的 parquet，目录一空就什么都不做，会让人误以为"重建完成"；显式传列表才能真正从零开始 |
+| 2026-10-28 | 重建后必须把备份库的**历史行并回**（日期并集、同日以新为准） | 新列表取新浪 spot，停牌股不在列表里（4 只只存在于备份）；5 年窗口起点比旧库首日晚（35 只少 1~13 行）。不并回，回测会悄悄少一段历史 |
+| 2026-10-28 | 重建前把 `bars` 整体**改名备份**而不是删除，且先停应用 | 改名是秒级、可一键回滚；删除无法挽回。停应用是为了让页面不读"半个库"，否则会显示 0 只股票、被误判为坏库 |
 
 ## 8. 常用命令
 
@@ -310,3 +313,19 @@ uv run python scripts/fill_pe_pb.py --dry-run   # 只看覆盖率
 # 注册/重注册 Windows 计划任务（需管理员；不提权可加 -ExportOnly 只生成 XML）
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register_tasks.ps1
 ```
+
+### 从 0 全量重建行情（清洗用，约 16 分钟 / 5576 只）
+
+```powershell
+# 1) 备份旧库（改名，可回滚；先停应用）
+Rename-Item 'data\processed\bars' 'bars_backup_YYYYMMDD'
+New-Item -ItemType Directory 'data\processed\bars'
+# 2) 全量重拉近 5 年（默认 5 年 / 32 线程，实测 5576 只约 15.7 分钟）
+python scripts\rebuild_bars_from_zero.py
+# 3) 把备份库中更早的历史行并回（停牌股整份回填；自动选最新 bars_backup_*）
+python scripts\merge_backup_history.py
+# 4) 刷新体检缓存并复核
+python -m stock_plan.data.freshness --refresh
+```
+
+⚠️ 第 3 步不能省：新浪全市场列表不含停牌股，且 5 年窗口起点晚于旧库首日。
