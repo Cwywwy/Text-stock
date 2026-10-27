@@ -17,14 +17,65 @@ from __future__ import annotations
 from datetime import date
 
 
-def get_stock_announcements(code: str, page_size: int = 20) -> list[dict]:
+def get_stock_announcements(
+    code: str, page_size: int = 50, days: int | None = None
+) -> list[dict]:
     """获取个股公告时间线（东方财富公告接口）。
+
+    参数：
+        page_size: 取回条数（接口上限约 100，超出会被服务端截断）。
+        days: 只要最近 N 天内的公告；None 表示不按时间过滤。
 
     返回字段：title, time, source, url, content
     """
     from stock_plan.data.fetcher import DataFetcher
 
-    return DataFetcher().get_news(code, page_size)
+    return DataFetcher().get_news(code, page_size=page_size, days=days)
+
+
+def resolve_stock(text: str) -> tuple[str | None, str | None, list[tuple[str, str]]]:
+    """把用户输入的"股票代码或名称"解析为 (代码, 名称, 候选列表)。
+
+    规则：
+    - 6 位纯数字 → 直接当代码用，名称从本地列表补齐
+    - 否则按名称匹配：先精确匹配，再子串匹配
+    - 子串命中多只时返回候选，由调用方让用户选，不猜（避免查错股票）
+    - 本地列表不可用时，6 位数字仍可用，名称无法解析
+    """
+    from stock_plan.data.storage import Storage
+
+    text = (text or "").strip()
+    if not text:
+        return None, None, []
+
+    try:
+        listing = Storage().load_stock_list()
+    except Exception:
+        listing = None
+
+    if listing is None or listing.empty:
+        return (text if (text.isdigit() and len(text) == 6) else None), None, []
+
+    codes = listing["code"].astype(str)
+    names = listing["name"].astype(str)
+
+    if text.isdigit() and len(text) == 6:
+        hit = listing[codes == text]
+        return text, (str(hit["name"].iloc[0]) if not hit.empty else None), []
+
+    exact = listing[names == text]
+    if not exact.empty:
+        row = exact.iloc[0]
+        return str(row["code"]), str(row["name"]), []
+
+    part = listing[names.str.contains(text, case=False, na=False, regex=False)]
+    if part.empty:
+        return None, None, []
+
+    candidates = [(str(r["code"]), str(r["name"])) for _, r in part.head(20).iterrows()]
+    if len(candidates) == 1:
+        return candidates[0][0], candidates[0][1], []
+    return None, None, candidates
 
 
 def get_market_news(limit: int = 50) -> list[dict]:

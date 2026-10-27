@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="全 A 股数据拉取")
     parser.add_argument("--limit", type=int, default=0, help="只拉前 N 只（0=全部，测试用）")
     parser.add_argument("--years", type=int, default=5, help="拉取近 N 年日线（默认 5）")
-    parser.add_argument("--workers", type=int, default=8, help="并发线程数（默认 8）")
+    parser.add_argument("--workers", type=int, default=16, help="并发线程数（默认 16）")
     parser.add_argument(
         "--force", action="store_true", help="强制重新拉取（默认跳过已有缓存）"
     )
@@ -67,7 +67,14 @@ def main() -> None:
         try:
             bars = fetcher.get_daily_bars(code, start, end)
             storage.save_bars(code, bars)
-            fin = fetcher.get_fundamentals(code)
+            # 必须传最新收盘价，否则 pe/pb 算不出来（2026-10-28 修正：原先不传 →
+            # 全表 NULL → 估值分恒 50，价值类策略"便宜"这一维一直是死的）
+            latest_price = (
+                float(bars["close"].iloc[-1])
+                if bars is not None and not bars.empty
+                else None
+            )
+            fin = fetcher.get_fundamentals(code, latest_price=latest_price)
             storage.save_fundamentals(code, fin)
             return code, True, ""
         except Exception as e:  # 单只失败不影响整体

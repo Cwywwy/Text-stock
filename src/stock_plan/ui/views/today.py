@@ -14,7 +14,12 @@ from __future__ import annotations
 import streamlit as st
 
 from stock_plan.signal.generator import Signal, generate_signals
-from stock_plan.ui.widgets import board_filter_ui, page_glossary
+from stock_plan.ui.widgets import (
+    board_filter_ui,
+    industry_filter_ui,
+    market_regime_panel,
+    page_glossary,
+)
 
 # 本页名词速览（R2 亲民化）
 TODAY_GLOSSARY = {
@@ -54,13 +59,18 @@ def _get_strategy(name: str, params: dict | None = None):
 @st.cache_data(ttl=600, show_spinner="正在生成信号…")
 def _cached_signals(
     strategy_name: str, top_n: int, params_json: str, config_json: str,
-    boards_json: str = "[]", exclude_st: bool = True,
+    boards_json: str = "[]", exclude_st: bool = True, industries_json: str = "[]",
 ):
-    """带缓存的信号生成（10 分钟内不重复计算）。"""
+    """带缓存的信号生成（10 分钟内不重复计算）。
+
+    `industries_json` 加在最后并带默认值：这样既有调用与缓存键不受影响，
+    也避免"忘了传行业"时静默变成全行业。
+    """
     import json
 
     params = json.loads(params_json) if params_json else None
     boards = json.loads(boards_json)
+    industries = json.loads(industries_json) if industries_json else []
     if strategy_name == "自定义策略":
         from stock_plan.strategy.custom import CustomStrategy
 
@@ -83,7 +93,8 @@ def _cached_signals(
                 return []
             return [Signal(**signal) for signal in published.get("signals", [])[:top_n]]
     return generate_signals(
-        strategy=strategy, top_n=top_n, boards=boards, exclude_st=exclude_st
+        strategy=strategy, top_n=top_n, boards=boards, exclude_st=exclude_st,
+        industries=industries,
     )
 
 
@@ -195,9 +206,15 @@ def render():
     st.caption("基于最新缓存数据，按策略打分选出 Top 标的，输出目标买入/卖出价与止损位。")
     page_glossary(TODAY_GLOSSARY)
 
+    # 市场阶段（暂时需求 6）：先看大盘处于什么阶段，再决定用哪类策略与仓位
+    market_regime_panel()
+    st.divider()
+
     # 板块筛选（R5：自定义股票板块 + 剔除 ST）
     st.markdown("**选股范围**")
     boards, exclude_st = board_filter_ui("today")
+    # 行业筛选（暂时需求 3）：用申万一级行业把策略限定在某个赛道里
+    industries = industry_filter_ui("today")
 
     # 策略选择
     from stock_plan.strategy import store
@@ -247,6 +264,7 @@ def render():
                     json.dumps(config, ensure_ascii=False),
                     json.dumps(boards, ensure_ascii=False),
                     exclude_st,
+                    json.dumps(industries, ensure_ascii=False),
                 )
                 if signals:
                     all_groups[label] = signals
@@ -267,6 +285,7 @@ def render():
                 json.dumps(config, ensure_ascii=False),
                 json.dumps(boards, ensure_ascii=False),
                 exclude_st,
+                json.dumps(industries, ensure_ascii=False),
             )
             if not signals:
                 st.warning("未生成信号。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")

@@ -11,6 +11,7 @@ wheels/
 
 # Secrets
 .env
+.streamlit/secrets.toml
 streamlit_out.log
 streamlit_err.log
 *.log
@@ -19,6 +20,19 @@ streamlit_err.log
 data/raw/
 data/processed/
 data/db/
+data/logs/
+
+# 快照发布临时 worktree
+.snapshot_worktree/
+# 快照构建/恢复的临时分卷目录（350MB 级，2026-10-28 实测会以未跟踪形式冒出）
+data/snapshot_tmp/
+
+# 旧分支工作副本（嵌套 git 仓库，不应随主仓库分发）
+# 原先以 gitlink（mode 160000）被跟踪且没有 .gitmodules，clone 后只会得到一个空目录
+Text/
+
+# 计划任务旧版本备份（一次性产物，不入库）
+scripts/backup/
 
 # 快照发布临时 worktree
 .snapshot_worktree/

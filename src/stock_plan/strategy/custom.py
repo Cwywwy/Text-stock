@@ -150,24 +150,13 @@ class CustomStrategy(Strategy):
 def build_custom_factor_rows(
     codes: list[str], bars_map: dict[str, pd.DataFrame], fund_map: dict[str, dict]
 ) -> pd.DataFrame:
-    """为自定义策略构建因子行（含 mom_ret 与自定义均线列 ma5/7/10/30）。"""
-    rows = build_factor_rows(codes, bars_map, fund_map)
-    if rows.empty:
-        return rows
-    # 补充 mom_ret（近 20 日涨幅）与自定义均线列（ma20/ma60 已含）
-    mom = []
-    for code in rows["code"]:
-        bars = bars_map.get(code)
-        if bars is None or len(bars) < 21:
-            mom.append(0.0)
-            continue
-        mom.append(float(bars["close"].iloc[-1] / bars["close"].iloc[-21] - 1))
-    rows["mom_ret"] = mom
-    for p in (5, 7, 10, 30):
-        rows[f"ma{p}"] = [
-            float(bars_map[code]["close"].iloc[-p:].mean())
-            if code in bars_map and not bars_map[code].empty
-            else float("nan")
-            for code in rows["code"]
-        ]
-    return rows
+    """（已冗余，保留仅为兼容）为自定义策略构建因子行。
+
+    2026-10-15：`build_factor_rows` 已经补齐了 `mom_ret` 与 `ma5/7/10/30`
+    （见该函数里的说明），因此本函数现在只是转发。原先它是唯一补齐这些列的地方，
+    但**从未被调用**（`visual_builder.py` 只导入过名字，未使用；该无用导入已删除），
+    结果自定义策略的动量/偏离规则在实盘被静默跳过。
+
+    保留函数本身是为了不破坏可能的外部引用；新代码请直接用 `build_factor_rows`。
+    """
+    return build_factor_rows(codes, bars_map, fund_map)

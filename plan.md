@@ -480,17 +480,20 @@ simulator.on_signal_batch(signals)                   # 模拟交易记录
 # 安装 uv（Windows PowerShell）
 irm https://astral.sh/uv/install.ps1 | iex
 
-# 创建项目
-cd d:\Vscode\stock plan
-uv sync                          # 安装依赖
-uv run python -m src.data.fetcher --init   # 首次全量拉取数据
+# 创建项目（路径按你本机实际位置替换）
+cd "D:\DeepSeekHarness\案例区\stock plan"
+uv sync                                    # 安装依赖
+uv run python -m stock_plan.data.fetch_all # 首次全量拉取日线 + 财务
 ```
 
 ### 每日使用
 ```bash
-uv run streamlit run src/ui/app.py
+uv run streamlit run src/stock_plan/ui/app.py
 # 浏览器打开 http://localhost:8501
 # 点击「今日信号」 → 点击「生成今日信号」按钮
+
+# 盘后更新数据（幂等，已最新则秒退）；--rebuild 为全历史重建
+uv run python -m stock_plan.data.update_daily
 ```
 
 ### 自定义策略
@@ -630,5 +633,12 @@ uv run streamlit run src/ui/app.py
 | 2026-09-03 | Phase 15 云端部署准备（分支1） | ✅ 完成：①requirements.txt（本地验证版本固定）供 Streamlit Community Cloud②llm/config.py 加 st.secrets 回退（云端 Key 走 Secrets）③update_center 页按平台显示说明（非 Windows 提示手动更新）④空数据提示统一指向「数据更新」页⑤修复今日信号/回测页选未编辑参数策略时 `{**None}` TypeError 崩溃（saved 兜底 `{}`）⑥README 云端部署章节。部署操作（需用户 GitHub 授权）：share.streamlit.io → 仓库 Cwywwy/Text-stock 分支1 → 主文件 src/stock_plan/ui/app.py → Python 3.13 |
 | 2026-09-04 | Phase 16 云端数据快照持久化（分支1） | ✅ 完成：①核心库 data/snapshot.py——build_snapshot 打包 bars 为单 zip（ZIP_STORED）二进制分卷每卷 90MB + manifest.json（分卷 sha256/整包 zip_sha256）；publish 经 git worktree `--orphan data-snapshot` 单 commit force push（不占仓库历史）；restore_from_url 并发下载+逐卷校验+整包校验+原子替换（失败回滚）；bootstrap_if_needed 启动恢复（bars≥100 跳过）；is_cloud/cloud_secrets_env 云端检测②app.py 启动时数据为空自动从快照恢复（st.status 进度）③更新中心：云端/本机模式徽章、「从云端快照恢复」手动入口、云端轻量参数（workers=3、全量 366 天）④scripts/publish_snapshot.py + .cmd 本机发布 CLI⑤首份快照已发布并验证（5553 只 / 299MB / 4 卷，raw 200）⑥schtasks 注册 \StockPlan\Snapshot_2130 每日 21:30 自动发布⑦9 个快照单测 31/31 通过；Secrets 建议加 STOCK_PLAN_CLOUD=1 |
 
+| 2026-09-03 | Phase 15 云端部署准备（分支1） | ✅ 完成：①requirements.txt（本地验证版本固定，Streamlit Community Cloud 只认它）②llm/config.py 加 `st.secrets` 回退③update_center 按平台显示说明④空数据提示统一指向「数据更新」页⑤修复选中未编辑参数策略时 `{**None}` 抛 TypeError |
+| 2026-10-15 | 数据层并发化与前复权回溯修复 | ✅ 完成：①fetcher 全局锁 → **线程本地 V8 上下文**（只锁"创建"那一步），A/B 实测 24 只×16 线程 19.57s→3.56s，全市场 **75.5→13.7 分钟**；V8 上下文创建 16 次/24 请求/16 线程，证明上下文被复用②新增 **`--rebuild` 全历史重建**（5553 只 9.6 分钟），修正 000001 偏 2.19%、601318 偏 1.74% 的历史偏移③`save_bars` 改原子写④`last_date` 只读 date 列、`cache_exists` 单次分桶、workers 8→16⑤计划任务重写为 `daily_job.ps1` + `register_tasks.ps1` + 3 份 XML⑥pytest 54 passed、12 页 AppTest 全绿 |
+
 > 注：pandas-ta 与 numpy 2.5 冲突（numba 限制 numpy<2.3），技术指标改为**自研**（plan 备选方案）。
 > 注：metrics 的 total_return 等已是百分比数值，显示时直接用 `:.2f`，不要再用 `:.2%` 或 `*100`。
+> 注：**前复权价会在每次分红/送转后回溯改写整段历史**，所以"只补最近 30 天再合并"会让更早的行停留在旧因子。
+> 需定期执行 `--rebuild` 全历史重建（已固化为每月 1 日的 `\StockPlan\Monthly_Rebuild`）。
+> 注：数据源每只股票要发 **3 个串行 HTTP**（日线 blob / outstanding_share / 前复权因子），因此"拉 5 年"与
+> "拉 30 天"的网络成本几乎相同——这正是 `--rebuild` 划算、而"增量省流量"不成立的原因。

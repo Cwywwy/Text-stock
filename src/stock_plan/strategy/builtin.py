@@ -14,6 +14,7 @@ from __future__ import annotations
 import pandas as pd
 
 from stock_plan.factors.filter import filter_universe
+from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.factors.technical import compute_technical
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.scorer import composite_score, fundamental_composite
@@ -132,14 +133,34 @@ def build_factor_rows(
         if factored.empty:
             continue
         last = factored.iloc[-1]
-        # 技术分：趋势综合分；基本面分：三个基本面分数平均
-        fund = fund_map.get(code, {})
+        # 技术分：趋势综合分；基本面分：三个基本面分数平均。
+        # 2026-10-28 修正：这里原本直接把原始财务 dict 交给 fundamental_composite，
+        # 而它读的是 value_score/growth_score/quality_score 三个**算好的键**，读不到就
+        # 回退 50 —— 于是"基本面"在今日信号里恒为 50，权重形同虚设。改走
+        # compute_fundamental_or_neutral 做一次真正的换算（空数据才给中性 50）。
+        fund = compute_fundamental_or_neutral(fund_map.get(code))
         fund_score = fundamental_composite(fund)
         # 近 20 日最高收盘价（供突破策略使用）
         high20 = factored["close"].iloc[-20:].max() if len(factored) >= 20 else last["close"]
         high20_ratio = (last["close"] / high20 - 1) if high20 > 0 else 0.0
         # 近 20 日平均成交额（元，供量价配置的流动性筛选使用）
         avg_amount20 = float(bars["amount"].tail(20).mean()) if "amount" in bars.columns else float("nan")
+        # 近 20 日动量与自定义均线（2026-10-15 审计修正）
+        # ---------------------------------------------------------------
+        # 回测引擎（engine.py）的候选行里带 mom_ret 与 ma5/7/10/30，本函数原先没有，
+        # 于是自定义策略的「动量下限 / 动量加分」与 dev_ma∈{5,7,10,30} 的偏离过滤
+        # 在**今日信号**里被静默跳过、只在回测里生效 —— 两条路径结果不同。
+        # 反之本函数有 avg_amount20/macd/macd_signal 而引擎没有，所以不一致是**双向**的。
+        # 现在把两边的因子列集统一，并由 tests/test_factor_parity.py 锁死。
+        mom_ret = (
+            float(last["close"] / factored["close"].iloc[-21] - 1)
+            if len(factored) >= 21
+            else 0.0
+        )
+        ma_cols = {
+            f"ma{_p}": float(factored["close"].rolling(_p).mean().iloc[-1])
+            for _p in (5, 7, 10, 30)
+        }
         rows.append(
             {
                 "code": code,
@@ -153,11 +174,13 @@ def build_factor_rows(
                 "high20_ratio": high20_ratio,
                 "macd": last["macd"],
                 "macd_signal": last["macd_signal"],
+                "mom_ret": mom_ret,
                 "value_score": fund.get("value_score", 50.0),
                 "growth_score": fund.get("growth_score", 50.0),
                 "quality_score": fund.get("quality_score", 50.0),
                 "trend_score": last["trend_score"],
                 "fund_score": fund_score,
+                **ma_cols,
             }
         )
     return pd.DataFrame(rows)

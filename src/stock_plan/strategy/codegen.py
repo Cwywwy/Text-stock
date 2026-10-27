@@ -57,6 +57,21 @@ def _clip(v, lo, hi):
     return max(lo, min(hi, v))
 
 
+def _one_line(text, limit: int = 60) -> str:
+    """把任意文本压成单行（用于写进注释/代码）。
+
+    为什么必须做：策略名来自用户输入或 LLM 输出，会被拼进生成脚本的注释行。
+    只要里面带一个换行，注释就在下一行断掉，后面的内容会变成**可执行语句**——
+    实测 name="a\\nimport os\\nos.system('calc')" 生成的脚本第 4-5 行是真代码、
+    ast 顶层能解析出 Import。这里统一去掉换行与控制字符，只留单行文本。
+    """
+    s = str(text if text is not None else "")
+    s = s.replace("\r", " ").replace("\n", " ").replace("\t", " ")
+    s = "".join(ch for ch in s if ch.isprintable())
+    s = " ".join(s.split())
+    return s[:limit]
+
+
 def normalize_config(raw: dict) -> tuple[dict, list[str]]:
     """把 LLM 输出清洗为合法 CustomStrategy 配置。
 
@@ -83,7 +98,7 @@ def normalize_config(raw: dict) -> tuple[dict, list[str]]:
             rules_raw.setdefault(k, v)
 
     unknown: list[str] = []
-    config: dict = {"name": str(raw.get("name") or "LLM 生成策略")[:30]}
+    config: dict = {"name": _one_line(raw.get("name") or "LLM 生成策略", 30)}
 
     # ---- weights ----
     weights: dict = {}
@@ -168,7 +183,7 @@ def generate_annotated_code(config: dict) -> str:
     lines: list[str] = []
     lines.append('# -*- coding: utf-8 -*-')
     lines.append(f'# ============================================================')
-    lines.append(f'# 策略名称：{config.get("name", "未命名策略")}')
+    lines.append(f'# 策略名称：{_one_line(config.get("name", "未命名策略"))}')
     lines.append(f'# 导出时间：{date.today().isoformat()}')
     lines.append(f'# 用途：参数快照备注。可在「策略拼装」页按此逐项还原，')
     lines.append(f'#       或配合 stock_plan 库以 CustomStrategy(config) 加载。')

@@ -23,7 +23,7 @@ from stock_plan.backtest.walkforward import walk_forward
 from stock_plan.data.storage import Storage
 from stock_plan.strategy import store
 from stock_plan.strategy.registry import STRATEGIES
-from stock_plan.ui.widgets import board_filter_ui, page_glossary
+from stock_plan.ui.widgets import apply_time_axis, PLOTLY_CONFIG, board_filter_ui, page_glossary
 
 # 本页名词速览（R2 亲民化）
 COMPARE_GLOSSARY = {
@@ -59,19 +59,27 @@ def _cached_compare(
 
     factories = {name: (lambda cls=cls: cls()) for name, cls in STRATEGIES.items()}
     for n in store.list_strategies():
-        if n not in STRATEGIES:  # 已保存策略（LLM 生成/拼装页保存）一并纳入对比
-            factories[n] = lambda n=n: store.resolve_strategy(n)
+        # 已保存策略（LLM 生成/拼装页保存）一并纳入对比。重名时用「（自存）」
+        # 后缀区分，否则用户自存的同名策略会被这一行静默丢掉、只剩内置版本。
+        label = store.display_name(n)
+        factories[label] = lambda label=label: store.resolve_strategy(label)
 
     results = {}
     for name, factory in factories.items():
         strat = factory()
+        # 策略自带的 hold_days 优先于页面滑杆：LLM/拼装页保存时写的"持有 N 天"
+        # 是策略定义的一部分。原先一律用滑杆默认值 30，导致对比里的自存策略
+        # 与它自己的回测结果对不上（一个持 15 天、一个持 30 天）。
+        strat_hold = int((getattr(strat, "params", {}) or {}).get("hold_days") or 0)
         config = BacktestConfig(
             start=date.fromisoformat(start),
             end=date.fromisoformat(end),
             initial_cash=initial_cash,
             rebalance_freq=rebalance_freq,
             market_timing=market_timing,
-            max_hold_days=max_hold_days,
+            max_hold_days=strat_hold or max_hold_days,
+            # 与回测页口径一致：佣金单笔下限 + 财务快照前视修正
+            fundamental_as_of=Storage().fundamentals_snapshot_date(),
         )
         result = run_backtest(strat, config, bars_map, fund_map, stock_list)
         metrics = calc_metrics(result.equity_curve, result.trades)
@@ -140,7 +148,10 @@ def render():
         with col5:
             market_timing = st.checkbox("大盘择时", value=True, key="cmp_timing")
         with col6:
-            max_hold_days = st.number_input("最大持仓天数", 5, 120, 30, step=5, key="cmp_hold")
+            max_hold_days = st.number_input(
+                "最大持仓天数", 5, 120, 30, step=5, key="cmp_hold",
+                help="对**没有**自带 hold_days 的策略生效；保存策略时设过持仓天数的，用策略自己的值。",
+            )
 
         if st.button("▶️ 运行对比", type="primary", key="cmp_run"):
             if start >= end:
@@ -178,7 +189,7 @@ def render():
                 if eq.empty:
                     continue
                 fig.add_trace(go.Scatter(
-                    x=[str(d)[:10] for d in eq.index],
+                    x=pd.to_datetime(eq.index),
                     y=eq.values,
                     mode="lines",
                     name=name,
@@ -186,7 +197,8 @@ def render():
                 ))
             fig.update_layout(height=400, margin=dict(l=40, r=20, t=30, b=30),
                               yaxis_title="资产（元）", xaxis_title="日期")
-            st.plotly_chart(fig, use_container_width=True)
+            apply_time_axis(fig)
+            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
 
     # ============ Tab 2: Walk-Forward ============
     with tab2:
@@ -240,7 +252,7 @@ def render():
                 st.subheader("样本外资金曲线")
                 fig2 = go.Figure()
                 fig2.add_trace(go.Scatter(
-                    x=[str(d)[:10] for d in wf.oos_equity.index],
+                    x=pd.to_datetime(wf.oos_equity.index),
                     y=wf.oos_equity.values,
                     mode="lines",
                     name="样本外资产",
@@ -248,4 +260,5 @@ def render():
                 ))
                 fig2.update_layout(height=350, margin=dict(l=40, r=20, t=30, b=30),
                                    yaxis_title="资产（元）", xaxis_title="日期")
-                st.plotly_chart(fig2, use_container_width=True)
+                apply_time_axis(fig2)
+                st.plotly_chart(fig2, use_container_width=True, config=PLOTLY_CONFIG)

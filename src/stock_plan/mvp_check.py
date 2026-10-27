@@ -9,6 +9,10 @@
     2. 信号层：今日 Top5 信号
     3. 回测层：绩效指标
     4. 模拟交易：账户快照
+
+Revision History:
+    2026-10-15  修正第 66 行起 5 行代码的多余缩进（IndentationError，导致整个模块
+                无法导入/运行；compileall 会直接报错）
 """
 from __future__ import annotations
 
@@ -65,11 +69,11 @@ def main() -> None:
 
     end = date.today()
     start = end - timedelta(days=365)
-        # 使用回测验证出的最优配置：每周选股 + 大盘择时 + 30 天持仓
-        config = BacktestConfig(
-            start=start, end=end, rebalance_freq="weekly", max_hold_days=30, market_timing=True
-        )
-        result = run_backtest(TrendFollowingStrategy(), config, bars_map, fund_map, stock_list)
+    # 使用回测验证出的最优配置：每周选股 + 大盘择时 + 30 天持仓
+    config = BacktestConfig(
+        start=start, end=end, rebalance_freq="weekly", max_hold_days=30, market_timing=True
+    )
+    result = run_backtest(TrendFollowingStrategy(), config, bars_map, fund_map, stock_list)
     metrics = calc_metrics(result.equity_curve, result.trades)
     if metrics:
         print(f"  交易日数: {len(result.equity_curve)}")

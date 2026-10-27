@@ -31,6 +31,15 @@ def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
 
     公式：RSI = 100 - 100 / (1 + RS)，其中 RS = 平均涨幅 / 平均跌幅。
     平均涨幅/跌幅用 EMA 平滑（Wilder 方法）。
+
+    边界处理（2026-10-15 修正）：
+    - 窗口内**只涨不跌**（avg_loss == 0）时 RS 无定义，但 RSI 的极限值是 **100**。
+      原实现靠 `fillna(50)` 兜底，会把"连续涨停"这种最强动量填成**中性的 50**，
+      而 trend_score 的 RSI 条件是「50 ≤ rsi ≤ 70（+20 分）」—— 于是这些股票
+      反而白拿 20 分。实测影响面 590 / 7,472,101 股票-日（0.0079%），集中在次新股
+      上市初期的连续涨停段。
+    - 只跌不涨时 RS = 0 → RSI = 0，本来就正确。
+    - 仍保留 `fillna(50)`：仅用于**预热期**（样本不足 14 天，avg 为 NaN）的中性占位。
     """
     delta = close.diff()
     gain = delta.clip(lower=0)  # 只保留上涨部分
@@ -39,7 +48,9 @@ def _rsi(close: pd.Series, period: int = 14) -> pd.Series:
     avg_loss = loss.ewm(alpha=1 / period, min_periods=period).mean()
     rs = avg_gain / avg_loss.replace(0, pd.NA)  # 避免除零
     rsi = 100 - 100 / (1 + rs)
-    return rsi.fillna(50)  # 无数据时用中性值 50
+    # 有涨无跌 → 极限值为 100（不能用中性的 50 掩盖）
+    rsi = rsi.mask((avg_loss == 0) & (avg_gain > 0), 100.0)
+    return rsi.fillna(50)  # 仅预热期用中性值
 
 
 def _atr(df: pd.DataFrame, period: int = 14) -> pd.Series:

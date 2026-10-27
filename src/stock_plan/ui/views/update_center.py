@@ -188,6 +188,86 @@ def _cloud_badge() -> None:
         st.success("🖥️ **本机完整模式**：本机为数据权威源，可发布快照供云端恢复。")
 
 
+def _run_extra_source(label: str, args: list[str], timeout: int) -> None:
+    """以子进程跑一个新数据源的抓取命令，并把结果存进 session_state。
+
+    为什么用子进程而不是直接 import 调用：这几个模块都依赖 akshare 的网络抓取，
+    akshare 会在异常路径上卡住（实测没有 timeout 会挂十几分钟），
+    子进程可以用 `timeout` 硬性兜底，卡死也只损失一个子进程，不会把页面拖死。
+    为什么结果放 session_state 再显示：Streamlit 点按钮即整页重跑，
+    只 `st.success` 的话下次重跑就消失（项目里踩过的坑）。
+    """
+    with st.spinner(f"正在抓取{label}（最长 {timeout} 秒）…"):
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", *args],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout, cwd=str(PROJECT_ROOT),
+            )
+            tail = "\n".join((proc.stdout or "").splitlines()[-15:])
+            ok = proc.returncode == 0
+            if not ok:
+                tail += "\n" + "\n".join((proc.stderr or "").splitlines()[-10:])
+        except subprocess.TimeoutExpired:
+            ok, tail = False, f"超时（>{timeout}s），已终止子进程。网络可能不稳定，稍后重试。"
+        except Exception as e:  # noqa: BLE001
+            ok, tail = False, f"启动失败：{e}"
+    st.session_state["extra_src_result"] = {"label": label, "ok": ok, "tail": tail}
+
+
+def _extra_sources_panel() -> None:
+    """新数据源（分类/情绪/公告）的手动更新入口。"""
+    st.subheader("🗂️ 分类 / 情绪 / 公告数据")
+    st.caption(
+        "行情以外的三类补充数据。它们**不参与历史回测**，只用于选股过滤、盘面研判与公告查阅。"
+        "分类快照按月一份即可（行业归属一个月内基本不变），情绪快照与公告按天抓。"
+    )
+
+    # 当前状态（读不到就跳过，不能让页面崩）
+    col1, col2, col3 = st.columns(3)
+    try:
+        from stock_plan.data import market_snapshot as ms
+
+        days = ms.available_days()
+        col1.metric("情绪快照（日）", f"{len(days)} 天", days[-1] if days else "尚无")
+    except Exception as e:  # noqa: BLE001
+        col1.metric("情绪快照（日）", "读取失败", help=str(e))
+    try:
+        from stock_plan.data import classification as clf
+
+        months = clf.available_months()
+        col2.metric("分类快照（月）", f"{len(months)} 个月", months[-1] if months else "尚无")
+    except Exception as e:  # noqa: BLE001
+        col2.metric("分类快照（月）", "读取失败", help=str(e))
+    try:
+        from stock_plan.data import announcements as ann
+
+        s = ann.stats()
+        col3.metric("公告存档", f"{s['rows']} 条", f"{s['codes']} 只股票")
+    except Exception as e:  # noqa: BLE001
+        col3.metric("公告存档", "读取失败", help=str(e))
+
+    b1, b2, b3 = st.columns(3)
+    if b1.button("📈 抓今日情绪/资金流", key="btn_snap_market", use_container_width=True,
+                 help="涨停池、炸板池、跌停池 + 行业/概念/个股资金流，约 12 秒"):
+        _run_extra_source("市场情绪快照", ["stock_plan.data.market_snapshot"], 240)
+    if b2.button("🏷️ 抓本月分类快照", key="btn_snap_classify", use_container_width=True,
+                 help="申万一级/二级成分 + 证监会行业 + 同花顺概念，约 2~3 分钟"):
+        _run_extra_source("分类快照", ["stock_plan.data.classification", "--all"], 900)
+    if b3.button("📰 抓持仓/自选公告", key="btn_snap_ann", use_container_width=True,
+                 help="回溯 7 天，按持仓 + 自选清单抓，去重入库"):
+        _run_extra_source("公告", ["stock_plan.data.announcements", "--days", "7"], 600)
+
+    res = st.session_state.get("extra_src_result")
+    if res:
+        if res["ok"]:
+            st.success(f"{res['label']}：完成")
+        else:
+            st.error(f"{res['label']}：失败")
+        with st.expander("查看命令输出", expanded=not res["ok"]):
+            st.code(res["tail"] or "（无输出）", language="text")
+
+
 def _restore_from_snapshot() -> None:
     """手动从 GitHub data-snapshot 分支恢复行情数据（带进度显示）。"""
     from stock_plan.data.snapshot import BARS_DIR, PROJECT_ROOT, raw_base_url, restore_from_url
@@ -251,6 +331,9 @@ def render() -> None:
 
     # 运行中：实时进度条；刚完成：结果 + 未缓存补拉入口（均在 fragment 内自动刷新）
     _update_panel()
+
+    st.divider()
+    _extra_sources_panel()
 
     st.divider()
     _render_log_tail()

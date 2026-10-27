@@ -19,8 +19,8 @@ import streamlit as st
 from stock_plan.backtest.engine import BacktestConfig, run_backtest
 from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.data.storage import Storage
-from stock_plan.strategy.custom import CustomStrategy, build_custom_factor_rows
-from stock_plan.ui.widgets import board_filter_ui, equity_curve_fig, page_glossary
+from stock_plan.strategy.custom import CustomStrategy
+from stock_plan.ui.widgets import PLOTLY_CONFIG, board_filter_ui, equity_curve_fig, page_glossary
 
 # 本页名词速览（R2 亲民化）
 BUILDER_GLOSSARY = {
@@ -62,6 +62,8 @@ def _cached_custom_backtest(
         rebalance_freq=rebalance_freq,
         market_timing=market_timing,
         max_hold_days=strategy.params["hold_days"],
+        # 与回测页口径一致：财务数据只有一份当前快照，快照日之前中性化，避免前视
+        fundamental_as_of=Storage().fundamentals_snapshot_date(),
     )
     result = run_backtest(strategy, bt_config, bars_map, fund_map, stock_list)
     metrics = calc_metrics(result.equity_curve, result.trades)
@@ -240,7 +242,7 @@ def render():
             st.caption("蓝线 = 累计收益率（从第一天算起赚/亏百分之几）；红色阴影 = 中途回撤的深度。")
             fig_ret = equity_curve_fig(result.equity_curve)
             if fig_ret is not None:
-                st.plotly_chart(fig_ret, use_container_width=True)
+                st.plotly_chart(fig_ret, use_container_width=True, config=PLOTLY_CONFIG)
 
             if result.trades is not None and not result.trades.empty:
                 st.dataframe(result.trades.tail(20), use_container_width=True, hide_index=True)
