@@ -126,6 +126,40 @@ def compute_fundamental(fin: dict[str, Any]) -> dict[str, float]:
     }
 
 
+# 中性基本面分：三档都取 50（打分区间 0-100 的中点）。
+# 2026-10-28 新增：回测把快照日**之前**的财务因子中性化时传空 dict，用这组值
+# 表示"这一天没有可用的财务信息"，与"财务数据缺失"（compute_fundamental 会给 30 分）
+# 区分开 —— 30 分是**利空**，50 分才是**无信息**，两者混用会让选股系统性偏向有数据的股票。
+NEUTRAL_FUNDAMENTAL: dict[str, float] = {
+    "value_score": 50.0,
+    "growth_score": 50.0,
+    "quality_score": 50.0,
+}
+
+
+def compute_fundamental_or_neutral(fin: dict[str, Any] | None) -> dict[str, float]:
+    """把财务指标 dict 转成三档分数；空数据返回中性 50 分。
+
+    为什么需要这个包装：`fundamental_composite` 与各策略读的是 **value_score /
+    growth_score / quality_score** 这三个**算好的分数键**，而 `Storage.load_fundamentals`
+    返回的是 **roe/revenue_growth/... 原始指标**。历史上两条路径都直接拿原始 dict 去读
+    分数键，缺失时一律回退 50 —— 于是财务因子在实际运行中恒等于 50（2026-10-28 实测
+    578 只股票 fund_score 全部为 50.0，唯一取值），"技术 0.6 + 基本面 0.4"里的基本面
+    权重实际不起作用。本函数负责做这一步转换，两条路径（今日信号 / 回测）共用。
+    """
+    if not fin:
+        return dict(NEUTRAL_FUNDAMENTAL)
+    # 兼容"已经是算好的分数 dict"的调用方（历史数据/测试桩）：三个分数键齐全且
+    # 没有任何原始指标时原样返回。否则会把 {'value_score': 90} 这类输入重新按缺失
+    # 指标算成 50 —— 静默抹掉分数，是最难查的一类回归。
+    score_keys = ("value_score", "growth_score", "quality_score")
+    raw_keys = ("roe", "revenue_growth", "net_profit_growth", "gross_margin",
+                "debt_ratio", "pe", "pb")
+    if all(k in fin for k in score_keys) and not any(k in fin for k in raw_keys):
+        return {k: float(fin[k]) for k in score_keys}
+    return compute_fundamental(fin)
+
+
 if __name__ == "__main__":
     # 简单自测：用浦发银行财务数据计算基本面分数
     from stock_plan.data.storage import Storage

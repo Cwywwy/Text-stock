@@ -14,6 +14,7 @@ from __future__ import annotations
 import pandas as pd
 
 from stock_plan.factors.filter import filter_universe
+from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.factors.technical import compute_technical
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.scorer import composite_score, fundamental_composite
@@ -132,8 +133,12 @@ def build_factor_rows(
         if factored.empty:
             continue
         last = factored.iloc[-1]
-        # 技术分：趋势综合分；基本面分：三个基本面分数平均
-        fund = fund_map.get(code, {})
+        # 技术分：趋势综合分；基本面分：三个基本面分数平均。
+        # 2026-10-28 修正：这里原本直接把原始财务 dict 交给 fundamental_composite，
+        # 而它读的是 value_score/growth_score/quality_score 三个**算好的键**，读不到就
+        # 回退 50 —— 于是"基本面"在今日信号里恒为 50，权重形同虚设。改走
+        # compute_fundamental_or_neutral 做一次真正的换算（空数据才给中性 50）。
+        fund = compute_fundamental_or_neutral(fund_map.get(code))
         fund_score = fundamental_composite(fund)
         # 近 20 日最高收盘价（供突破策略使用）
         high20 = factored["close"].iloc[-20:].max() if len(factored) >= 20 else last["close"]

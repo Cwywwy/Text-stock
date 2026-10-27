@@ -14,6 +14,7 @@ from __future__ import annotations
 import pandas as pd
 
 from stock_plan.factors.filter import filter_universe
+from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.factors.technical import compute_technical
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.scorer import composite_score, fundamental_composite
@@ -123,7 +124,8 @@ def build_factor_rows(
         if factored.empty:
             continue
         last = factored.iloc[-1]
-        fund = fund_map.get(code, {})
+        # 2026-10-28：与 build_factor_rows 同步修正——原始财务 dict 必须先换算成分数
+        fund = compute_fundamental_or_neutral(fund_map.get(code))
         fund_score = fundamental_composite(fund)
         # 近 N 日动量
         mom_period = MomentumStrategy.params["mom_period"]

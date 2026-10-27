@@ -45,6 +45,7 @@ def _cached_backtest(
     params_json: str, rebalance_freq: str, market_timing: bool, max_hold_days: int,
     boards_json: str = "[]", exclude_st: bool = True,
     commission_w: float = 3.0, stamp_tax_w: float = 10.0, slippage_w: float = 10.0,
+    min_commission: float = 5.0,
     include_delisted: bool = False, config_sig: str = "",
 ):
     """带缓存回测（10 分钟内不重复计算）。
@@ -87,6 +88,11 @@ def _cached_backtest(
         commission=commission_w / 10_000,
         stamp_tax=stamp_tax_w / 10_000,
         slippage=slippage_w / 10_000,
+        # 佣金单笔下限：券商 5 元起收，小额单不设下限会把成本算少一个数量级
+        min_commission=min_commission,
+        # 财务数据只有一份当前快照（没有报告期），快照日之前必须中性化，
+        # 否则等于用今天抓到的财报回测去年行情（前视）。取不到日期就不修正。
+        fundamental_as_of=Storage().fundamentals_snapshot_date(),
     )
     result = run_backtest(strategy, config, bars_map, fund_map, stock_list)
     metrics = calc_metrics(result.equity_curve, result.trades)
@@ -408,11 +414,19 @@ def render():
 
     # 交易成本（暂时需求 5）：原先佣金万三 / 印花税千一 / 滑点千一是写死的，用户改不了
     with st.expander("💰 交易成本设置（佣金 / 印花税 / 滑点）", expanded=False):
-        cc1, cc2, cc3 = st.columns(3)
+        cc1, cc2, cc3, cc4 = st.columns(4)
         with cc1:
             commission_w = st.number_input(
                 "佣金（万分之）", 0.0, 100.0, 3.0, step=0.5,
-                help="买卖都收。万分之三 = 每 1 万元成交收 3 元。多数券商在万 1～万 3（此处未模拟最低 5 元起收）。",
+                help="买卖都收。万分之三 = 每 1 万元成交收 3 元。多数券商在万 1～万 3。",
+            )
+        with cc4:
+            min_commission = st.number_input(
+                "单笔佣金下限（元）", 0.0, 50.0, 5.0, step=1.0,
+                help=(
+                    "券商普遍「5 元起收」：买 1 万元按万三只有 3 元，实际收 5 元。"
+                    "设为 0 表示不设下限（会把小额单的成本算少）。"
+                ),
             )
         with cc2:
             stamp_tax_w = st.number_input(
@@ -473,6 +487,7 @@ def render():
                 float(commission_w),
                 float(stamp_tax_w),
                 float(slippage_w),
+                float(min_commission),
                 bool(include_delisted),
                 config_sig=config_sig,
             )
@@ -493,6 +508,7 @@ def render():
                     "commission_w": float(commission_w),
                     "stamp_tax_w": float(stamp_tax_w),
                     "slippage_w": float(slippage_w),
+                    "min_commission": float(min_commission),
                     "include_delisted": bool(include_delisted),
                 }
 
