@@ -42,6 +42,10 @@ _LIMIT_GOOD = """                if close <= down:
 _LIMIT_BAD = """                if close >= _up:
                     continue"""
 
+# 2026-10-28 第二轮：审计 #6，策略 exit_price 返回的期望持仓天数原先被丢弃
+_HOLD_GOOD = """            hit_max = hold_days >= pos.get("max_hold_days", config.max_hold_days)"""
+_HOLD_BAD = """            hit_max = hold_days >= config.max_hold_days"""
+
 
 # ----------------------------------------------------------------------------- worker
 def worker(strategy_name: str, no_min_commission: bool, no_fund_asof: bool) -> int:
@@ -110,7 +114,16 @@ def main() -> int:
     print(f"样本区间 {START} ~ {END}，最多 {MAX_CODES} 只，真实本地行情\n")
 
     rows = []
-    for strategy in ("趋势跟随策略", "价值投资策略"):
+    # 均值回归策略自带 hold_days=15，比引擎默认上限 20 短，是最能体现 #6 的策略；
+    # 其余内置策略 hint（20/30/60/90）≥ 20，默认配置下取小后不变。
+    all_variants = [
+        ("佣金下限 5 元去掉", dict(no_min_commission=True)),
+        ("财务快照不做前视修正", dict(no_fund_asof=True)),
+        ("候选池不截到开始日", dict(patch=(_POOL_GOOD, _POOL_BAD))),
+        ("涨跌停判回旧方向", dict(patch=(_LIMIT_GOOD, _LIMIT_BAD))),
+    ]
+    hold_variant = ("策略持仓天数被忽略（#6）", dict(patch=(_HOLD_GOOD, _HOLD_BAD)))
+    for strategy in ("趋势跟随策略", "价值投资策略", "均值回归策略"):
         base = _run_subprocess(f"{strategy} 新版基线", strategy)
         if base is None:
             return 1
@@ -119,12 +132,7 @@ def main() -> int:
               f"胜率 {base['win_rate']:.2f}%（样本 {base['codes']} 只）")
         rows.append((strategy, "新版（全部修复）", base))
 
-        variants = [
-            ("佣金下限 5 元去掉", dict(no_min_commission=True)),
-            ("财务快照不做前视修正", dict(no_fund_asof=True)),
-            ("候选池不截到开始日", dict(patch=(_POOL_GOOD, _POOL_BAD))),
-            ("涨跌停判回旧方向", dict(patch=(_LIMIT_GOOD, _LIMIT_BAD))),
-        ]
+        variants = all_variants + [hold_variant] if strategy == "均值回归策略" else all_variants
         for label, kwargs in variants:
             m = _run_subprocess(label, strategy, **kwargs)
             if m is None:

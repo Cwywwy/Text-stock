@@ -40,7 +40,17 @@ class _FixedStrategy(Strategy):
         return round(row["close"] + 1.0 * atr, 2)
 
     def exit_price(self, entry, atr):
-        return round(entry + 3.0 * atr, 2), round(entry - 1.5 * atr, 2), 10
+        return round(entry + 3.0 * atr, 2), round(entry - 1.5 * atr, 2), int(self.params["hold_days"])
+
+
+class _LongHoldStrategy(_FixedStrategy):
+    """期望持仓 200 天：让"涨跌停能否卖出""佣金下限"这类测试只产生 1 笔完整买卖。
+
+    2026-10-28 起引擎会采用策略自带的 hold_days（审计 #6），默认的 10 天会让
+    这些测试在 200 天窗口里反复换仓，所以显式拉长。
+    """
+
+    params = {**_FixedStrategy.params, "hold_days": 200}
 
 
 def _bars(closes: list[float], start: str = "2025-01-01") -> pd.DataFrame:
@@ -102,7 +112,7 @@ def test_跌停日卖不出_顺延到次日():
     cfg = BacktestConfig(start=bars["000001"]["date"].iloc[0].date(),
                          end=bars["000001"]["date"].iloc[-1].date(), top_n=1,
                          max_hold_days=200)
-    res = _run(bars, cfg)
+    res = _run(bars, cfg, _LongHoldStrategy())
 
     trades = res.trades
     assert len(trades) >= 1
@@ -125,7 +135,7 @@ def test_涨停日可以卖出_止盈不被拖延():
     cfg = BacktestConfig(start=bars["000001"]["date"].iloc[0].date(),
                          end=bars["000001"]["date"].iloc[-1].date(), top_n=1,
                          max_hold_days=200)
-    res = _run(bars, cfg)
+    res = _run(bars, cfg, _LongHoldStrategy())
 
     trades = res.trades
     assert len(trades) >= 1
@@ -154,7 +164,7 @@ def test_单笔佣金有下限_小额单每边多收五元():
             start=first, end=last, top_n=1, max_hold_days=200,
             commission=0.0, stamp_tax=0.0, slippage=0.0, min_commission=floor,
         )
-        res = _run(bars, cfg)
+        res = _run(bars, cfg, _LongHoldStrategy())
         assert len(res.trades) == 1, "口径前置条件：本次场景应只有 1 笔完整买卖"
         # 用成交的 pnl（已扣买卖两边费用）；资金曲线最后一点是"收尾平仓"之前记的，
         # 不含卖出费用，不能用来做这个比较。
@@ -293,3 +303,111 @@ def test_walkforward_透传资金与成本配置(monkeypatch):
         assert cfg.stamp_tax == pytest.approx(0.0005)
         assert cfg.slippage == pytest.approx(0.002)
         assert cfg.min_commission == pytest.approx(0.0)
+
+
+# ---------------- 6~10. 审计剩余项（2026-10-28 第二轮） ----------------
+#
+# 这几条原本被列为「只影响口径、不影响结论」，实测下来至少 #6（持仓天数）会
+# 改变单个策略的历史结果，所以同样配了行为级断言，全部默认关闭时零影响。
+
+class _HoldSpy(_FixedStrategy):
+    """目标价/止损价都远离现价：只会因「超时」离场，专门验证持仓天数口径。"""
+
+    params = {**_FixedStrategy.params, "hold_days": 10}
+
+    def exit_price(self, entry, atr):
+        return round(entry * 2.0, 2), round(entry * 0.5, 2), int(self.params["hold_days"])
+
+
+def _wavy_bars(n: int = 130, base: float = 10.0) -> pd.DataFrame:
+    """小幅震荡、无趋势：既不触发止盈也不触发止损。"""
+    return _bars([base + (i % 3) * 0.02 for i in range(n)])
+
+
+def test_策略自带持仓天数被采用_而不是一律用config上限():
+    """策略 exit_price 返回的期望持仓天数必须生效（审计 #6 说它被直接丢弃）。
+
+    坏版本只认 config.max_hold_days（这里设 200 天），持仓会一路拖到 200 天，
+    断言 max(hold_days) <= 12 立即失败。
+    """
+    bars_map = {"000001": _wavy_bars()}
+    cfg = BacktestConfig(
+        start=date(2025, 1, 1), end=date(2025, 12, 31),
+        initial_cash=100_000.0, top_n=1, max_hold_days=200, min_commission=0.0,
+    )
+    res = _run(bars_map, cfg, _HoldSpy())
+    assert not res.trades.empty, "没有成交，测试素材失效"
+    assert (res.trades["reason"] == "超时").any()
+    # 10 个自然日 ≤ 12（跨一个周末）；坏版本是 200 天
+    assert res.trades["hold_days"].max() <= 12
+
+
+def test_单票仓位上限_默认None时不受影响_开启后每笔不超总资产比例():
+    """`max_position_pct` 是新加的可选约束，默认 None 必须与历史行为一致。"""
+    bars_map = {"000001": _wavy_bars(), "000002": _wavy_bars(), "000003": _wavy_bars()}
+    base = dict(
+        start=date(2025, 1, 1), end=date(2025, 12, 31),
+        initial_cash=100_000.0, top_n=3, max_hold_days=10, min_commission=0.0,
+    )
+    # 默认 None：等分现金（每只 ~3.3 万），远超 5%
+    unlimited = _run(bars_map, BacktestConfig(**base), _HoldSpy())
+    assert (unlimited.trades["shares"] * unlimited.trades["entry_price"]).max() > 10_000
+
+    capped = _run(bars_map, BacktestConfig(**base, max_position_pct=0.05), _HoldSpy())
+    cost_per_trade = capped.trades["shares"] * capped.trades["entry_price"]
+    assert cost_per_trade.max() <= 100_000 * 0.05 * 1.01
+
+
+def test_总仓位上限_开启后同日建仓不超过总资产比例():
+    """`max_total_position_pct` 限制"持仓市值/总资产"。坏版本没有这道闸，首日会买满 5 只。"""
+    codes = [f"00000{i}" for i in range(1, 6)]
+    bars_map = {c: _wavy_bars() for c in codes}
+    cfg = BacktestConfig(
+        start=date(2025, 1, 1), end=date(2025, 12, 31),
+        initial_cash=100_000.0, top_n=5, max_hold_days=10,
+        min_commission=0.0, max_total_position_pct=0.2,
+    )
+    res = _run(bars_map, cfg, _HoldSpy())
+    assert not res.trades.empty
+    first_day = res.trades["entry_date"].min()
+    first_round = res.trades[res.trades["entry_date"] == first_day]
+    spent = (first_round["shares"] * first_round["entry_price"]).sum()
+    assert spent <= 100_000 * 0.2 * 1.02
+    # 20% 总仓 + 每笔等分现金 => 首日只买得起 1 只
+    assert len(first_round) == 1
+
+
+def test_单日成交量占比上限_限制可买股数():
+    """`max_volume_pct` 防"假设市场无限承接"。合成日线 volume=100 万股，限 0.01% => 100 股。"""
+    bars_map = {"000001": _wavy_bars()}
+    cfg = BacktestConfig(
+        start=date(2025, 1, 1), end=date(2025, 12, 31),
+        initial_cash=100_000.0, top_n=1, max_hold_days=10,
+        min_commission=0.0, max_volume_pct=0.0001,
+    )
+    res = _run(bars_map, cfg, _HoldSpy())
+    assert not res.trades.empty
+    assert res.trades["shares"].max() == 100
+
+
+def test_买卖两端滑点口径对称_买入价记实际成交价():
+    """审计 #9：原实现买入记策略报价、卖出记含滑点成交价，逐笔盈亏偏高。
+
+    现在两端都记实际成交价：买入价 = 报价×(1+滑点)、卖出价 = 收盘×(1-滑点)。
+    同一份行情、同一策略，滑点 0.2% 的买入价必须是滑点 0 的 1.002 倍。
+    """
+    bars_map = {"000001": _wavy_bars()}
+    base = dict(
+        start=date(2025, 1, 1), end=date(2025, 12, 31),
+        initial_cash=100_000.0, top_n=1, max_hold_days=10, min_commission=0.0,
+    )
+    no_slip = _run(bars_map, BacktestConfig(**base, slippage=0.0), _HoldSpy())
+    with_slip = _run(bars_map, BacktestConfig(**base, slippage=0.002), _HoldSpy())
+    assert len(no_slip.trades) == len(with_slip.trades), "滑点不该改变成交笔数（本素材只超时离场）"
+    ratio = with_slip.trades["entry_price"].iloc[0] / no_slip.trades["entry_price"].iloc[0]
+    # 容差必须收紧到 5e-4：最初写 rel=2e-3 时 1.000 也落在区间里，
+    # 反向验证实测"改回记策略报价"仍通过（空转守卫），收紧后才有判别力。
+    assert ratio == pytest.approx(1.002, abs=5e-4)
+    # 两端都吃滑点，总盈亏必然更差
+    assert with_slip.trades["pnl"].sum() < no_slip.trades["pnl"].sum()
+

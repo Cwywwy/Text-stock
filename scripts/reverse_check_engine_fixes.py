@@ -105,6 +105,52 @@ CASES = [
 }""",
         "tests/test_fundamental_factor.py::test_无数据是中性50而非利空30",
     ),
+    # ---- 2026-10-28 第二轮：审计剩余项（#6/#7/#8/#9）----
+    (
+        "策略自带的持仓天数被丢弃（一律用 config 上限）",
+        ENGINE,
+        """            hit_max = hold_days >= pos.get("max_hold_days", config.max_hold_days)""",
+        """            hit_max = hold_days >= config.max_hold_days""",
+        "tests/test_engine_defects.py::test_策略自带持仓天数被采用_而不是一律用config上限",
+    ),
+    (
+        "没有单票仓位上限",
+        ENGINE,
+        """                if config.max_position_pct is not None:
+                    budget = min(budget, equity_now * config.max_position_pct)""",
+        """                if False:
+                    budget = min(budget, equity_now * config.max_position_pct)""",
+        "tests/test_engine_defects.py::test_单票仓位上限_默认None时不受影响_开启后每笔不超总资产比例",
+    ),
+    (
+        "没有总仓位上限（可以满仓甚至超过）",
+        ENGINE,
+        """                if config.max_total_position_pct is not None:
+                    room = equity_now * config.max_total_position_pct - _market_value(ts)
+                    budget = min(budget, max(room, 0.0))""",
+        """                if False:
+                    room = equity_now * config.max_total_position_pct - _market_value(ts)
+                    budget = min(budget, max(room, 0.0))""",
+        "tests/test_engine_defects.py::test_总仓位上限_开启后同日建仓不超过总资产比例",
+    ),
+    (
+        "没有单日成交量占比上限（假设市场无限承接）",
+        ENGINE,
+        """                if config.max_volume_pct is not None:
+                    day_volume = float(bars.loc[ts, "volume"])
+                    shares = min(shares, int(day_volume * config.max_volume_pct / 100) * 100)""",
+        """                if False:
+                    day_volume = float(bars.loc[ts, "volume"])
+                    shares = min(shares, int(day_volume * config.max_volume_pct / 100) * 100)""",
+        "tests/test_engine_defects.py::test_单日成交量占比上限_限制可买股数",
+    ),
+    (
+        "买入价记策略报价而非实际成交价（成本记账不对称）",
+        ENGINE,
+        """                    "entry_price": round(buy_price, 2),""",
+        """                    "entry_price": entry,""",
+        "tests/test_engine_defects.py::test_买卖两端滑点口径对称_买入价记实际成交价",
+    ),
 ]
 
 
