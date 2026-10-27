@@ -1,13 +1,19 @@
 """可视化策略拼装页面 — 选择因子/权重/阈值组合成自定义策略并回测。
 
 流程：
-1. 配置策略（名称、因子权重、规则阈值、买卖参数）
-2. 运行回测验证
-3. 保存策略到 session_state（供今日信号页使用）
+1. （可选）用一句话让 AI 给出一套参数建议，一键套用到下面的表单
+2. 配置策略（名称、因子权重、规则阈值、买卖参数）
+3. 运行回测验证
+4. 保存策略到 session_state（供今日信号页使用）
+
+为什么 AI 生成放在这一页（2026-10-28 用户要求）：
+    AI 产出的就是这套权重/规则/买卖参数，放在「LLM 智能分析」页时用户拿到建议
+    还得手工把二三十个滑杆再调一遍，等于白算。搬进来后可以一键套用再直接回测验证。
 
 Revision History:
     2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
     2026-09-04  require public acknowledgement before shared strategy submission
+    2026-10-28  AI 一句话生成从「LLM 智能分析」页搬到本页，并支持一键套用到表单
 """
 from __future__ import annotations
 
@@ -20,6 +26,7 @@ from stock_plan.backtest.engine import BacktestConfig, run_backtest
 from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.data.storage import Storage
 from stock_plan.strategy.custom import CustomStrategy
+from stock_plan.ui.strategy_ai import render_ai_strategy_section
 from stock_plan.ui.widgets import PLOTLY_CONFIG, board_filter_ui, equity_curve_fig, page_glossary
 
 # 本页名词速览（R2 亲民化）
@@ -32,6 +39,8 @@ BUILDER_GLOSSARY = {
     "RSI": "衡量股票最近是否「涨得太猛」（>70 超买，可能要回调）或「跌得太狠」(<30 超卖) 的温度计。",
     "ATR": "这支股票平时一天大概波动多少钱。买卖价、止损价都按它的倍数来设，波动大的股票止损就设宽一点。",
 }
+
+_MA_OPTIONS = ["关闭", 5, 7, 10, 20, 30, 60]
 
 
 @st.cache_data(ttl=600, show_spinner="正在运行自定义策略回测…")
@@ -70,10 +79,74 @@ def _cached_custom_backtest(
     return metrics, result
 
 
+def _clamp(value, low, high):
+    """把 AI 建议值夹进控件取值范围，避免越界导致控件报错。"""
+    try:
+        return max(low, min(high, value))
+    except TypeError:
+        return low
+
+
+def _nearest(value, allowed):
+    """把数值映射到允许列表里最接近的一项（趋势均线只提供固定档位）。"""
+    try:
+        num = int(value)
+    except (TypeError, ValueError):
+        return allowed[0]
+    if num <= 0:
+        return "关闭"
+    return min(allowed[1:], key=lambda x: abs(x - num))
+
+
+def _apply_ai_config(config: dict) -> None:
+    """把 AI 建议值写进各控件的 session_state。
+
+    这些 key 对应的控件在本函数**之后**才渲染，所以此时写 session_state 是安全的
+    （Streamlit 不允许对"本次运行已实例化"的控件改值）。
+    """
+    weights = config.get("weights") or {}
+    rules = config.get("rules") or {}
+    params = config.get("params") or {}
+    ss = st.session_state
+
+    ss["vb_name"] = str(config.get("name") or "我的自定义策略")[:30]
+    ss["vb_w_tech"] = _clamp(float(weights.get("trend_score", 0.6)), 0.0, 1.0)
+    ss["vb_w_fund"] = _clamp(float(weights.get("fund_score", 0.4)), 0.0, 1.0)
+    ss["vb_w_mom"] = _clamp(float(weights.get("mom_ret", 0.0)), 0.0, 1.0)
+
+    ss["vb_tf"] = _nearest(rules.get("trend_ma_fast", 10), _MA_OPTIONS)
+    ss["vb_ts"] = _nearest(rules.get("trend_ma_slow", 30), _MA_OPTIONS)
+    ss["vb_dev_ma"] = _nearest(rules.get("dev_ma", 20), [5, 7, 10, 20, 30, 60])
+    ss["vb_dev_min"] = int(_clamp(int(rules.get("dev_min", -5)), -20, 0))
+    ss["vb_dev_max"] = int(_clamp(int(rules.get("dev_max", 5)), 0, 20))
+    ss["vb_vr"] = float(_clamp(float(rules.get("vol_ratio_max", 3.0)), 1.0, 5.0))
+    ss["vb_liq"] = float(_clamp(float(rules.get("liquidity_min", 0.5)), 0.5, 50.0))
+    surge_min = float(rules.get("vol_surge_min", 0.0) or 0.0)
+    ss["vb_surge"] = surge_min > 0
+    ss["vb_surge_min"] = float(_clamp(surge_min if surge_min > 0 else 1.5, 1.0, 5.0))
+    ss["vb_surge_bonus"] = float(_clamp(float(rules.get("vol_surge_bonus", 10.0)), 5.0, 30.0))
+    ss["vb_rsi_min"] = int(_clamp(int(rules.get("rsi_min", 0)), 0, 50))
+    ss["vb_rsi_max"] = int(_clamp(int(rules.get("rsi_max", 75)), 50, 95))
+    ss["vb_ma2060"] = bool(rules.get("ma20_gt_ma60", False))
+    ss["vb_mom_min"] = int(_clamp(int(rules.get("mom_min", -30)), -30, 30))
+    ss["vb_breakout"] = bool(rules.get("require_breakout", False))
+
+    ss["vb_k"] = float(_clamp(float(params.get("atr_k_entry", 0.0)), 0.0, 3.0))
+    ss["vb_m"] = float(_clamp(float(params.get("atr_m_exit", 3.5)), 1.0, 10.0))
+    ss["vb_n"] = float(_clamp(float(params.get("atr_n_stop", 3.5)), 1.0, 10.0))
+    ss["vb_hold"] = int(_clamp(int(params.get("hold_days", 30)), 5, 120))
+
+
 def render():
     st.header("🧩 可视化策略拼装")
     st.caption("选择因子、权重与阈值，组合成自定义策略并回测验证。")
     page_glossary(BUILDER_GLOSSARY)
+
+    # ============ AI 一句话生成（可选） ============
+    st.subheader("🤖 AI 一句话生成（可选）")
+    if st.session_state.pop("vb_ai_applied", False):
+        st.success("已把 AI 建议值套用到下面的表单，可继续微调后运行回测。")
+    render_ai_strategy_section("vb_ai", apply_config=_apply_ai_config)
 
     # 选股范围（R5：板块筛选 + 剔除 ST）
     st.subheader("0. 选股范围")
@@ -81,39 +154,39 @@ def render():
 
     # ============ 策略配置 ============
     st.subheader("1. 策略配置")
-    name = st.text_input("策略名称", "我的自定义策略")
+    name = st.text_input("策略名称", "我的自定义策略", key="vb_name")
 
     col1, col2 = st.columns(2)
     with col1:
-        w_tech = st.slider("趋势分权重", 0.0, 1.0, 0.6, 0.05)
+        w_tech = st.slider("趋势分权重", 0.0, 1.0, 0.6, 0.05, key="vb_w_tech")
     with col2:
-        w_fund = st.slider("基本面分权重", 0.0, 1.0, 0.4, 0.05)
-    w_mom = st.slider("动量加分权重", 0.0, 1.0, 0.0, 0.05)
+        w_fund = st.slider("基本面分权重", 0.0, 1.0, 0.4, 0.05, key="vb_w_fund")
+    w_mom = st.slider("动量加分权重", 0.0, 1.0, 0.0, 0.05, key="vb_w_mom")
 
     st.markdown("**规则阈值**")
-    ma_options = ["关闭", 5, 7, 10, 20, 30, 60]
+    ma_options = _MA_OPTIONS
     col_t1, col_t2, col_d1 = st.columns(3)
     with col_t1:
         trend_fast = st.selectbox(
-            "趋势条件 快线", ma_options, index=3,
+            "趋势条件 快线", ma_options, index=3, key="vb_tf",
             help="术语叫「均线」。大白话：这支股票最近 N 天的平均成本。快线 > 慢线 = 最近买的人普遍在赚钱，趋势向上。可自由组合，如 ma5>ma7、ma20>ma60。选择「关闭」则不启用趋势条件。",
         )
     with col_t2:
-        trend_slow = st.selectbox("趋势条件 慢线", ma_options, index=5)
+        trend_slow = st.selectbox("趋势条件 慢线", ma_options, index=5, key="vb_ts")
     with col_d1:
         dev_ma = st.selectbox(
-            "偏离基准均线", [5, 7, 10, 20, 30, 60], index=3,
+            "偏离基准均线", [5, 7, 10, 20, 30, 60], index=3, key="vb_dev_ma",
             help="当前股价比 N 天平均成本高/低多少百分比。偏低（负数）= 回调到位，偏高太多 = 追高风险大。",
         )
     col3, col4, col5 = st.columns(3)
     with col3:
-        dev_min = st.slider("偏离下限（%）", -20, 0, -5,
+        dev_min = st.slider("偏离下限（%）", -20, 0, -5, key="vb_dev_min",
                             help="股价比平均成本低超过这个数就减分/排除。比如 -5 = 比 20 天平均成本低 5% 以内最佳。")
     with col4:
-        dev_max = st.slider("偏离上限（%）", 0, 20, 5,
+        dev_max = st.slider("偏离上限（%）", 0, 20, 5, key="vb_dev_max",
                             help="股价比平均成本高超过这个数说明涨太多（追高），会扣分。")
     with col5:
-        vol_ratio_max = st.slider("量比上限（防过热）", 1.0, 5.0, 3.0, 0.1,
+        vol_ratio_max = st.slider("量比上限（防过热）", 1.0, 5.0, 3.0, 0.1, key="vb_vr",
                                   help="量比 = 今天成交量 ÷ 近5天平均量。超过上限说明炒得太热（可能是一日行情），会扣分。")
 
     # ---- 量价配置（R1 需求：流动性筛选 + 放量异动加分）----
@@ -121,52 +194,52 @@ def render():
     col_liq, col_vs, col_vb = st.columns(3)
     with col_liq:
         liquidity_min = st.slider(
-            "流动性下限：近20日平均成交额（亿元）", 0.5, 50.0, 0.5, 0.5,
+            "流动性下限：近20日平均成交额（亿元）", 0.5, 50.0, 0.5, 0.5, key="vb_liq",
             help="成交额 = 每天成交的总金额。太低的股票「买得到卖不掉」。低于这个金额的直接排除。0.5亿 = 5000万，是系统的默认底线。",
         )
     with col_vs:
-        use_surge = st.checkbox("启用「放量异动」加分", value=False,
+        use_surge = st.checkbox("启用「放量异动」加分", value=False, key="vb_surge",
                                 help="放量 = 今天的成交量明显比平时大（比如 1.5 倍以上），常说明有资金关注。开启后，放量的股票会加分排到前面。")
         vol_surge_min = st.slider("放量阈值（量比达到几倍算放量）", 1.0, 5.0, 1.5, 0.1,
-                                  disabled=not use_surge,
+                                  key="vb_surge_min", disabled=not use_surge,
                                   help="量比达到这个倍数就认定为「放量」。1.5 = 成交量是平时的 1.5 倍以上。")
     with col_vb:
-        vol_surge_bonus = st.slider("放量加分数值", 5.0, 30.0, 10.0, 1.0,
+        vol_surge_bonus = st.slider("放量加分数值", 5.0, 30.0, 10.0, 1.0, key="vb_surge_bonus",
                                     disabled=not use_surge,
                                     help="被认定为放量的股票，总分额外加多少分。加得越多，放量股票排得越靠前。")
 
     col6, col7, col_rsi_min = st.columns(3)
     with col6:
-        rsi_min = st.slider("RSI 下限（低于排除）", 0, 50, 0)
+        rsi_min = st.slider("RSI 下限（低于排除）", 0, 50, 0, key="vb_rsi_min")
     with col7:
-        rsi_max = st.slider("RSI 上限", 50, 95, 75)
+        rsi_max = st.slider("RSI 上限", 50, 95, 75, key="vb_rsi_max")
     with col_rsi_min:
-        ma20_gt_ma60 = st.checkbox("兜底：ma20 > ma60", value=False,
+        ma20_gt_ma60 = st.checkbox("兜底：ma20 > ma60", value=False, key="vb_ma2060",
                                    help="仅在上方趋势条件关闭时生效。")
     col_mom, col_brk, _fill = st.columns(3)
     with col_mom:
         mom_min = st.slider(
-            "近20日动量下限（%，低于排除）", -30, 30, -30, 1,
+            "近20日动量下限（%，低于排除）", -30, 30, -30, 1, key="vb_mom_min",
             help="动量 = 最近 20 天总共涨/跌了百分之几。-30 约等于不启用；设置如 0 表示只买近20日不跌的股票。",
         )
     with col_brk:
-        require_breakout = st.checkbox("要求接近/创20日新高", value=False,
+        require_breakout = st.checkbox("要求接近/创20日新高", value=False, key="vb_breakout",
                                        help="只买股价接近或创出最近 20 天新高的股票（「突破」买法），没接近新高的排除。")
 
     st.markdown("**买卖参数（ATR 倍数）**")
     st.caption("💡 ATR = 这支股票平时一天大概波动多少钱（元）。下面的倍数就是「按几天的波动幅度」来设买卖价和止损价。")
     col8, col9, col10, col_k = st.columns(4)
     with col8:
-        k = st.number_input("买入 ATR 倍数（收盘价+k×ATR）", 0.0, 3.0, 0.0, 0.1,
+        k = st.number_input("买入 ATR 倍数（收盘价+k×ATR）", 0.0, 3.0, 0.0, 0.1, key="vb_k",
                             help="目标买入价 = 最新收盘价 + k×ATR。0 = 按收盘价买；0.5 = 比现价高半个日常波动才买（突破确认）。")
     with col9:
-        m = st.number_input("止盈 ATR 倍数（涨多少卖）", 1.0, 10.0, 3.5, 0.5,
+        m = st.number_input("止盈 ATR 倍数（涨多少卖）", 1.0, 10.0, 3.5, 0.5, key="vb_m",
                             help="卖出价 = 买入价 + m×ATR。3.5 ≈ 涨了 3 天半的日常波动就落袋为安。")
     with col10:
-        n = st.number_input("止损 ATR 倍数（跌多少认赔）", 1.0, 10.0, 3.5, 0.5,
+        n = st.number_input("止损 ATR 倍数（跌多少认赔）", 1.0, 10.0, 3.5, 0.5, key="vb_n",
                             help="止损价 = 买入价 − n×ATR。跌到这里无条件卖出，防止大亏。")
     with col_k:
-        hold = st.number_input("最大持仓天数", 5, 120, 30, step=5,
+        hold = st.number_input("最大持仓天数", 5, 120, 30, step=5, key="vb_hold",
                                help="到期无论盈亏都换股，保证资金效率。短线 10 天内，中线 20~30 天。")
 
     config = {

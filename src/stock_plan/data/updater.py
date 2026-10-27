@@ -27,6 +27,7 @@ from pathlib import Path
 import pandas as pd
 
 from stock_plan.data.fetcher import DataFetcher
+from stock_plan.data.http_pool import keepalive_requests
 from stock_plan.data.storage import PROJECT_ROOT, Storage
 
 logger = logging.getLogger(__name__)
@@ -124,9 +125,46 @@ def merge_bars(storage: Storage, code: str, new_bars: pd.DataFrame) -> int:
 
 # ---------- 增量更新 ----------
 
+def _list_marker(storage: Storage) -> Path:
+    """股票列表刷新标记放在该 Storage 自己的 db 目录里（测试/临时库互不干扰）。"""
+    return storage.db_path.parent / "stock_list_date.txt"
+
+
+def _refresh_stock_list(fetcher: DataFetcher, storage: Storage) -> pd.DataFrame:
+    """取全市场股票列表：当天已刷新过就读本地，否则在线刷新并记标记。
+
+    为什么加这个（2026-10-28 实测）：在线列表走新浪 spot 接口要翻 70 页、约 20 秒，
+    而它一天只会变一次（新股上市）。原先每跑一次增量更新都重刷，全市场 5550 只
+    的净抓取时间才 5~9 分钟，这 20 秒白花得可惜；更糟的是列表接口失败会让整轮
+    更新直接退回本地并打印告警。所以「当天刷过就跳过」。
+    """
+    today = date.today().isoformat()
+    marker = _list_marker(storage)
+    try:
+        if marker.exists() and marker.read_text(encoding="utf-8").strip() == today:
+            cached_list = storage.load_stock_list()
+            if not cached_list.empty:
+                return cached_list
+    except Exception:  # noqa: BLE001 - 标记文件损坏就当没刷过
+        pass
+
+    try:
+        stock_list = fetcher.get_stock_list()
+        storage.save_stock_list(stock_list)
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(today, encoding="utf-8")
+        except Exception:  # noqa: BLE001 - 写不了标记不影响本次结果
+            pass
+        return stock_list
+    except Exception as e:  # noqa: BLE001
+        logger.warning("在线股票列表拉取失败，使用本地列表: %s", e)
+        return storage.load_stock_list()
+
+
 def update_incremental(
     days: int = 30,
-    workers: int = 16,
+    workers: int = 32,
     force: bool = False,
     storage: Storage | None = None,
     fetcher: DataFetcher | None = None,
@@ -146,13 +184,10 @@ def update_incremental(
     start = date.today() - timedelta(days=days)
     end = date.today()
 
-    # 股票列表：优先在线刷新（顺带捕获新股），失败退回本地
-    try:
-        stock_list = fetcher.get_stock_list()
-        storage.save_stock_list(stock_list)
-    except Exception as e:
-        logger.warning("在线股票列表拉取失败，使用本地列表: %s", e)
-        stock_list = storage.load_stock_list()
+    # 股票列表：优先在线刷新（顺带捕获新股），失败退回本地。
+    # 2026-10-28 提速：全市场列表走新浪 spot 接口要翻 70 页、实测约 20 秒，
+    # 而列表一天只会变一次 —— 所以当天已经刷过就直接读本地，省掉这 20 秒。
+    stock_list = _refresh_stock_list(fetcher, storage)
 
     all_codes = stock_list["code"].astype(str).tolist() if not stock_list.empty else []
     # 单次遍历分桶：原先 cached / uncached 各调一次 cache_exists，等于每只股票 stat 两次
@@ -161,13 +196,17 @@ def update_incremental(
     for c in all_codes:
         (cached if storage.cache_exists(c) else uncached).append(c)
 
-    # 幂等预筛：本地已到期望交易日的直接跳过（只读本地文件，不联网）
-    todo = []
-    for c in cached:
-        last = _last_date(storage, c)
-        if not force and last is not None and last >= expected:
-            continue
-        todo.append(c)
+    # 幂等预筛：本地已到期望交易日的直接跳过（只读本地文件，不联网）。
+    # 2026-10-28 提速：每只读一次 parquet 约 5ms，5550 只串行就是 28 秒 ——
+    # pyarrow 读文件会释放 GIL，所以丢进线程池并行，实测降到 2~3 秒。
+    if force:
+        todo = list(cached)
+    else:
+        with ThreadPoolExecutor(max_workers=min(32, max(4, workers))) as pool:
+            last_dates = list(pool.map(lambda c: _last_date(storage, c), cached))
+        todo = [
+            c for c, last in zip(cached, last_dates) if last is None or last < expected
+        ]
 
     stats = {
         "expected_date": str(expected.date()),
@@ -194,7 +233,9 @@ def update_incremental(
             except Exception as e:
                 return code, False, str(e)
 
-        with ThreadPoolExecutor(max_workers=workers) as pool:
+        # keep-alive：每只股票 3 个新浪请求，复用连接把 TLS 握手从「每请求一次」
+        # 降到「每线程一次」，实测 16 线程 8.78 → 15.6 只/秒（详见 http_pool 模块注释）
+        with keepalive_requests(timeout=30), ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(fetch_one, c): c for c in todo}
             for fut in as_completed(futures):
                 code, success, err = fut.result()
@@ -264,7 +305,7 @@ def fetch_uncached(
         except Exception as e:
             return code, False, str(e)
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with keepalive_requests(timeout=30), ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(fetch_one, c): c for c in codes}
         for fut in as_completed(futures):
             code, success, err = fut.result()
@@ -339,7 +380,7 @@ def rebuild_history(
         except Exception as e:
             return code, False, str(e)
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with keepalive_requests(timeout=30), ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(fetch_one, c): c for c in codes}
         for fut in as_completed(futures):
             code, success, err = fut.result()
