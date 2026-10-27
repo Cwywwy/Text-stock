@@ -100,6 +100,40 @@ def apply_universe_filter(
     return filter_universe_ui(stock_list, bars_map, boards, exclude_st)
 
 
+def industry_filter_ui(key_prefix: str = "uni", level: str = "sw_l1") -> list[str]:
+    """申万行业多选（暂时需求 3：有时要「通过行业板块指定策略」的适用范围）。
+
+    为什么默认只给一级行业（31 个）：
+    - 二级 124 个、三级 335 个，做常用筛选太长，用户自己也记不住；
+    - 本轮分类快照里**申万三级为 0**（主源乐咕乐股整站 504，已降级到申万官网接口，
+      而官网只提供一级/二级名录），拿三级出来会是空列表；
+    - 一级 31 个正好对应"选赛道"这个真实用法。
+
+    返回空列表 = 不过滤（与板块筛选的口径一致：不勾选就是不限）。
+    """
+    from stock_plan.data import classification
+
+    opts = _industry_options_cached(level)
+    if not opts:
+        st.caption("暂无行业分类快照，行业筛选不可用（到左侧「🔄 数据更新」页抓取分类数据）。")
+        return []
+    return st.multiselect(
+        "行业板块（申万一级，可多选；不选 = 不限行业）",
+        opts,
+        default=[],
+        key=f"{key_prefix}_industries",
+        help="只在这些行业里选股。适合「这只策略只做某个赛道」的用法。",
+    )
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _industry_options_cached(level: str = "sw_l1") -> list[str]:
+    """行业名列表缓存 1 小时：每次页面渲染都读一次 parquet 太浪费。"""
+    from stock_plan.data import classification
+
+    return classification.industry_options(level)
+
+
 def page_glossary(terms: dict[str, str]):
     """页面顶部可折叠的「本页名词速览」。terms: {术语: 大白话解释}。"""
     with st.expander("📖 本页名词速览（不懂的词点这里）"):

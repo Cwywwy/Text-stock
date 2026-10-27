@@ -60,6 +60,8 @@ def generate_signals(
     storage: Storage | None = None,
     boards: list[str] | None = None,
     exclude_st: bool = True,
+    industries: list[str] | None = None,
+    industry_level: str = "sw_l1",
 ) -> list[Signal]:
     """生成盘前信号。
 
@@ -69,6 +71,9 @@ def generate_signals(
         storage:    数据存储实例（便于测试注入）。
         boards:     保留的板块列表（R5 板块自定义筛选）；None/全选 = 不过滤。
         exclude_st: 是否剔除 ST/*ST 股票（默认 True）。
+        industries: 保留的行业名列表（暂时需求 3「通过行业板块指定策略」）；
+                    None/空 = 不过滤。**默认不传时行为与改动前完全一致**。
+        industry_level: 用哪一级行业名匹配，默认申万一级。
 
     返回：
         按 score 降序的 Signal 列表。
@@ -94,6 +99,16 @@ def generate_signals(
 
     # 2. 硬过滤
     codes = strategy.filter_universe(stock_list, bars_map)
+
+    # 2b. 行业筛选（暂时需求 3）：在打分之前剔除行业外的代码，
+    #     这样 top_n 仍然能选满 N 只（若改成"先选后筛"，信号会莫名其妙变少）。
+    #     分类数据缺失时 filter_codes_by_industries 会原样返回，不会把结果变成 0 只。
+    if industries:
+        from stock_plan.data import classification
+
+        codes = classification.filter_codes_by_industries(codes, industries, level=industry_level)
+        if not codes:
+            return []
 
     # 3. 构建因子行
     factor_rows = build_factor_rows(codes, bars_map, fund_map)
