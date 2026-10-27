@@ -130,6 +130,11 @@ try {
     if ($Rebuild) {
         $code = Invoke-Step '全历史重建（修正前复权回溯）' @('-m', 'stock_plan.data.update_daily', '--rebuild', '--workers', "$Workers")
         if ($code -ne 0) { Write-Log "警告：全历史重建有失败项（退出码 $code），继续后续步骤" }
+
+        # 月度维护顺带刷一次分类快照：行业归属一个月内基本不变，没必要天天抓
+        # （实测申万全量 98 秒、证监会 21 秒、概念 1 秒）。
+        $code = Invoke-Step '分类快照（申万/证监会/概念）' @('-m', 'stock_plan.data.classification', '--all')
+        if ($code -ne 0) { Write-Log "警告：分类快照未成功（退出码 $code），不影响行情数据" }
     }
 
     $code = Invoke-Step '增量数据更新' @('-m', 'stock_plan.data.update_daily', '--workers', "$Workers")
@@ -137,6 +142,18 @@ try {
         # 退出码 2 表示有部分股票失败（常见于停牌/退市/网络抖动），不阻断发布
         Write-Log "警告：增量更新未全部成功（退出码 $code）"
     }
+
+    # 情绪/公告是补充数据，失败只告警，不影响行情主链路的成败判定。
+    # 周末没有盘面数据，跳过情绪快照（避免写入空快照把"最新交易日"指针带偏）。
+    if ((Get-Date).DayOfWeek -notin @('Saturday', 'Sunday')) {
+        $code = Invoke-Step '市场情绪快照（涨停/炸板/资金流）' @('-m', 'stock_plan.data.market_snapshot')
+        if ($code -ne 0) { Write-Log "警告：市场情绪快照未成功（退出码 $code），不影响行情数据" }
+    } else {
+        Write-Log '今天是周末，跳过市场情绪快照'
+    }
+
+    $code = Invoke-Step '公告存档（持仓 + 自选）' @('-m', 'stock_plan.data.announcements', '--days', '7')
+    if ($code -ne 0) { Write-Log "警告：公告抓取未成功（退出码 $code），不影响行情数据" }
 
     if ($SkipPublish) {
         Write-Log '已按 -SkipPublish 跳过快照发布'

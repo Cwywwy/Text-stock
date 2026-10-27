@@ -100,13 +100,15 @@ def check_pytest() -> None:
 
 
 # --------------------------------------------------------------------------
-# 3) 12 页渲染
+# 3) 全部页面渲染（页数从 PAGES 自动取，别写死）
 # --------------------------------------------------------------------------
 PAGES = [
     ("今日信号", "today"), ("持仓诊断", "portfolio"), ("模拟交易", "paper"),
-    ("回测结果", "backtest"), ("策略对比", "compare"), ("策略拼装", "visual_builder"),
+    ("回测结果", "backtest"), ("策略对比", "compare"), ("做T回测", "t_backtest"),
+    ("策略拼装", "visual_builder"),
     ("策略管理", "strategy_mgr"), ("四大师研究", "four_masters"), ("LLM 智能分析", "llm"),
-    ("新闻舆情", "news"), ("新手指南", "guide"), ("数据更新", "update_center"),
+    ("新闻舆情", "news"), ("市场情绪", "market"), ("新手指南", "guide"),
+    ("数据更新", "update_center"),
 ]
 _WRAP = """# -*- coding: utf-8 -*-
 import sys
@@ -117,7 +119,7 @@ _m.render()
 
 
 def check_pages(timeout: int = 300) -> None:
-    print("\n[3] 12 页渲染")
+    print(f"\n[3] {len(PAGES)} 页渲染")
     try:
         from streamlit.testing.v1 import AppTest
     except Exception as e:  # noqa: BLE001
