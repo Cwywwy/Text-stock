@@ -62,6 +62,8 @@ def _cached_custom_backtest(
         rebalance_freq=rebalance_freq,
         market_timing=market_timing,
         max_hold_days=strategy.params["hold_days"],
+        # 与回测页口径一致：财务数据只有一份当前快照，快照日之前中性化，避免前视
+        fundamental_as_of=Storage().fundamentals_snapshot_date(),
     )
     result = run_backtest(strategy, bt_config, bars_map, fund_map, stock_list)
     metrics = calc_metrics(result.equity_curve, result.trades)

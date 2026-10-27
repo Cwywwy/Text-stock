@@ -1,4 +1,4 @@
-﻿"""数据存储模块 — 本地缓存层。
+"""数据存储模块 — 本地缓存层。
 
 设计：
 - 日线行情 → Parquet 文件（data/processed/bars/{code}.parquet），列式存储、读取快
@@ -367,6 +367,26 @@ class Storage:
             return None
         cols = [d[0] for d in conn.execute("SELECT * FROM fundamentals").description]
         return dict(zip(cols, row))
+
+    def fundamentals_snapshot_date(self):
+        """财务指标快照的抓取日期（全表 updated_at 的最大日期），取不到返回 None。
+
+        为什么需要这个：`fundamentals` 表每个 code **只有 1 行**、**没有报告期列**，
+        `updated_at` 只是抓取时间戳（实测全表集中在同一天）。所以回测里拿到的财务数据
+        其实是"今天才抓到的那一份" —— 在快照日**之前**的任何一天用它，都是未来数据。
+        回测据此把快照日之前的财务因子中性化（见 `backtest/engine.py` 的
+        `fundamental_as_of`），把"前视收益"从结果里摘出去。
+        """
+        from datetime import date as _date
+
+        with self._conn() as conn:
+            row = conn.execute("SELECT MAX(updated_at) FROM fundamentals").fetchone()
+        raw = (row[0] if row else None) or ""
+        raw = str(raw)[:10]
+        try:
+            return _date.fromisoformat(raw)
+        except ValueError:
+            return None
 
     # ---------- 股票列表（SQLite） ----------
     def save_stock_list(self, df: pd.DataFrame) -> None:

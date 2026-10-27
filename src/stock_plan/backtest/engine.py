@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from stock_plan.factors.technical import compute_technical
+from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.scorer import fundamental_composite
 
@@ -39,8 +40,14 @@ class BacktestConfig:
     max_hold_days: int = 20        # 最大持仓天数
     rebalance_freq: str = "daily"  # 选股频率："daily" 每天 / "weekly" 每周
     market_timing: bool = False    # 大盘择时：大盘低于 MA20 时仓位减半
-    enable_t1: bool = True         # 是否启用 T+1
+    enable_t1: bool = True         # 是否启用 T+1（注：当前引擎未按此开关分支，见文档）
     enable_price_limit: bool = True  # 是否启用涨跌停限制
+    # 单笔佣金下限（元）。券商普遍 5 元起收：小额单按万三算只有几毛钱，
+    # 不设下限会把成本算少一个数量级（买 1 万元：万三=3 元 < 5 元）。
+    min_commission: float = 5.0
+    # 财务指标快照的抓取日期。给定后，快照日之前的交易日财务因子中性化，
+    # 消除"用今天抓到的财务数据回测去年行情"的前视偏差（详见 run_backtest 内注释）。
+    fundamental_as_of: date | None = None
 
 
 @dataclass
@@ -92,10 +99,20 @@ def run_backtest(
     返回：
         BacktestResult（资金曲线 + 交易明细 + 指标）。
     """
-    # 候选股票：硬过滤
-    codes = strategy.filter_universe(stock_list, bars_map)
+    # 候选股票：硬过滤。
+    # ⚠️ 必须**先把行情截到回测开始日**再交给策略过滤（2026-10-28 修正）。
+    # 原因：`filter_universe` 内部会做 `tail(20)` / `iloc[-1]` 之类的"近期形态"判断，
+    # 而调用方传进来的 bars 覆盖到**回测结束日**。于是在同一起始日下、只改结束日，
+    # 股票就会从"在池中"变成"被剔除"——候选池用到了未来数据（实测可复现，见审计 D13）。
+    # 截到 start 之后，池子只由"当时能看到的历史"决定，与结束日无关。
+    _pool_cutoff = pd.Timestamp(config.start)
+    pool_bars = {c: b[b["date"] <= _pool_cutoff] for c, b in bars_map.items()}
+    codes = strategy.filter_universe(stock_list, pool_bars)
     if not codes:
         return BacktestResult(pd.Series(dtype=float), pd.DataFrame())
+
+    # 财务快照前视修正的阈值（None = 不做修正，保持旧行为，供老测试/对比用）
+    _fund_as_of = config.fundamental_as_of
 
     # 对齐交易日：取所有股票日期的并集，限制在回测区间内
     all_dates = set()
@@ -174,7 +191,9 @@ def run_backtest(
         """按给定价格平仓并记录交易，返回平仓后的现金。"""
         sell_price = close * (1 - config.slippage)
         proceeds = pos["shares"] * sell_price
-        fee = proceeds * (config.commission + config.stamp_tax)
+        # 佣金有单笔下限（券商 5 元起收），印花税按成交额单独算、无下限。
+        commission_fee = max(proceeds * config.commission, config.min_commission)
+        fee = commission_fee + proceeds * config.stamp_tax
         trades.append(
             {
                 "code": code,
@@ -226,11 +245,14 @@ def run_backtest(
                 continue
             row = bars.loc[ts]
             close = float(row["close"])
-            # 涨跌停时无法卖出（简化）
+            # 涨跌停对**买卖方向**的限制是相反的，原实现判反了（2026-10-28 修正）：
+            # 跌停日卖不出去（挂单排不上），涨停日**可以**正常卖出（只是可能卖得便宜）；
+            # 原代码写成 `close >= up: 禁止卖出`，于是"涨停拖到次日才止盈、跌停当天照常止损"，
+            # 与 docstring 自己写的"跌停无法卖出"矛盾，且对收益方向是系统性偏差。
             if config.enable_price_limit:
-                up, down = _price_limit(code, bars_map[code], bars.index.get_loc(ts))
-                if close >= up:
-                    continue  # 涨停，卖不出
+                _up, down = _price_limit(code, bars_map[code], bars.index.get_loc(ts))
+                if close <= down:
+                    continue  # 跌停卖不出，明日再试
             # 止盈 / 止损
             hit_exit = close >= pos["target"]
             hit_stop = close <= pos["stop"]
@@ -276,6 +298,16 @@ def run_backtest(
             if last["volume"] == 0:
                 continue
             fund = fund_map.get(code, {})
+            # 财务因子前视修正（2026-10-28）：`fundamentals` 表每个 code 只有 1 行、
+            # 没有报告期，`updated_at` 只是抓取日（实测全表同一批）。若在快照日**之前**
+            # 的交易日就用这份数据打分，等于提前看到了未来才公布的财务指标。所以
+            # 快照日之前把财务因子一律中性化（空 dict → 各因子取中位 50）。
+            if _fund_as_of is not None and ts.date() < _fund_as_of:
+                fund = {}
+            # 原始财务指标 → 三个分数（空 dict 得中性 50 分）。
+            # 2026-10-28 修正：此前直接把原始 dict 交给 fundamental_composite，
+            # 它读的是分数键、读不到就回退 50，导致财务因子在回测里恒为 50。
+            _fund_scores = compute_fundamental_or_neutral(fund)
             # 近 20 日动量（供动量策略使用）
             mom_ret = 0.0
             if p >= 20:
@@ -305,11 +337,11 @@ def run_backtest(
                     else float("nan"),
                     "macd": last["macd"],
                     "macd_signal": last["macd_signal"],
-                    "value_score": fund.get("value_score", 50.0),
-                    "growth_score": fund.get("growth_score", 50.0),
-                    "quality_score": fund.get("quality_score", 50.0),
+                    "value_score": _fund_scores["value_score"],
+                    "growth_score": _fund_scores["growth_score"],
+                    "quality_score": _fund_scores["quality_score"],
                     "trend_score": last["trend_score"],
-                    "fund_score": fundamental_composite(fund),
+                    "fund_score": fundamental_composite(_fund_scores),
                     **{
                         f"ma{_p}": float(last.get(f"ma{_p}"))
                         for _p in (5, 7, 10, 30)
@@ -370,7 +402,8 @@ def run_backtest(
                 if shares <= 0:
                     continue
                 cost = shares * buy_price
-                fee = cost * config.commission
+                # 佣金单笔下限（券商 5 元起收）；买入无印花税。
+                fee = max(cost * config.commission, config.min_commission)
                 if cost + fee > cash:
                     continue
                 cash -= cost + fee

@@ -78,6 +78,8 @@ def _cached_compare(
             rebalance_freq=rebalance_freq,
             market_timing=market_timing,
             max_hold_days=strat_hold or max_hold_days,
+            # 与回测页口径一致：佣金单笔下限 + 财务快照前视修正
+            fundamental_as_of=Storage().fundamentals_snapshot_date(),
         )
         result = run_backtest(strat, config, bars_map, fund_map, stock_list)
         metrics = calc_metrics(result.equity_curve, result.trades)

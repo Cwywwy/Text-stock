@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
 import pandas as pd
@@ -85,10 +85,10 @@ def walk_forward(
         for params in param_grid:
             strat = strategy_factory()
             strat.params = {**strat.params, **params}
-            cfg = BacktestConfig(
-                start=train_start, end=train_end,
-                rebalance_freq=base_config.rebalance_freq,
-                market_timing=base_config.market_timing,
+            cfg = replace(
+                base_config,
+                start=train_start,
+                end=train_end,
                 max_hold_days=params.get("hold_days", base_config.max_hold_days),
             )
             result = run_backtest(strat, cfg, bars_map, fund_map, stock_list)
@@ -101,10 +101,10 @@ def walk_forward(
         strat = strategy_factory()
         if best_params:
             strat.params = {**strat.params, **best_params}
-        cfg = BacktestConfig(
-            start=test_start, end=test_end,
-            rebalance_freq=base_config.rebalance_freq,
-            market_timing=base_config.market_timing,
+        cfg = replace(
+            base_config,
+            start=test_start,
+            end=test_end,
             max_hold_days=(best_params or {}).get("hold_days", base_config.max_hold_days),
         )
         result = run_backtest(strat, cfg, bars_map, fund_map, stock_list)
