@@ -105,6 +105,12 @@ def render():
         result = st.session_state.get("llm_strategy_result")
         if result and result.get("config"):
             _render_strategy_result(result)
+        elif result:
+            # 失败时也必须给原因。原先只判 `result.get("config")`，失败时整块不渲染，
+            # 页面一片空白——用户只能反复点按钮，也看不到是"没配 key"还是"网络不通"。
+            st.error(f"没能生成策略：{result.get('error') or result.get('reason') or '未知原因'}")
+            if result.get("reason") and result.get("reason") != result.get("error"):
+                st.caption(f"补充说明：{result['reason']}")
 
 
 def _render_strategy_result(result: dict):
@@ -165,27 +171,32 @@ def _render_strategy_result(result: dict):
             "我已知悉该策略将公开给所有用户，且不包含个人或敏感信息。",
             key="llm_public_strategy_confirm",
         )
-        if st.button("💾 提交公开策略", type="primary", disabled=not confirmed):
+        if st.button("💾 保存策略（并尝试提交公开）", type="primary", disabled=not confirmed):
             from stock_plan.strategy.publication import submit_public_strategy
 
+            # 先落本地，再尝试公开提交。原实现是「先提交公开、成功后才存本地」：
+            # 提交要 token + 网络，于是没网时一条策略都存不下来，用户以为按钮坏了。
+            # 保存是本地能力，不该被网络卡住。
+            payload = dict(
+                name=name.strip(), config=config, source="llm",
+                proposal_code=result.get("proposal_code", ""),
+                unsupported=unsupported, notes=result.get("reason", ""),
+            )
             try:
-                record = submit_public_strategy(
-                    name.strip(), config, source="llm",
-                    proposal_code=result.get("proposal_code", ""),
-                    unsupported=unsupported, notes=result.get("reason", ""),
-                )
-                store.save_strategy(
-                    record["name"], config, source="llm",
-                    proposal_code=result.get("proposal_code", ""),
-                    unsupported=unsupported, notes=result.get("reason", ""),
-                )
+                store.save_strategy(**payload)
             except (RuntimeError, ValueError) as error:
-                st.error(f"提交失败：{error}")
+                st.error(f"本地保存失败：{error}")
             else:
-                st.success(
-                    f"✅ 已提交「{record['name']}」。等待开发者本机完成全 A 股计算并发布后，"
-                    "将在下一个交易日早上 9:00 生效。"
-                )
+                st.success(f"✅ 已保存「{name.strip()}」。今日信号 / 回测 / 策略对比页立即可用。")
+                try:
+                    record = submit_public_strategy(**payload)
+                except (RuntimeError, ValueError) as error:
+                    st.warning(f"公开提交未成功（本地已保存，不影响使用）：{error}")
+                else:
+                    st.info(
+                        f"☁️ 已提交公开「{record['name']}」。等开发者本机完成全 A 股计算并发布后，"
+                        "将在下一个交易日早上 9:00 生效。"
+                    )
 
     with col_code:
         annotated = generate_annotated_code(config)

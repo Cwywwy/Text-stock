@@ -649,3 +649,29 @@ owner 隔离/迁移/批量删除边界、`test_strategy_mgr_table.py` 的 Arrow 
 `D:\DeepSeekHarness\.dsh-tmp\probe_classification.py`、`probe_membership.py`、
 `probe3.py`、`probe4.py`、`probe5.py`、`probe6.py`
 —— 全部只读，未改动项目任何数据；需要复验可直接重跑。
+
+---
+
+### 12.4 工作流④「LLM 链路」整改结果（2026-10-28）
+
+对照审计发现逐条修，全部为**局部替换**、不改动策略打分与成交路径：
+
+| 审计项 | 缺陷（实测） | 修法 | 守它的测试 |
+|---|---|---|---|
+| D5 口径混淆 | 「涨 10% 止盈，跌 5% 止损」→ `atr_m_exit=5.0`（抓到止损那个 5），10%/5% 全丢 | `_keyword_number()` 前后取最近数字 + 标记 `%`；带 `%` 不写配置、回显原话并标未支持 | `test_mock_percent_*`（2 项） |
+| D2 失败静默 | 非 JSON → `config={}`，页面整块不渲染、无原因 | 新增 `error` 字段；页面 `else: st.error(...)` | `test_failure_exposes_error_field` |
+| D6 导出注入 | `name="a\nimport os\n..."` → 生成脚本出现可执行语句 | `codegen._one_line()` 单行化 | `test_export_script_ignores_injection_in_name` |
+| D4 同名遮蔽 | 自存「趋势跟随策略」在下拉框**不出现**；对比页也静默丢弃 | `display_name`/`SAVED_SUFFIX`；`resolve_strategy` 显式自存分支 | `test_saved_strategy_with_builtin_name_is_visible` |
+| D1 持仓天数 | 回测页默认 30，忽略策略自带 `hold_days=15` | 默认取策略自带值（控件 key 随策略变）；对比页按策略各自天数回测 | 14 页 AppTest + 手工确认 |
+| D7 缓存键 | 缓存键不含策略配置 → 改参数最长 10 分钟不生效 | 新增 `config_sig` 参与缓存键 | AppTest 冒烟 |
+| D9 无超时 | `OpenAI(...)` 默认 600s + 自动重试，页面像卡死 | `timeout=30`、`max_retries=1`、`last_error` | 同上（失败路径由 D2 测试覆盖） |
+| D3 顺序颠倒 | 先提交公开（需网络）成功才存本地 → 没网一条都存不下 | 先本地保存，再尝试公开提交 | 代码复核 + AppTest |
+
+**对历史回测的影响**：只有「D1 持仓天数默认值」会改变结果——凡是用**自存策略 + 回测页/对比页**
+跑出来的历史结论都对应"持 30 天"口径，修正后是"策略自带的 N 天"，需重跑。
+其余六项只影响生成/导出/选择交互，不改变任何成交路径。
+
+**测试与验证**：新增 `tests/test_llm_chain.py`（6 项），`pytest` 178 → **184 passed**；
+反向验证脚本 `D:\DeepSeekHarness\.dsh-tmp\reverse_verify_llm.py` **5/5 有判别力**
+（逐条把修复改回坏版本，对应测试全部 FAIL，然后还原）。
+
