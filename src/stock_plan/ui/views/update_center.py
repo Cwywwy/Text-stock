@@ -19,7 +19,7 @@ import sys
 
 import streamlit as st
 
-from stock_plan.data.storage import PROJECT_ROOT, Storage
+from stock_plan.data.storage import PROJECT_ROOT
 from stock_plan.data.updater import (
     LOG_DIR,
     PROGRESS_PATH,
@@ -157,14 +157,54 @@ def _update_panel() -> None:
 
 
 def _data_status() -> None:
-    """当前数据状态一览。"""
-    storage = Storage()
-    bars_dir = PROJECT_ROOT / "data" / "processed" / "bars"
-    cached = len(list(bars_dir.glob("*.parquet"))) if bars_dir.exists() else 0
+    """当前数据日期一览：先回答「我现在用的是哪一天的数据」，再谈要不要更新。
+
+    为什么把它放在页面最上面、而且是四块日期一起显示：
+    用户真正会踩的坑不是"忘了点更新"，而是"行情补到了今天，但分类快照还是上个月"——
+    那样选行业选出来的是旧名单。分开看四个指标很容易只盯行情，合在一起才能发现错位。
+    行情日期来自缓存体检文件（扫描 5916 个 parquet 要 8 秒，不能每次 rerun 都扫）。
+    """
+    from stock_plan.data import freshness
+
     expected = latest_expected_trade_date()
-    c1, c2 = st.columns(2)
-    c1.metric("本地已缓存股票", f"{cached} 只")
+    info = freshness.status(expected)
+
+    latest = info.get("bars_latest")
+    lag = info.get("lag_days")
+    if latest and lag is not None and lag <= 0:
+        st.success(f"✅ **当前行情数据日期：{latest}**（已是最新交易日）")
+    elif latest:
+        st.warning(f"⚠️ **当前行情数据日期：{latest}**，落后期望交易日 {lag} 天，建议立即增量更新。")
+    else:
+        st.error("❌ 还没有任何行情数据，请先执行一次全量更新。")
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("行情最新交易日", latest or "无数据")
     c2.metric("期望最新交易日", str(expected.date()))
+    c3.metric("已更新到最新交易日", f"{info.get('bars_current', 0)}/{info.get('bars_total', 0)} 只")
+    c4.metric("落后 7 天以上", f"{info.get('bars_stale_7', 0)} 只")
+
+    st.caption(
+        f"其他三类数据：分类快照 **{info.get('classify_latest') or '无'}**"
+        f"（{info.get('classify_months', 0)} 个月） · "
+        f"情绪快照 **{info.get('market_latest') or '无'}**"
+        f"（{info.get('market_days', 0)} 天） · "
+        f"公告存档 **{info.get('ann_rows', 0)} 条 / {info.get('ann_codes', 0)} 只**"
+        f"（最新 {info.get('ann_latest') or '无'}）"
+    )
+
+    if info.get("bars_stale_7"):
+        examples = "、".join(info.get("bars_stale_codes", [])[:5])
+        st.caption(
+            f"有 {info['bars_stale_7']} 只股票 7 天以上没有新行情 —— 多为退市/长期停牌，"
+            f"不影响选股与回测（回测会用它自己的历史区间）。例如：{examples or '—'}"
+        )
+
+    b1, b2 = st.columns([1, 3])
+    if b1.button("🔍 重新扫描数据日期", key="btn_rescan_freshness", help="重扫全部行情文件，约 8 秒"):
+        freshness.refresh_marker()
+        st.rerun()
+    b2.caption(f"体检时间：{info.get('bars_scanned_at') or '—'}（每次更新完成后自动刷新）")
 
 
 def _render_log_tail() -> None:
