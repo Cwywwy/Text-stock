@@ -37,11 +37,19 @@ class BacktestConfig:
     stamp_tax: float = 0.001       # 印花税（千一，仅卖出）
     slippage: float = 0.001        # 滑点（千一）
     top_n: int = 5                 # 每天最多买入几只
-    max_hold_days: int = 20        # 最大持仓天数
+    max_hold_days: int = 20        # 最大持仓天数（上限；策略自带 hold_days 更短时以策略为准）
     rebalance_freq: str = "daily"  # 选股频率："daily" 每天 / "weekly" 每周
     market_timing: bool = False    # 大盘择时：大盘低于 MA20 时仓位减半
-    enable_t1: bool = True         # 是否启用 T+1（注：当前引擎未按此开关分支，见文档）
     enable_price_limit: bool = True  # 是否启用涨跌停限制
+    # —— 仓位约束（默认全关＝与历史行为一致；打开才生效，见 run_backtest 内注释）——
+    # 单票占总资产上限。默认 None = 只用 budget=cash/top_n 的等分逻辑（首日实际投入会
+    # 高于 1/top_n，因为后面几只买入时前面几只的现金已经花掉了，见审计 #7）。
+    max_position_pct: float | None = None
+    # 总仓位（持仓市值/总资产）上限，None = 不限制（原实现允许满仓甚至超过）。
+    max_total_position_pct: float | None = None
+    # 单日成交量占比上限（占当日 volume 的百分比），None = 不限制。
+    # 原实现可以一次买 1.2e12 股，等于假设市场无限承接。
+    max_volume_pct: float | None = None
     # 单笔佣金下限（元）。券商普遍 5 元起收：小额单按万三算只有几毛钱，
     # 不设下限会把成本算少一个数量级（买 1 万元：万三=3 元 < 5 元）。
     min_commission: float = 5.0
@@ -202,6 +210,9 @@ def run_backtest(
                 "entry_price": pos["entry_price"],
                 "exit_price": round(sell_price, 2),
                 "shares": pos["shares"],
+                # 实际持仓自然日数（原实现只把它当局部变量，流水里查不到；
+                # 审计要核对"持有几天"必须先有这一列）
+                "hold_days": (when - pos["entry_date"]).days,
                 "pnl": round(proceeds - fee - pos["cost"], 2),
                 "pnl_pct": round((proceeds - fee - pos["cost"]) / pos["cost"] * 100, 2),
                 "reason": reason,
@@ -256,9 +267,9 @@ def run_backtest(
             # 止盈 / 止损
             hit_exit = close >= pos["target"]
             hit_stop = close <= pos["stop"]
-            # 持仓天数超限
+            # 持仓天数超限（每笔仓位自己的上限：策略 hint 与 config 取小）
             hold_days = (day - pos["entry_date"]).days
-            hit_max = hold_days >= config.max_hold_days
+            hit_max = hold_days >= pos.get("max_hold_days", config.max_hold_days)
             if hit_exit or hit_stop or hit_max:
                 cash = _close(
                     code, pos, day, close,
@@ -389,16 +400,37 @@ def run_backtest(
                 if pd.isna(atr) or atr <= 0:
                     continue
                 entry = strategy.entry_price(row, atr)
-                target, stop, hold_days = strategy.exit_price(entry, atr)
-                # 用可用资金买入（最多 1/5 仓位）
+                target, stop, hold_hint = strategy.exit_price(entry, atr)
+                # 策略自带的期望持仓天数原先被直接丢弃（审计 #6），这里把它当**上限**用：
+                # 与 config.max_hold_days 取小。config 仍是硬上限，所以内置策略
+                # （突破 20 / 趋势 30 / 大师 90 天）在默认 config=20 下行为不变；
+                # 只有"用户策略设 15 天、页面传 30 天"这种情形才会提前离场。
+                if hold_hint and int(hold_hint) > 0:
+                    pos_hold_days = min(config.max_hold_days, int(hold_hint))
+                else:
+                    pos_hold_days = config.max_hold_days
+                # 仓位：等分**剩余现金**。注意这**不是**"固定 1/top_n 总资产"——首日会
+                # 投到 65%~74%（top_n=5/2 实测），因为每买一只现金就少一份（审计 #7
+                # 指出原注释"最多 1/5 仓位"与实际不符，这里按实际行为改写注释）。
                 budget = cash / max(config.top_n, 1)
+                equity_now = cash + _market_value(ts)
                 # 大盘择时：大盘低于 MA20 时仓位减半
                 if config.market_timing and market_close is not None and market_ma20 is not None:
                     if ts in market_ma20.index and not pd.isna(market_ma20.loc[ts]):
                         if market_close.loc[ts] < market_ma20.loc[ts]:
                             budget *= 0.5
+                # 可选仓位约束（默认 None = 不启用，历史结果逐位不变）
+                if config.max_position_pct is not None:
+                    budget = min(budget, equity_now * config.max_position_pct)
+                if config.max_total_position_pct is not None:
+                    room = equity_now * config.max_total_position_pct - _market_value(ts)
+                    budget = min(budget, max(room, 0.0))
                 buy_price = entry * (1 + config.slippage)
                 shares = int(budget / buy_price / 100) * 100  # 按 100 股一手取整
+                # 可选成交量约束：最多吃掉当日成交量的 max_volume_pct（0.1 = 10%）
+                if config.max_volume_pct is not None:
+                    day_volume = float(bars.loc[ts, "volume"])
+                    shares = min(shares, int(day_volume * config.max_volume_pct / 100) * 100)
                 if shares <= 0:
                     continue
                 cost = shares * buy_price
@@ -409,11 +441,14 @@ def run_backtest(
                 cash -= cost + fee
                 positions[code] = {
                     "shares": shares,
-                    "entry_price": entry,
+                    # 记**实际成交价**（含滑点）。原实现买入记策略报价、卖出记含滑点
+                    # 的成交价，一进一出口径不一致（审计 #9），逐笔盈亏看起来偏高。
+                    "entry_price": round(buy_price, 2),
                     "entry_date": day,
                     "stop": stop,
                     "target": target,
                     "cost": cost + fee,
+                    "max_hold_days": pos_hold_days,
                 }
 
         # ---------- 3. 记录当日总资产 ----------
