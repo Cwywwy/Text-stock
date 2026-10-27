@@ -99,6 +99,7 @@ stock plan/
 | Phase 16 云端数据快照持久化 | ✅ 完成 | `data-snapshot` 分卷发布/恢复（双 sha256 + 原子替换回滚）+ 云端轻量模式 + 启动自动恢复 |
 | 数据层修复（2026-10-15） | ✅ 完成 | 新浪日线并发化 75.5→13.7 分钟、`--rebuild` 修正前复权回溯、`save_bars` 原子写、计划任务脚本化 |
 | 暂时需求（2026-10-15，已合入 main） | ✅ 完成 | 1 图表交互 / 2 要闻紧凑列表 / 3 个股新闻搜索 / 4 策略分组标签 + **客户归属** + 批量删除 / 5a 回测成本自定义 / 5b 过拟合自查 / 5c 退市股历史库（含回测接入）/ 6 市场阶段因子 + 缠论结构识别。**注**：第 4 项的"分客户"按**方案 B**（owner 归属标签）实现，真多用户（身份+隔离）未做，见 `.github/plans/2026-10-15-3-...` |
+| Phase 17 分类/情绪/做T/公告（2026-10-27） | ✅ 完成 | 板块分类层（申万一级+二级 + 证监会 + 同花顺概念，按月快照）/ 市场情绪与板块资金流（日频快照 + 因子）/ 公告抓取存档（sqlite）/ 做T（底仓+周内T）回测与页面 / 行业筛选进选股入口 / 「市场情绪·板块资金·公告存档」页面 / 数据更新页三个按钮 / 定时任务接入。页面 12 → 14，测试 153 → **178**。另有 `docs/使用指南（简明版）.docx`（5 页）。**注**：申万**三级**因数据源失效本轮为空（绝不以二级冒充），见 `.github/plans/2026-10-15-5-...` |
 
 ## 7. 关键决策记录（持续追加）
 
@@ -214,6 +215,15 @@ stock plan/
 | 2026-10-15 | 缠论的笔必须**首尾相接**，且端点可延伸 | 第一版"一发现异类型分型就立即固定成笔"会生成断开的两笔（如 UP(1→5) 与 DOWN(9→15)，中间 5→9 悬空），同时导致更高的顶无法延伸前一笔。改为「先归约（同类型取更极端）再成笔」，并加用例锁死连续性 |
 | 2026-10-15 | 中枢要按**中枢延伸**语义合并，不能每个三笔窗口都算一个 | 真实数据上 26 笔产生 22 个互相重叠的候选中枢。合并后 600519 降到 3 个（000001 16→2、300750 19→2、601318 20→7），区间也变得连贯 |
 | 2026-10-15 | 新增 `[tool.pytest.ini_options] testpaths = ["tests"]`，让**不带参数**的 `pytest` 也能跑 | 项目根下另有 711.6 MB 的 `Text/` 解压副本（**独立 git 仓库**、带自己的 `.git`、被 `.gitignore:30` 忽略、外层跟踪 0 个文件），它内部也有一份 `tests/`：不带参数跑 pytest 时它先注册 `test_backtest`/`test_llm_codegen`/`test_snapshot`/`test_updater` 四个模块名，随后收集 `tests/` 下同名文件即报 `import file mismatch` 并**中断整轮（0 passed）**。选择**限定收集范围而不是删除 `Text/`**：那是独立仓库，删掉等于毁掉那份副本的全部历史，且用户此前对同类重复副本明确选择保留。显式传路径的调用（`pytest tests/`、`acceptance.py:88` 用的就是它）不受 `testpaths` 影响，故自检结果不变 |
+| 2026-10-27 | 行业分类存**申万一级/二级 + 证监会 84 类**，三级缺失时**留空不降级** | akshare 的申万接口底层是抓**乐咕乐股**网页，实测该站间歇性整站 504（同一晚 23:06 正常、23:16 起连续 504）。改走申万官网（`index_realtime_sw` + `index_component_sw`，后者自带「计入日期」正是时点语义需要的），但官网**没有三级行业名录**（`index_realtime_sw('三级行业')` 直接 Length mismatch，`stock_industry_clf_hist_sw` SSLError）。宁可字段空着并显式告警，也不用二级冒充三级 |
+| 2026-10-27 | 概念只做**板块级**（资金流/涨幅），不做成分股筛选 | 实测 A 股概念成分股**没有任何可达来源**：东财接口不可达、akshare 不存在同花顺成分接口（`stock_board_industry_cons_ths` AttributeError）、富途只有 3 个硬编码美股概念、同花顺概念摘要只给数量不给名单 |
+| 2026-10-27 | 补充数据**分层抓取**：情绪/资金流日频，分类/板块行情月频 | 实测单次成本：日频六项合计 **≈12 秒**；申万全量 98 秒、板块指数行情 465 个 ×0.35s≈2.8 分钟、baostock 98 秒。存储约 **0.3 MB/天、100 MB/年**。行业归属一个月内基本不变，天天重抓月频数据只是浪费请求与磁盘 |
+| 2026-10-27 | 做T用**独立模拟器** `backtest/t_trade.py`，不改既有回测引擎 | 原引擎表达不了"同一只股票同时有底仓和 T 仓"：持仓以 `code` 为唯一键（`backtest/engine.py:154`）、`_close()` 全额平仓（`:173-191`）、退出价入场即冻结（`:359-360`）、策略无 `on_bar` 钩子（`strategy/base.py:26-60`）。硬改要动刚过 153 项测试并审计完的成交路径，风险不对称；新建独立类还能让做T的口径（只做正T、周五强平）单独演进 |
+| 2026-10-27 | 做T只做**正T**、**日线口径**（收盘价成交） | 项目只有日线（引擎连 `open` 都不用），真正的"日内 T"不可回测；把 2~5 日 mini-swing 命名清楚，避免给用户"能模拟日内"的错误预期。默认参数下大蓝筹几乎不触发（实测 119 个交易日仅 1 笔），这是真实结论，不为好看调参 |
+| 2026-10-27 | 情绪模块**不产出单一 0~100 情绪分**；三张资金流表净额**不可跨源相加** | 情绪分需要 ≥20 个交易日的分布来校准阈值，目前只有 1 天数据。另外同日行业资金流合计 −600.9 亿 vs 个股 −779.8 亿（覆盖范围不同），相加会得到无意义数字 |
+| 2026-10-27 | 公告存档用**独立 sqlite**（`data/processed/announcements.db`），不塞 `meta.db` | 公告是高频写入、可全量重建的派生物；塞进主库会带来写锁竞争与主库膨胀风险。同时按股票抓而非全市场（用户范围是持仓/自选，全市场每天几千条且要翻页） |
+| 2026-10-27 | 行业筛选**默认"不限"**，不传时行为与历史完全一致 | 新筛选只加在选股入口（今日信号/回测/对比/拼装），默认不过滤 → **不改变任何既有历史回测结果**。这是"加新功能但不作废旧结论"的前提，避免每次加过滤都要重跑全部基线 |
+| 2026-10-27 | `.ps1` 必须带 **UTF-8 BOM**；编辑工具可能把 BOM 剥掉，改完要复验 | 本机 Windows PowerShell 5.1 按 ANSI/GBK 读无 BOM 的 .ps1，中文字符串/注释的字节被错解后连花括号配对都会报错（实测 `daily_job.ps1` 报 4 处"意外的标记 }"）。修法是写入时用 `utf-8-sig`，并用 `[Parser]::ParseFile` 复验语法 |
 
 ## 8. 常用命令
 
@@ -240,6 +250,19 @@ uv run python -m stock_plan.data.update_daily --rebuild
 uv run python -m stock_plan.data.delisted --universe   # 时点股票池（按月，首次约 10 分钟）
 uv run python -m stock_plan.data.delisted --delisted   # 退市股完整历史行情
 uv run python -m stock_plan.data.delisted --all        # 两者都补
+
+# 分类快照（按月；申万一级/二级 + 证监会 + 概念，约 2~3 分钟）
+uv run python -m stock_plan.data.classification --all
+uv run python -m stock_plan.data.classification --month 2026-10 --concept   # 只抓概念
+
+# 市场情绪快照（日频；涨停/炸板/跌停 + 三张资金流，约 12 秒）
+uv run python -m stock_plan.data.market_snapshot              # 抓今天
+uv run python -m stock_plan.data.market_snapshot --list       # 列出已保存日期
+
+# 公告存档（持仓 + 自选，按股票抓、主键去重）
+uv run python -m stock_plan.data.announcements --days 7
+uv run python -m stock_plan.data.announcements --add 600519 --note 观察仓
+uv run python -m stock_plan.data.announcements --show
 
 # 注册/重注册 Windows 计划任务（需管理员；不提权可加 -ExportOnly 只生成 XML）
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register_tasks.ps1
