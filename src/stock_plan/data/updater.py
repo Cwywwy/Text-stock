@@ -184,6 +184,30 @@ def update_incremental(
     start = date.today() - timedelta(days=days)
     end = date.today()
 
+    # 缺口保护（2026-10-28）：`days=30` 的固定窗口只适用于「一直有在用」的机器。
+    # 如果本机上次更新在 30 天以前，从今天往回只抓 30 天，旧数据和新抓取之间就会
+    # 留一整段空洞 —— 任务显示"成功"，回测却凭空少了几十天。所以先问一次本地最新
+    # 交易日，落后超过窗口就把窗口撑大到覆盖缺口（多抓几天互相重叠，合并时天然去重）。
+    data_lag_days: int | None = None
+    try:
+        from stock_plan.data.freshness import latest_bar_date
+
+        local_latest = latest_bar_date(bars_dir=getattr(storage, "bars_dir", None))
+        if local_latest is not None:
+            gap = (end - local_latest.date()).days
+            data_lag_days = int(gap)
+            if gap > days:
+                days = min(gap + 5, 365 * 5)
+                start = end - timedelta(days=days)
+                logger.warning(
+                    "本地行情最新 %s，已落后 %d 天，增量窗口自动扩到 %d 天",
+                    local_latest.date(),
+                    gap,
+                    days,
+                )
+    except Exception as e:  # noqa: BLE001 —— 体检失败不该挡住抓取
+        logger.debug("数据新鲜度检查失败，按原窗口执行：%s", e)
+
     # 股票列表：优先在线刷新（顺带捕获新股），失败退回本地。
     # 2026-10-28 提速：全市场列表走新浪 spot 接口要翻 70 页、实测约 20 秒，
     # 而列表一天只会变一次 —— 所以当天已经刷过就直接读本地，省掉这 20 秒。
@@ -210,6 +234,8 @@ def update_incremental(
 
     stats = {
         "expected_date": str(expected.date()),
+        "window_days": days,
+        "data_lag_days": data_lag_days,
         "total_cached": len(cached),
         "todo": len(todo),
         "updated": 0,
@@ -261,6 +287,13 @@ def update_incremental(
 
     stats["elapsed"] = round(time.time() - t0, 1)
     _log_run("incremental", stats)
+    # 更新完把体检缓存刷掉，否则页面上的「行情最新交易日」要等到手动重扫才会变新
+    try:
+        from stock_plan.data.freshness import refresh_marker
+
+        refresh_marker(getattr(storage, "bars_dir", None))
+    except Exception as e:  # noqa: BLE001
+        logger.debug("体检缓存刷新失败：%s", e)
     return stats
 
 
