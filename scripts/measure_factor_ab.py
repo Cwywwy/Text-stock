@@ -282,9 +282,11 @@ def main() -> int:
         return worker(args)
 
     defaults = {
-        "start": WINDOWS["win_a"]["start"],
-        "end": WINDOWS["win_a"]["end"],
-        "lead_days": 400,
+        # 2026-10-29 修正：此前这里硬编码 win_a/400，导致命令行 --start/--end/--lead-days 被静默忽略
+        # （Phase 8 首跑误把 win_b 的 arm 全跑在 win_a 上，已修正后重跑）。
+        "start": args.start or WINDOWS["win_a"]["start"],
+        "end": args.end or WINDOWS["win_a"]["end"],
+        "lead_days": args.lead_days or 400,
         "max_codes": args.max_codes,
     }
     if args.baseline:

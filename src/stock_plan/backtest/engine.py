@@ -29,6 +29,7 @@ from stock_plan.factors.convergence import (
     add_conv_columns,
     compose_pvcf,
 )
+from stock_plan.factors.momentum import MA_RATIO_COLUMNS, add_ma_ratio_columns
 from stock_plan.factors.technical import compute_technical
 from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.strategy.base import Strategy
@@ -204,6 +205,8 @@ def run_backtest(
         # 均线收敛因子（2026-10-29）：滚动计算天然无未来函数，整列预计算、按日取行。
         # PVCF 依赖「当日截面」，只能在候选集拼成 DataFrame 后算（见下方 compose_pvcf）。
         f = add_conv_columns(f, bars_map[code])
+        # 动量方向修正（2026-10-29）：MA_L/close 四列，同样整列滚动预计算。
+        f = add_ma_ratio_columns(f)
         factor_index[code] = f
     # 每只股票的日期数组（numpy datetime64），配合指针做单调递增查找
     code_dates = {code: factor_index[code].index.values for code in codes}
@@ -416,6 +419,13 @@ def run_backtest(
                     **{
                         column: (float(last[column]) if pd.notna(last.get(column)) else float("nan"))
                         for column in CONV_RAW_COLUMNS
+                    },
+                    # 动量方向修正（2026-10-29）：MA_L/close，越小越强（研报口径）。
+                    **{
+                        column: (
+                            float(last[column]) if pd.notna(last.get(column)) else float("nan")
+                        )
+                        for column in MA_RATIO_COLUMNS
                     },
                 }
             )

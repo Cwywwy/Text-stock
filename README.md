@@ -231,7 +231,11 @@ uv run python -m stock_plan.data.delisted --all                   # 两者都补
 - ✅ Phase 7 均线收敛因子 PCF/VCF/PVCF/ACF/TRCF（新增 5 列；`conv_weight` 默认 0）——
   **结论：本数据上不成立，默认关闭**，理由见
   [A/B 报告](tests/reports/2026-10-29-04-41.phase7-ab.md)；
-- 🔄 Phase 8–13 进行中（动量修正 / RRG 行业轮动 / 两段式 LLM / 字段补齐）。
+- ✅ Phase 8 动量方向修正（新增 `ma_ratio_20/60/120/240` 四列；`MomentumStrategy.momentum_mode`
+  ∈ {`ret20`, `ma_ratio`, `ma_ratio_blend`}，默认 `ret20` 不变）——
+  **结论：两种新口径均显著变差，保留原口径**，理由见
+  [A/B 报告](tests/reports/2026-10-29-05-11.phase8-ab.md)；
+- 🔄 Phase 9–13 进行中（RRG 行业轮动 / 两段式 LLM / 字段补齐）。
 
 ## 云端部署（Streamlit Community Cloud）
 

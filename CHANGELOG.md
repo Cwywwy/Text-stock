@@ -2,6 +2,36 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 6）：策略刷新 Phase 8 — 动量方向修正（结论：变差，保留原口径）
+
+实现调研 Top 3 的第②项：把「裸涨幅动量」换成研报口径 `MA_L / close` 系（L = 20/60/120/240），
+在动量策略上做三模式 A/B。**默认行为未变（仍是 `ret20` 的 `mom_ret`）。**
+
+- 新增 `src/stock_plan/factors/momentum.py`：`ma_ratio_columns()`（`ma_ratio_L = MA_L / close`，
+  **越小越强**，注释写死方向）、`ma_ratio_strength()`（`1 − ratio`，越大越强）、
+  `cross_section_percentile()`（只用当日截面、NaN 保留，避免未来函数）。
+- `strategy/builtin.py::build_factor_rows()` 与 `backtest/engine.py` 因子预计算 / 候选行同步加
+  `ma_ratio_20/60/120/240` 四列；`tests/test_factor_parity.py` 数值对拍补这 4 列，并把 NaN 判定改为
+  「两边同为 NaN 视为一致」（200 行样本上 240 窗口两边都未成形，属同一种退化口径）。
+- `MomentumStrategy` 新增 `momentum_mode ∈ {ret20, ma_ratio, ma_ratio_blend}`（默认 `ret20`）：
+  `ma_ratio` 用 `ma_ratio_strength(60)` 打分，`ma_ratio_blend` 用四窗口强度的截面百分位均值、
+  NaN 视为中性 0.5；两种新模式仍映射到 0~30 分，与旧加分项同量纲。默认模式与 Phase 6 基线
+  `win_b` 逐指标完全一致（收益/年化/回撤/夏普/胜率/笔数）。
+- 顺带删除 `strategy/momentum.py` 里重复的死代码 `build_factor_rows`（用户已确认），
+  该文件现只含策略类。
+- A/B 报告 `tests/reports/2026-10-29-05-11.phase8-ab.{md,json}`（3 arm，区间 2022-09-01~2026-10-28，
+  基准 +37.11%）：`ret20` −32.91%（年化 −9.15%，回撤 −41.16%）／`ma_ratio` −53.26%（−16.71%／−55.88%）／
+  `ma_ratio_blend` −45.99%（−13.77%／−51.79%）。**按 §3.4 判定线两种新口径均显著变差 → 保留 `ret20`
+  为默认**，参数保留可选不删除。
+- 诚实说明：问题不在因子符号，而在用法是**单边做多**——涨幅与 `MA/close` 都是在买近期强势股，
+  样本期 2023–2024 强势股整体跑输（动量反转期），换度量改不了方向；2025 单边上涨年 `ma_ratio`
+  反而更好（+11.99% vs +7.16%）。改进方向应是择时/市场状态过滤（`factors/regime.py` 与
+  `BacktestConfig.market_timing` 至今未被任何策略使用）或降低换手，而非继续换动量度量。
+- 新增 `tests/test_momentum_factor.py`（13 例）；全量 `pytest` **474 passed**。测试报告：
+  `tests/reports/2026-10-29-05-15.report-1.md`。
+- 修正 `scripts/measure_factor_ab.py` 脚手架缺陷：`defaults` 曾把 `start/end/lead_days` 硬编码为
+  `win_a/400`，导致 `--start/--end/--lead-days` 被静默忽略（Phase 8 首跑因此跑错窗口，已作废重跑）。
+
 ## 2026-10-29（续 5）：策略刷新 Phase 7 — 均线收敛因子 A/B（结论：不成立，默认关闭）
 
 实现调研 Top 3 的第①项：均线收敛因子（PCF 收盘 / VCF 成交量 / PVCF 截面合成 / ACF 成交额 /

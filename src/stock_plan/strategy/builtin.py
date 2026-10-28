@@ -25,6 +25,7 @@ from stock_plan.factors.convergence import (
     cross_section_zscore,
 )
 from stock_plan.factors.filter import filter_universe
+from stock_plan.factors.momentum import ma_ratio_columns
 from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.factors.technical import compute_technical
 from stock_plan.strategy.base import Strategy
@@ -236,6 +237,16 @@ def build_factor_rows(
             column: (float(conv_last[column]) if pd.notna(conv_last[column]) else float("nan"))
             for column in ("conv_pcf", "conv_vcf", "conv_acf", "conv_trcf")
         }
+        # 动量方向修正（2026-10-29）：MA_L/close 四列，越小越强（研报口径）。
+        ratio_last = ma_ratio_columns(bars).iloc[-1]
+        ratio_values = {
+            f"ma_ratio_{_w}": (
+                float(ratio_last[f"ma_ratio_{_w}"])
+                if pd.notna(ratio_last[f"ma_ratio_{_w}"])
+                else float("nan")
+            )
+            for _w in (20, 60, 120, 240)
+        }
         rows.append(
             {
                 "code": code,
@@ -256,6 +267,7 @@ def build_factor_rows(
                 "trend_score": last["trend_score"],
                 "fund_score": fund_score,
                 **conv_values,
+                **ratio_values,
                 **ma_cols,
             }
         )

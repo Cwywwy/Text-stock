@@ -2,7 +2,7 @@
 
 > 计划书编号：2026-10-29-4
 > 上游依据：`.github/plans/2026-10-29-2-new-strategy-research-and-selection.md`（调研计划，§10 为拍板记录）+ `docs/策略选型调研-2026-10-29.md`（候选评估正文，本次口径以它为准）
-> 状态：**执行中**（用户 2026-10-29 02:12 拍板 + 审阅确认；Q1–Q6 按推荐执行）。Phase 6 已完成并提交（`02db412`）；Phase 7 已完成并提交，**G2 结论「本数据上不成立、默认关闭」待用户拍板**。
+> 状态：**执行中**（用户 2026-10-29 02:12 拍板 + 审阅确认；Q1–Q6 按推荐执行）。Phase 6 已完成并提交（`02db412`）；Phase 7 已完成并提交（`b2f4c8a`），G2 结论「本数据上不成立、默认关闭」已获用户确认（「按结论默认关闭」）；Phase 8 已完成，**G3 结论「两种 ma_ratio 口径均显著变差、保留 ret20 默认」待用户拍板**。
 
 ---
 
@@ -360,9 +360,19 @@ Phase 6 基线+脚手架
 - 三模式对比报告 + G3 结论
 
 **完成标准**
-- [ ] 三模式均可跑；默认模式输出与 `win_b` 基线逐值一致
-- [ ] 报告含四指标 + 分年度 + 方向说明 + 判定结论（变差就保留原样）
-- [ ] commit `(phase 8) add MA/close momentum ratio mode and A/B report`
+- [x] 三模式均可跑；默认模式输出与 `win_b` 基线逐值一致
+- [x] 报告含四指标 + 分年度 + 方向说明 + 判定结论（变差就保留原样）
+- [x] commit `(phase 8) add MA/close momentum ratio mode and A/B report`
+
+**执行记录（2026-10-29 05:17）**
+- 新增 `factors/momentum.py`：`MA_RATIO_WINDOWS=(20,60,120,240)`、`ma_ratio_columns`、`add_ma_ratio_columns`、`ma_ratio_strength = 1 − MA_L/close`、`cross_section_percentile`（只用当日截面、NaN 保留，避免未来函数）。
+- `builtin.build_factor_rows` 与 `engine.py` 预计算/候选行同步加 `ma_ratio_20/60/120/240` 四列；`tests/test_factor_parity.py` 数值对拍补这 4 列，并把 NaN 判定改为**两边同为 NaN 视为一致**（200 行样本上 240 窗口两边都未成形，属同一种退化口径）。
+- `MomentumStrategy` 增加 `momentum_mode ∈ {ret20, ma_ratio, ma_ratio_blend}`（默认 `ret20`）；`_momentum_bonus()` 统一产出 0~30 分；`ma_ratio` 用 `ma_ratio_strength(60)`，`ma_ratio_blend` 用四窗口强度截面百分位均值、NaN 视为中性 0.5。`mom_ret` 缺失时 `ret20` 模式整体中性（与旧行为一致）。
+- 已删除 `strategy/momentum.py` 里重复的死代码 `build_factor_rows`（Q6 用户已确认）；该文件现仅含策略类（约 150 行）。
+- `registry.PARAM_DESC` 补 `momentum_mode` 说明；新增 `tests/test_momentum_factor.py`（13 例）。
+- A/B 报告：`tests/reports/2026-10-29-05-11.phase8-ab.{md,json}`（3 arm，区间 2022-09-01~2026-10-28，基准 +37.11%）。
+- **G3 结论**：`ma_ratio` 年化 **−16.71%**（比默认 −9.15% 差 7.56pp），回撤 −55.88%（恶化 14.72pp）；`ma_ratio_blend` 年化 −13.77%（差 4.62pp），回撤 −51.79%（恶化 10.63pp）→ 按 §3.4 判定线**两种口径均显著变差，保留 `ret20` 为默认**，参数保留可选不删除。
+- 诚实说明：问题不在因子符号，而在我们的用法是**单边做多**——涨幅和 `MA/close` 都在买近期强势股，样本期 2023–2024 强势股整体跑输（动量反转期），换度量改不了方向；2025 单边上涨年 `ma_ratio` 反而更好（+11.99% vs +7.16%）。改进方向应是择时/市场状态过滤（已有 `factors/regime.py` 与 `market_timing` 未用）或降低换手，而非继续换动量度量。
 
 ### Phase 9 — 任务 C1：RRG 行业层（可证伪）
 

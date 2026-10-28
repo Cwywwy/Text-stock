@@ -8,16 +8,24 @@
 - 目标卖出价 = 买入价 + atr_m_exit × ATR（止盈）
 - 止损价     = 买入价 - atr_n_stop × ATR（止损）
 - 期望持仓天数 = 由参数 hold_days 决定
+
+动量口径（2026-10-29 起可切换，默认行为不变）：
+- `momentum_mode="ret20"`（默认）：用近 20 日涨幅 `mom_ret`，与旧实现逐值一致；
+- `momentum_mode="ma_ratio"`：改用研报口径 `1 − MA_60/close`（越强越大），映射方式与 ret20 相同；
+- `momentum_mode="ma_ratio_blend"`：四个窗口（20/60/120/240）的强度各自取截面百分位后平均。
+  研报实测 A 股裸涨幅动量 IC 全负，`MA_L/close` 方向相反；但方向修正后是否真能赚钱，以回测为准。
+
+Revision History:
+    2026-10-29  (phase 8) add momentum_mode ret20/ma_ratio/ma_ratio_blend, remove duplicate builder
 """
 from __future__ import annotations
 
 import pandas as pd
 
 from stock_plan.factors.filter import filter_universe
-from stock_plan.factors.fundamental import compute_fundamental_or_neutral
-from stock_plan.factors.technical import compute_technical
+from stock_plan.factors.momentum import cross_section_percentile, ma_ratio_strength
 from stock_plan.strategy.base import Strategy
-from stock_plan.strategy.scorer import composite_score, fundamental_composite
+from stock_plan.strategy.scorer import composite_score
 
 
 class MomentumStrategy(Strategy):
@@ -53,6 +61,8 @@ class MomentumStrategy(Strategy):
         "hold_days": 30,      # 期望持仓天数
         "w_tech": 0.6,        # 技术面权重
         "w_fund": 0.4,        # 基本面权重
+        # 动量口径：ret20（默认，旧行为）/ ma_ratio（MA_60/close 方向修正）/ ma_ratio_blend（四窗口合成）
+        "momentum_mode": "ret20",
     }
 
     def filter_universe(
@@ -78,10 +88,10 @@ class MomentumStrategy(Strategy):
             weights=(w_tech, w_fund, 0.0),
         )
 
-        # 动量加分：近 N 日涨幅越高分越高（0~100 映射）
-        if "mom_ret" in df_factors.columns:
-            mom = df_factors["mom_ret"].clip(-0.2, 0.3)  # 限制极端值
-            score += (mom + 0.2) / 0.5 * 30  # -20%~+30% 映射到 0~30 分
+        # 动量加分：口径由 momentum_mode 决定（默认 ret20 = 旧行为，逐值不变）
+        bonus = self._momentum_bonus(df_factors)
+        if bonus is not None:
+            score += bonus
 
         # 中期趋势向上
         if "ma20" in df_factors.columns and "ma60" in df_factors.columns:
@@ -97,6 +107,36 @@ class MomentumStrategy(Strategy):
 
         return score
 
+    def _momentum_bonus(self, df_factors: pd.DataFrame) -> pd.Series | None:
+        """按 `momentum_mode` 计算 0~30 分的动量加分；缺列时返回 None（不加分）。
+
+        三种口径的映射都尽量保持同一量纲（0~30 分），保证模式切换只改「用什么衡量动量」，
+        不改分数量级：
+        - `ret20`：`mom_ret` 裁剪到 [-20%, +30%] 后线性映射（旧实现，逐值不变）；
+        - `ma_ratio`：`1 − MA_60/close`（越强越大）同样裁剪映射；NaN（历史不足）按中性 0 处理；
+        - `ma_ratio_blend`：四窗口强度各自转截面百分位后平均，×30；NaN 按中性 0.5 处理。
+        """
+        mode = str(self.params.get("momentum_mode", "ret20"))
+        if mode == "ma_ratio":
+            strength = ma_ratio_strength(df_factors, 60)
+            if strength.isna().all():
+                return None
+            clipped = strength.clip(-0.2, 0.3).fillna(0.0)
+            return (clipped + 0.2) / 0.5 * 30
+        if mode == "ma_ratio_blend":
+            parts = []
+            for window in (20, 60, 120, 240):
+                if f"ma_ratio_{window}" not in df_factors.columns:
+                    return None
+                strength = ma_ratio_strength(df_factors, window)
+                parts.append(cross_section_percentile(strength).fillna(0.5))
+            return sum(parts) / len(parts) * 30
+        # 默认：ret20（旧行为）
+        if "mom_ret" not in df_factors.columns:
+            return None
+        mom = df_factors["mom_ret"].clip(-0.2, 0.3)  # 限制极端值
+        return (mom + 0.2) / 0.5 * 30  # -20%~+30% 映射到 0~30 分
+
     def entry_price(self, row: pd.Series, atr: float) -> float:
         """目标买入价 = 最新收盘价 + k×ATR（突破买入）。"""
         k = self.params["atr_k_entry"]
@@ -109,69 +149,3 @@ class MomentumStrategy(Strategy):
         exit_price = round(entry + m * atr, 2)
         stop_loss = round(entry - n * atr, 2)
         return exit_price, stop_loss, self.params["hold_days"]
-
-
-def build_factor_rows(
-    codes: list[str], bars_map: dict[str, pd.DataFrame], fund_map: dict[str, dict]
-) -> pd.DataFrame:
-    """为候选股票构建打分所需的因子行（含动量列）。"""
-    rows = []
-    for code in codes:
-        bars = bars_map.get(code)
-        if bars is None or bars.empty:
-            continue
-        factored = compute_technical(bars)
-        if factored.empty:
-            continue
-        last = factored.iloc[-1]
-        # 2026-10-28：与 build_factor_rows 同步修正——原始财务 dict 必须先换算成分数
-        fund = compute_fundamental_or_neutral(fund_map.get(code))
-        fund_score = fundamental_composite(fund)
-        # 近 N 日动量
-        mom_period = MomentumStrategy.params["mom_period"]
-        mom_ret = 0.0
-        if len(factored) > mom_period:
-            mom_ret = last["close"] / factored.iloc[-1 - mom_period]["close"] - 1
-        rows.append(
-            {
-                "code": code,
-                "close": last["close"],
-                "atr14": last["atr14"],
-                "ma20": last["ma20"],
-                "ma60": last["ma60"],
-                "rsi14": last["rsi14"],
-                "vol_ratio": last["vol_ratio"],
-                "mom_ret": mom_ret,
-                "trend_score": last["trend_score"],
-                "fund_score": fund_score,
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-if __name__ == "__main__":
-    # 简单自测：用已缓存数据跑一遍完整打分流程
-    from stock_plan.data.storage import Storage
-
-    storage = Storage()
-    stock_list = storage.load_stock_list()
-    bars_map = {}
-    for code in stock_list["code"].astype(str).tolist():
-        if storage.cache_exists(code):
-            bars_map[code] = storage.load_bars(code)
-    fund_map = {}
-    for code in bars_map:
-        fin = storage.load_fundamentals(code)
-        if fin:
-            fund_map[code] = fin
-
-    strat = MomentumStrategy()
-    codes = strat.filter_universe(stock_list, bars_map)
-    print(f"通过硬过滤: {len(codes)} 只")
-    factor_rows = build_factor_rows(codes, bars_map, fund_map)
-    print(f"因子行: {len(factor_rows)} 只")
-    if not factor_rows.empty:
-        factor_rows["score"] = strat.score(factor_rows)
-        top = factor_rows.sort_values("score", ascending=False).head(5)
-        print("\nTop 5:")
-        print(top[["code", "close", "mom_ret", "trend_score", "fund_score", "score"]].to_string(index=False))

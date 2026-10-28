@@ -250,10 +250,16 @@ def test_factor_values_match_between_paths() -> None:
         # 均线收敛因子（2026-10-29 新增）：引擎整列预计算 vs 实盘末行计算必须同值。
         # PVCF 在单只股票截面上 z-score 方差为 0 → 两边都应得 0（这条同时锁住该退化口径）。
         "conv_pcf", "conv_vcf", "conv_acf", "conv_trcf", "conv_pvcf",
+        # 动量方向修正（2026-10-29 新增）：MA_L/close 四列，越小越强。
+        "ma_ratio_20", "ma_ratio_60", "ma_ratio_120", "ma_ratio_240",
     ]
     diffs = []
     for col in numeric:
         a, b = float(engine_row[col]), float(live[col])
+        # 窗口不足（如 200 行样本上的 ma_ratio_240）两边都应是 NaN：同一种退化口径，
+        # 不视为不一致；只有「一边 NaN 一边有值」才是真差异。
+        if np.isnan(a) and np.isnan(b):
+            continue
         if a != pytest.approx(b, rel=1e-9, abs=1e-9):
             diffs.append(f"{col}: 回测={a} 实盘={b}")
     assert not diffs, "两条路径的因子数值不一致：\n  " + "\n  ".join(diffs)
