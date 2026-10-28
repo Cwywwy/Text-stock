@@ -3,13 +3,13 @@
 展示内容：
 - 策略选择 + 起止日期 + 初始资金
 - 核心指标卡片（总收益/年化/最大回撤/夏普/胜率/盈亏比/交易次数）
-- 资金曲线（Plotly 折线图）
-- 月度收益柱状图
-- 回撤区间与交易盈亏分布
+- 首屏主图：策略净值 vs 等权基准 + 回撤阴影（金额 / 收益率可切换）
+- 四个标签页：总览（回撤区间）/ 月度（柱状图 + 热力图）/ 交易（盈亏分布 + 明细）/ 归因（退出原因）
 
 Revision History:
     2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
     2026-09-04  show cloud sample-universe disclosure
+    2026-10-28  (phase 1) tabbed result page with benchmark hero chart
 """
 from __future__ import annotations
 
@@ -25,7 +25,8 @@ from stock_plan.backtest.report import make_report
 from stock_plan.data.storage import Storage
 from stock_plan.llm.analyzer import review_backtest
 from stock_plan.strategy.registry import create_strategy
-from stock_plan.ui.widgets import apply_time_axis, PLOTLY_CONFIG, board_filter_ui, page_glossary
+from stock_plan.ui import chart_style as cs
+from stock_plan.ui.widgets import apply_time_axis, board_filter_ui, page_glossary, render_chart
 
 # 本页名词速览（R2 亲民化）
 BACKTEST_GLOSSARY = {
@@ -165,6 +166,291 @@ def _render_overfit_guide(metrics: dict, config_dict: dict) -> None:
         )
 
 
+# 月度热力图色阶：绿(跌) → 面板色(平) → 红(涨)，与全站「红涨绿跌」一致
+_HEAT_SCALE = [[0.0, cs.DOWN], [0.5, cs.PANEL], [1.0, cs.UP]]
+
+
+def _excess_caption(metrics: dict, result) -> str:
+    """一句话结论：策略累计收益 vs 同期等权基准（超额有多少个点）。"""
+    total = float(metrics.get("total_return", 0) or 0)
+    dd = float(metrics.get("max_drawdown", 0) or 0)
+    bench = getattr(result, "benchmark", None)
+    if bench is None or len(bench) < 2:
+        return f"策略累计收益 {total:+.2f}%，最大回撤 {dd:.2f}%（本次未生成基准：候选池行情不足）。"
+    b = bench.astype(float).dropna()
+    if len(b) < 2 or float(b.iloc[0]) <= 0:
+        return f"策略累计收益 {total:+.2f}%，最大回撤 {dd:.2f}%。"
+    bench_ret = (float(b.iloc[-1]) / float(b.iloc[0]) - 1) * 100
+    diff = total - bench_ret
+    word = "跑赢" if diff >= 0 else "跑输"
+    return (
+        f"策略累计 {total:+.2f}%，同期「等权持有全部候选股」基准 {bench_ret:+.2f}%，"
+        f"{word}基准 {abs(diff):.2f} 个百分点；最大回撤 {dd:.2f}%。"
+    )
+
+
+def _hero_fig(result, mode: str) -> go.Figure | None:
+    """首屏主图：策略净值 + 基准 + 回撤阴影。
+
+    mode="收益率"：看相对起点涨了多少，叠回撤阴影；
+    mode="金额"：看账户里有多少钱，基准按同一起始资金等比缩放，可直接比绝对金额。
+    """
+    eq = getattr(result, "equity_curve", None)
+    if eq is None or len(eq) < 2:
+        return None
+    eq = pd.Series(eq, dtype="float64")
+    base = float(eq.iloc[0])
+    if base <= 0:
+        return None
+    x = pd.to_datetime(eq.index)
+    bench = getattr(result, "benchmark", None)
+    fig = go.Figure()
+
+    if mode == "金额":
+        fig.add_trace(go.Scatter(
+            x=x, y=eq.to_numpy(), mode="lines", name="总资产",
+            line=dict(color=cs.PRIMARY, width=2),
+        ))
+        if bench is not None and len(bench) >= 2:
+            b = bench.astype(float).reindex(eq.index).ffill()
+            b = b.dropna()
+            if len(b) >= 2 and float(b.iloc[0]) > 0:
+                fig.add_trace(go.Scatter(
+                    x=pd.to_datetime(b.index),
+                    y=b / float(b.iloc[0]) * base,
+                    mode="lines",
+                    name="基准（同资金等权持有候选池）",
+                    line=dict(color=cs.BENCHMARK, width=1.5, dash="dash"),
+                ))
+        fig.add_hline(
+            y=base,
+            line=dict(color=cs.NEUTRAL, width=1, dash="dot"),
+            annotation_text=f"初始资金 {cs.fmt_money(base)}",
+            annotation_position="top left",
+            annotation_font=dict(size=11, color=cs.AXIS_TEXT),
+        )
+        cs.apply_base_layout(fig, height=cs.H_PRIMARY, y_title="总资产（元）")
+        fig.update_yaxes(**cs.axis_money())
+    else:
+        pct = (eq / base - 1) * 100
+        cs.add_drawdown_band(fig, x, pct, name="策略")
+        if bench is not None and len(bench) >= 2:
+            b = bench.astype(float).reindex(eq.index).ffill().dropna()
+            if len(b) >= 2 and float(b.iloc[0]) > 0:
+                fig.add_trace(go.Scatter(
+                    x=pd.to_datetime(b.index),
+                    y=(b / float(b.iloc[0]) - 1) * 100,
+                    mode="lines",
+                    name="基准（等权持有候选池）",
+                    line=dict(color=cs.BENCHMARK, width=1.5, dash="dash"),
+                    hovertemplate="%{x|%Y-%m-%d}<br>基准 %{y:.2f}%<extra></extra>",
+                ))
+        cs.apply_base_layout(fig, height=cs.H_PRIMARY, y_title="累计收益率（%）", zero_line=True)
+        fig.update_yaxes(**cs.axis_pct_points())
+
+    apply_time_axis(fig)
+    return fig
+
+
+def _render_hero(result, metrics: dict) -> None:
+    """首屏主图 + 口径切换 + 一句话结论。"""
+    mode = st.segmented_control(
+        "主图口径",
+        ["收益率", "金额"],
+        default="收益率",
+        key="backtest_hero_mode",
+        help="收益率 = 相对起点涨了多少（带红色回撤阴影）；金额 = 账户里有多少钱。",
+    )
+    fig = _hero_fig(result, mode or "收益率")
+    if fig is None:
+        st.info("回测数据不足，无法绘制资金曲线。")
+        return
+    render_chart(fig, name="backtest-equity", caption=_excess_caption(metrics, result))
+
+
+def _monthly_fig(report: dict) -> go.Figure | None:
+    """月度收益柱状图：真日期轴（缩放时刻度会重算）+ 柱顶数值 + 红涨绿跌。"""
+    rows = report.get("monthly_returns") or []
+    keep = []
+    for row in rows:
+        if row.get("return") is None:
+            continue
+        xi = pd.to_datetime(row.get("month"), errors="coerce")
+        if xi is None or pd.isna(xi):
+            continue
+        keep.append((xi, float(row["return"])))
+    if not keep:
+        return None
+    fig = go.Figure(go.Bar(
+        x=[k[0] for k in keep],
+        y=[k[1] for k in keep],
+        marker_color=[cs.up_down_colour(k[1]) for k in keep],
+        # 只在幅度够大时写柱顶数值：零轴附近的小数值会互相挤成一团（见 Phase 1 样张复查）。
+        text=[f"{k[1]:.1f}%" if abs(k[1]) >= 2 else "" for k in keep],
+        textposition="outside",
+        textfont=dict(size=10, color=cs.AXIS_TEXT),
+        name="月度收益",
+        hovertemplate="%{x|%Y-%m}<br>%{y:.2f}%<extra></extra>",
+    ))
+    cs.apply_base_layout(fig, height=cs.H_SECONDARY, y_title="月度收益率（%）", zero_line=True)
+    fig.update_yaxes(**cs.axis_pct_points())
+    fig.update_layout(bargap=0.4)
+    apply_time_axis(fig)
+    return fig
+
+
+def _heatmap_fig(report: dict) -> go.Figure | None:
+    """月度收益热力图：一年一行、一月一列，一眼看出哪几个月在赚钱。"""
+    hm = report.get("monthly_heatmap") or []
+    if not hm:
+        return None
+    years = sorted({int(h["year"]) for h in hm})
+    months = list(range(1, 13))
+    z: list[list] = []
+    for y in years:
+        row = []
+        for mo in months:
+            hit = next(
+                (h for h in hm if int(h["year"]) == y and int(h["month"]) == mo), None
+            )
+            row.append(None if hit is None else float(hit["return"]))
+        z.append(row)
+    fig = go.Figure(go.Heatmap(
+        z=z,
+        x=[f"{m}月" for m in months],
+        y=[str(y) for y in years],
+        colorscale=_HEAT_SCALE,
+        zmid=0.0,
+        text=[[("" if v is None else f"{v:.1f}") for v in row] for row in z],
+        texttemplate="%{text}",
+        textfont=dict(size=10),
+        hovertemplate="%{y} 年 %{x}<br>%{z:.2f}%<extra></extra>",
+        colorbar=dict(
+            thickness=10,
+            len=0.75,
+            outlinewidth=0,
+            ticksuffix="%",
+            tickfont=dict(size=10, color=cs.AXIS_TEXT),
+        ),
+    ))
+    cs.apply_base_layout(
+        fig,
+        height=max(200, 46 * len(years) + 70),
+        hovermode="closest",
+        legend=None,
+        right_axis=False,  # 年份标签留在左侧，右边缘留给 colorbar
+    )
+    return fig
+
+
+def _tab_overview(report: dict) -> None:
+    """总览：回撤区间（策略最难走的几段路）。"""
+    st.markdown("##### 回撤区间")
+    periods = report.get("drawdown_periods") or []
+    if not periods:
+        st.info("回测期间无回撤。")
+        return
+    st.dataframe(
+        [
+            {
+                "开始": d["start"],
+                "结束": d["end"],
+                "最大回撤": f"{d['max_drawdown']:.2f}%",
+            }
+            for d in periods
+        ],
+        width="stretch",
+        hide_index=True,
+    )
+    st.caption("每一行是「从阶段高点跌到阶段低点」的一段，越靠上跌得越狠。")
+
+
+def _tab_monthly(report: dict) -> None:
+    """月度：收益柱 + 热力图。"""
+    monthly = _monthly_fig(report)
+    if monthly is not None:
+        render_chart(
+            monthly,
+            name="backtest-monthly",
+            caption="每月收益率：红涨绿跌，柱子越高说明这个月赚得越多。",
+        )
+    else:
+        st.info("回测区间不足一个月，暂无月度收益。")
+
+    heat = _heatmap_fig(report)
+    if heat is not None:
+        returns = [m for m in (report.get("monthly_returns") or []) if m.get("return") is not None]
+        caption = "横轴是月份、纵轴是年份，红色代表这个月赚钱、绿色代表亏钱。"
+        if returns:
+            best = max(returns, key=lambda m: m["return"])
+            worst = min(returns, key=lambda m: m["return"])
+            caption = (
+                f"最好 {best['month']}（{best['return']:+.1f}%），"
+                f"最差 {worst['month']}（{worst['return']:+.1f}%）。{caption}"
+            )
+        render_chart(heat, name="backtest-monthly-heatmap", caption=caption)
+
+
+def _tab_trades(report: dict, result) -> None:
+    """交易：盈亏分布 + 最近交易明细。"""
+    st.markdown("##### 交易盈亏分布")
+    dist = report.get("trade_distribution") or []
+    if dist:
+        fig = go.Figure(go.Bar(
+            x=[t["range"] for t in dist],
+            y=[t["count"] for t in dist],
+            marker_color=cs.series_colour(1),
+            text=[t["count"] for t in dist],
+            textposition="outside",
+            textfont=dict(size=10, color=cs.AXIS_TEXT),
+            name="笔数",
+            hovertemplate="%{x}<br>%{y} 笔<extra></extra>",
+        ))
+        cs.apply_base_layout(
+            fig,
+            height=cs.H_SECONDARY,
+            y_title="笔数",
+            right_axis=False,
+            hovermode="closest",
+        )
+        render_chart(
+            fig,
+            name="backtest-trade-dist",
+            caption="单笔交易的最终收益率落在哪个区间：靠右的柱子越多说明大赚的越多。",
+        )
+    else:
+        st.info("无交易数据。")
+
+    st.markdown("##### 最近交易")
+    trades = getattr(result, "trades", None)
+    if trades is not None and not trades.empty:
+        st.dataframe(trades.tail(20), width="stretch", hide_index=True)
+    else:
+        st.info("本次回测没有产生交易。")
+
+
+def _tab_attribution(report: dict) -> None:
+    """归因：按退出原因统计表现，用来判断止盈/止损位要不要调。"""
+    rows = report.get("exit_attribution") or []
+    if not rows:
+        st.info("无交易数据。")
+        return
+    st.dataframe(
+        [
+            {
+                "退出原因": a["reason"],
+                "笔数": a["count"],
+                "平均收益%": a["avg_pnl_pct"],
+                "胜率%": a["win_rate"],
+            }
+            for a in rows
+        ],
+        width="stretch",
+        hide_index=True,
+    )
+    st.caption("按「为什么卖」分组：哪类退出贡献最大，决定该收紧止损还是放宽止盈。")
+
+
 def _render_result(metrics: dict, report: dict, result, config_dict: dict):
     """渲染回测结果（从 session_state 读取，避免按钮交互导致结果丢失）。"""
     # 左侧核心指标 + 右侧过拟合自查（暂时需求 5：回测右方教用户避免过拟合）
@@ -192,157 +478,21 @@ def _render_result(metrics: dict, report: dict, result, config_dict: dict):
     with right:
         _render_overfit_guide(metrics, config_dict)
 
-    # 资金曲线
-    st.subheader("资金曲线")
-    if report["equity_curve"]:
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=pd.to_datetime([p["date"] for p in report["equity_curve"]]),
-                y=[p["value"] for p in report["equity_curve"]],
-                mode="lines",
-                name="总资产",
-                line=dict(color="#1f77b4", width=2),
-            )
-        )
-        fig.update_layout(
-            height=400,
-            margin=dict(l=40, r=20, t=30, b=30),
-            yaxis_title="资产（元）",
-            xaxis_title="日期",
-        )
-        apply_time_axis(fig)
-        st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+    # 首屏主图：策略净值 + 等权基准 + 回撤阴影（金额 / 收益率可切换）
+    _render_hero(result, metrics)
 
-    # 收益曲线（R3 需求：累计收益率 % + 回撤区域标注）
-    st.subheader("📈 收益曲线（动态变化）")
-    st.caption(
-        "蓝线是「累计收益率」：从回测第一天算起，账户总共赚/亏了百分之几。"
-        "红色阴影是「回撤」：从阶段最高点跌下来的幅度，阴影越深说明中途跌得越狠。"
+    tab_over, tab_month, tab_trade, tab_attr = st.tabs(
+        ["📌 总览", "📅 月度", "🧾 交易", "🔍 归因"]
     )
-    # 注意：这里不要 import apply_time_axis —— 函数内的 import 会把它变成该函数的
-    # 局部名，导致上面模块级导入的那次调用（在本次 import 之前执行）抛 UnboundLocalError。
-    from stock_plan.ui.widgets import equity_curve_fig
+    with tab_over:
+        _tab_overview(report)
 
-    eq = result.equity_curve if result is not None else None
-    fig_ret = equity_curve_fig(eq)
-    if fig_ret is not None:
-        st.plotly_chart(fig_ret, use_container_width=True, config=PLOTLY_CONFIG)
-    else:
-        st.info("回测数据不足，无法绘制收益曲线。")
-
-    # 月度收益
-    st.subheader("月度收益")
-    if report["monthly_returns"]:
-        fig2 = go.Figure()
-        fig2.add_trace(
-            go.Bar(
-                x=[m["month"] for m in report["monthly_returns"]],
-                y=[m["return"] for m in report["monthly_returns"]],
-                name="月度收益",
-                marker_color=[
-                    "#d62728" if m["return"] < 0 else "#2ca02c"
-                    for m in report["monthly_returns"]
-                ],
-            )
-        )
-        fig2.update_layout(
-            height=300,
-            margin=dict(l=40, r=20, t=30, b=30),
-            yaxis_title="收益率（%）",
-        )
-        st.plotly_chart(fig2, use_container_width=True, config=PLOTLY_CONFIG)
-
-    # 回撤区间
-    st.subheader("回撤区间")
-    if report["drawdown_periods"]:
-        st.dataframe(
-            [
-                {
-                    "开始": d["start"],
-                    "结束": d["end"],
-                    "最大回撤": f"{d['max_drawdown']:.2f}%",
-                }
-                for d in report["drawdown_periods"]
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
-    else:
-        st.info("回测期间无回撤。")
-
-    # 交易盈亏分布
-    st.subheader("交易盈亏分布")
-    if report["trade_distribution"]:
-        fig3 = go.Figure()
-        fig3.add_trace(
-            go.Bar(
-                x=[t["range"] for t in report["trade_distribution"]],
-                y=[t["count"] for t in report["trade_distribution"]],
-                name="交易分布",
-                marker_color="#ff7f0e",
-            )
-        )
-        fig3.update_layout(
-            height=300,
-            margin=dict(l=40, r=20, t=30, b=30),
-            yaxis_title="笔数",
-        )
-        st.plotly_chart(fig3, use_container_width=True, config=PLOTLY_CONFIG)
-
-    # 退出原因归因
-    st.subheader("退出原因归因")
-    if report["exit_attribution"]:
-        st.dataframe(
-            [
-                {
-                    "退出原因": a["reason"],
-                    "笔数": a["count"],
-                    "平均收益%": a["avg_pnl_pct"],
-                    "胜率%": a["win_rate"],
-                }
-                for a in report["exit_attribution"]
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
-    else:
-        st.info("无交易数据。")
-
-    # 月度收益热力图
-    st.subheader("月度收益热力图")
-    if report["monthly_heatmap"]:
-        hm = report["monthly_heatmap"]
-        years = sorted({h["year"] for h in hm})
-        months = list(range(1, 13))
-        z = []
-        for y in years:
-            row = []
-            for mo in months:
-                val = next((h["return"] for h in hm if h["year"] == y and h["month"] == mo), None)
-                row.append(val if val is not None else 0)
-            z.append(row)
-        fig4 = go.Figure(data=go.Heatmap(
-            z=z,
-            x=[f"{m}月" for m in months],
-            y=[str(y) for y in years],
-            colorscale="RdYlGn",
-            zmid=0,
-            text=[[f"{v:.1f}" for v in row] for row in z],
-            texttemplate="%{text}",
-            colorbar=dict(title="收益%"),
-        ))
-        fig4.update_layout(height=300, margin=dict(l=40, r=20, t=30, b=30))
-        st.plotly_chart(fig4, use_container_width=True, config=PLOTLY_CONFIG)
-
-    # 最近交易明细
-    st.subheader("最近交易")
-    if result.trades is not None and not result.trades.empty:
-        st.dataframe(
-            result.trades.tail(20),
-            use_container_width=True,
-            hide_index=True,
-        )
+    with tab_month:
+        _tab_monthly(report)
+    with tab_trade:
+        _tab_trades(report, result)
+    with tab_attr:
+        _tab_attribution(report)
 
     # LLM 复盘与参数优化建议
     st.divider()

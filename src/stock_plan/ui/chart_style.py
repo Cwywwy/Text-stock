@@ -22,6 +22,7 @@
 
 修订记录：
 2026-10-28 初版：token、格式化函数与 apply_base_layout，供 Phase 0 图表工厂使用。
+2026-10-28 Phase 1 样张复查：回撤阴影降到 0.12、右轴标题改右上角横排注释、页边距重算。
 """
 from __future__ import annotations
 
@@ -45,7 +46,7 @@ UP = "#F0616D"  # 涨 / 正收益（A 股习惯：红涨）
 DOWN = "#2EBD85"  # 跌 / 负收益（绿跌）
 PRIMARY = "#00C896"  # 品牌色 / 主曲线
 BENCHMARK = "#8A9099"  # 基准曲线（虚线）
-DRAWDOWN = "rgba(240, 97, 109, 0.16)"  # 回撤阴影
+DRAWDOWN = "rgba(240, 97, 109, 0.12)"  # 回撤阴影（深色底上 0.16 偏重）
 WARN = "#F5A524"  # 警示标注
 NEUTRAL = "#5B6573"  # 次要元素
 
@@ -167,11 +168,13 @@ def apply_base_layout(
         zero_line: 是否画 0 轴参考线（柱状/收益类建议 True）。
         legend: 图例位置，"h" 横排置顶；None 不显示。
     """
+    if margin is None:
+        margin = dict(l=8, r=58 if right_axis else 12, t=38 if legend else 20, b=26)
     layout: dict = dict(
         paper_bgcolor=CANVAS,
         plot_bgcolor=CANVAS,
         font=dict(family=FONT_FAMILY, size=FONT_TEXT, color=TEXT),
-        margin=margin or dict(l=8, r=56 if right_axis else 12, t=34, b=28),
+        margin=margin,
         hovermode=hovermode,
         dragmode="pan",
         uirevision=UIREVISION,
@@ -207,7 +210,28 @@ def apply_base_layout(
     if height:
         layout["height"] = int(height)
     if y_title:
-        layout["yaxis"]["title"] = dict(text=y_title, font=dict(size=FONT_AXIS, color=AXIS_TEXT))
+        if right_axis:
+            # 右轴竖排标题会与刻度标签挤在一起（页边距再宽也救不回来，且观潮本来就没有
+            # 竖排轴标题）。改成图右上角一行横排小字，既标了单位又不抢占刻度空间。
+            annotations = list(extra.pop("annotations", None) or [])
+            annotations.append(
+                dict(
+                    text=y_title,
+                    xref="paper",
+                    yref="paper",
+                    x=1,
+                    y=1.03,
+                    xanchor="right",
+                    yanchor="bottom",
+                    showarrow=False,
+                    font=dict(size=FONT_AXIS, color=AXIS_TEXT),
+                )
+            )
+            layout["annotations"] = annotations
+        else:
+            layout["yaxis"]["title"] = dict(
+                text=y_title, font=dict(size=FONT_AXIS, color=AXIS_TEXT)
+            )
     if legend == "h":
         layout["legend"] = dict(
             orientation="h",

@@ -113,7 +113,9 @@ def test_apply_base_layout_defaults() -> None:
     assert layout.uirevision == cs.UIREVISION
     assert layout.dragmode == "pan"
     assert layout.yaxis.side == "right"
-    assert layout.yaxis.title.text == "累计收益率（%）"
+    # 右轴的标题改成右上角横排注释（竖排标题会压住刻度标签，2026-10-28 样张复查）。
+    assert not layout.yaxis.title.text
+    assert [a.text for a in layout.annotations] == ["累计收益率（%）"]
     assert not layout.xaxis.showgrid
     assert not layout.yaxis.showgrid  # 观潮手法：默认无网格
     assert layout.font.family == cs.FONT_FAMILY

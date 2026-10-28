@@ -132,13 +132,15 @@ _DATE_TICKFORMATSTOPS = [
 ]
 
 
-def apply_time_axis(fig: go.Figure, title: str = "日期", rangeslider: bool = False) -> go.Figure:
+def apply_time_axis(fig: go.Figure, title: str = "", rangeslider: bool = False) -> go.Figure:
     """把 x 轴设为真正的日期轴。
 
     原先不少图表把日期转成 `str(d)[:10]` 再画，Plotly 会当成**分类轴**：分类轴的
     刻度位置是固定的，缩放时既不重算密度也不换格式，所以出现"放大后标签仍挤在一起
     或仍很稀疏"。改用 DatetimeIndex 后，Plotly 会随缩放连续重算刻度间隔与格式
     （见 _DATE_TICKFORMATSTOPS），配合 PLOTLY_CONFIG 的 scrollZoom 即为连续缩放。
+
+    标题默认留空：日期轴自解释，写上「日期」反而会和刻度标签抢位置（2026-10-28）。
 
     rangeslider=True 时在图下方加一条可拖拽的区间选择条（另一种连续缩放方式），
     会额外占用高度，默认关闭。
