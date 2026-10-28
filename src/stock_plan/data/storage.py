@@ -12,6 +12,7 @@
 Revision History:
     2026-09-04  add load_market_maps windowed loader for backtest/signal
     2026-10-15  在 load_bars 里剔除"零值占位行"（见 _sanitize_bars）
+    2026-10-29  (phase 12) add share-capital/disclosure accessors for B-tier fields
 """
 from __future__ import annotations
 
@@ -57,6 +58,8 @@ def _sanitize_bars(df: pd.DataFrame) -> pd.DataFrame:
     return df.loc[~bad].reset_index(drop=True)
 BARS_DIR = PROJECT_ROOT / "data" / "processed" / "bars"
 DB_PATH = PROJECT_ROOT / "data" / "db" / "meta.db"
+# 股本/市值快照与历史表目录（B 档字段；实现在 data/share_capital.py）
+SHARES_DIR = PROJECT_ROOT / "data" / "processed" / "shares"
 
 # 日线标准字段（与 fetcher.get_daily_bars 返回一致）
 BAR_COLUMNS = ["date", "open", "high", "low", "close", "volume", "amount", "turnover"]
@@ -291,6 +294,50 @@ class Storage:
 
         fund_map = {c: f for c in bars_map if (f := self.load_fundamentals(c)) is not None}
         return stock_list, bars_map, fund_map
+
+    # ---------- B 档字段：股本 / 市值 / 披露日（Phase 12） ----------
+    def load_shares(
+        self,
+        kind: str = "snapshot",
+        month: str | None = None,
+        out_dir: Path | str | None = None,
+    ) -> pd.DataFrame:
+        """读股本数据。`kind`：`snapshot`（当月快照）/ `float` / `total`（历史长表）。
+
+        缺文件时返回空 DataFrame（不抛错），由 data/fields.py 统一转成降级说明。
+        """
+        from stock_plan.data import share_capital as shares
+
+        base = Path(out_dir) if out_dir else SHARES_DIR
+        if kind == "snapshot":
+            return shares.load_snapshot(base, month=month)
+        if kind in {"float", "total"}:
+            return shares.load_history(kind, base)
+        raise ValueError(f"未知股本数据类别：{kind!r}（应为 snapshot/float/total）")
+
+    def load_total_mv(self, code: str | None = None) -> pd.DataFrame:
+        """总市值历史长表（`date, code, total_shares, total_mv, source`，总股本为外推口径）。"""
+        frame = self.load_shares("total")
+        if code and not frame.empty:
+            frame = frame[frame["code"].astype(str) == str(code)]
+        return frame.reset_index(drop=True)
+
+    def load_float_mv(self, code: str | None = None) -> pd.DataFrame:
+        """流通市值历史长表（`date, code, close, float_shares, float_mv`，由成交额÷换手率反推）。"""
+        frame = self.load_shares("float")
+        if code and not frame.empty:
+            frame = frame[frame["code"].astype(str) == str(code)]
+        return frame.reset_index(drop=True)
+
+    def load_disclosure(
+        self,
+        period: str | None = None,
+        codes: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """读财报披露日（`report_disclosure` 表）；无记录返回空表。"""
+        from stock_plan.data import disclosure
+
+        return disclosure.load_disclosure(period, codes, db_path=self.db_path)
 
     # ---------- 退市股元数据（暂时需求 5c） ----------
     def save_delisted(self, rows: list[dict]) -> int:

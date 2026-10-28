@@ -2,6 +2,29 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 9）：策略刷新 Phase 12 — B 档字段补齐（总股本 / 财报披露日）
+
+补齐调研报告 §4.2 的 B 档字段。**日线表结构未改动，只新增数据目录与新表；现有 7 策略默认输出逐值不变。**
+
+- 新增 `src/stock_plan/data/share_capital.py`：东财 `push2` 直连抓全市场快照（总市值 / 流通市值 / 最新价），反推
+  `total_shares = 总市值 ÷ 最新价`、`float_shares = 流通市值 ÷ 最新价`；历史流通股本由 `amount ÷ (turnover × close)` 逐日精确反推；
+  历史总股本按当期「总 / 流通比例」外推并标 `source=proxy`。落盘 `data/processed/shares/`（月快照 0.2 MB + 两张历史长表约 228 MB）。
+- 新增 `src/stock_plan/data/disclosure.py`：拉取 2021Q4–2026Q3 共 20 期预约 / 实际披露日，写入 `meta.db` 新表 `report_disclosure`；
+  缺失时退回法定披露截止日（年报 / 一季报 4-30、半年报 8-31、三季报 10-31）；`as_of_disclosure()` 严格只取
+  `announce_date <= date` 的记录，杜绝未来函数。
+- 新增 `src/stock_plan/data/fields.py`：`as_of_total_shares / as_of_float_shares / as_of_total_mv / as_of_float_mv / as_of_disclosure`
+  统一消费接口，缺数据返回 `None` + 中文 `degraded` 说明，不抛异常、不静默。
+- `data/storage.py` 新增 `SHARES_DIR`、`load_shares()`、`load_total_mv()`、`load_float_mv()`、`load_disclosure()`；
+  `data/updater.py` 新增 `refresh_aux_fields()` 并在每日更新尾部接入（披露日只在法定截止前 30 天内刷新，失败只告警不阻断）。
+- 新增回补脚本 `scripts/backfill_share_capital.py`、`scripts/backfill_disclosure.py`：幂等、`--dry-run`、`--skip-fetch`（离线复用快照）、`--json`。
+- 覆盖率（详见 `tests/reports/2026-10-29-05-53.phase12-fields.md`）：股本快照 5571 只 / 历史 5570 只、635.7 万行；北交所 353/353 全覆盖；
+  历史流通市值与快照比值中位 0.997；披露日 99,191 行 / 5223 只 / 20 期（98.2% 有实际披露时间）。
+- 修复：首次回补因 `exclude_st=True` 漏抓 197 只 ST 股（已改为 `exclude_st=False` 重跑）；`load_snapshot()` 误把历史表当月快照；
+  无效日期曾错误回退到快照次日（改为直接降级）。
+- 测试：新增 44 例（`test_share_capital` 15 / `test_disclosure` 17 / `test_fields` 12），全量 **547 passed / 85.60s**；
+  7 策略 win_a 区间回归与 Phase 6 基线逐值一致。
+- 已知限制：历史总股本为比例外推，只能用于市值分档（定增 / 回购 / 解禁不可回溯）；东财接口在本机间歇被网络层重置，重跑用 `--skip-fetch`。
+
 ## 2026-10-29（续 8）：策略刷新 Phase 11 — 两段式「先选类型 → LLM 发挥」
 
 落地调研报告 §6 的两段式改造，并把「缺字段静默跳过」改成「禁用规则 + 降级留痕」。**未改动任何现有策略的打分公式与默认值。**

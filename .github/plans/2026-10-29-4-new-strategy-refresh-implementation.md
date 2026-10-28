@@ -2,7 +2,7 @@
 
 > 计划书编号：2026-10-29-4
 > 上游依据：`.github/plans/2026-10-29-2-new-strategy-research-and-selection.md`（调研计划，§10 为拍板记录）+ `docs/策略选型调研-2026-10-29.md`（候选评估正文，本次口径以它为准）
-> 状态：**执行中**（用户 2026-10-29 02:12 拍板 + 审阅确认；Q1–Q6 按推荐执行）。Phase 6 已完成并提交（`02db412`）；Phase 7 已完成并提交（`b2f4c8a`），G2 结论「本数据上不成立、默认关闭」已获用户确认（「按结论默认关闭」）；Phase 8 已完成并提交（`fce3f7c`），G3 结论「两种 ma_ratio 口径均显著变差、保留 ret20 默认」已获用户确认（「继续 Phase 9」）；Phase 9 已完成并提交（`0e2f691`），G4 结论「C1 行业层无超额（年化 −0.53pp）→ 按预注册规则停止 C2」已获用户确认（「继续 Phase 11」）；Phase 11 已完成，**G5 结论「两段式 + 规则级降级链路已贯通，事件驱动占位」待用户拍板**；Phase 12–13 待做。
+> 状态：**执行中**（用户 2026-10-29 02:12 拍板 + 审阅确认；Q1–Q6 按推荐执行）。Phase 6 已完成并提交（`02db412`）；Phase 7 已完成并提交（`b2f4c8a`），G2 结论「本数据上不成立、默认关闭」已获用户确认（「按结论默认关闭」）；Phase 8 已完成并提交（`fce3f7c`），G3 结论「两种 ma_ratio 口径均显著变差、保留 ret20 默认」已获用户确认（「继续 Phase 9」）；Phase 9 已完成并提交（`0e2f691`），G4 结论「C1 行业层无超额（年化 −0.53pp）→ 按预注册规则停止 C2」已获用户确认（「继续 Phase 11」）；Phase 11 已完成并提交（`129949b`），G5 结论「两段式 + 规则级降级链路已贯通，事件驱动占位」已获用户确认（「继续 Phase 12」）；**Phase 12 已完成执行（待提交），G6 待拍板**；Phase 13 待做。
 
 ---
 
@@ -489,10 +489,24 @@ Phase 6 基线+脚手架
 - 单测（网络全 mock）+ 7 策略逐值回归
 
 **完成标准**
-- [ ] 四类数据落盘 + 覆盖率报告（含 353 只北交所无行业、上市不足 240 天的样本占比）
-- [ ] 缺失路径有单测，任何情况下不让策略崩
-- [ ] 现有 7 策略默认参数输出逐值不变
-- [ ] commit `(phase 12) add share capital and disclosure date fields with fallbacks`
+- [x] 四类数据落盘 + 覆盖率报告（含 353 只北交所无行业、上市不足 240 天的样本占比）
+- [x] 缺失路径有单测，任何情况下不让策略崩
+- [x] 现有 7 策略默认参数输出逐值不变
+- [x] commit `(phase 12) add share capital and disclosure date fields with fallbacks`
+
+**执行记录（2026-10-29 05:55）**
+
+- 实际产出：`data/share_capital.py`（快照抓取 + 流通股本精确反推 + 总股本比例外推）、`data/disclosure.py`（20 期预约/实际披露日 + 法定截止日兜底 + `as_of_disclosure` 防未来函数）、`data/fields.py`（统一 `.get()` 消费接口，缺数据返回 `None` + 中文 `degraded`）、`storage.py`（`SHARES_DIR` + `load_shares/load_total_mv/load_float_mv/load_disclosure`）、`updater.py`（`refresh_aux_fields`：股本每日刷新、披露日只在法定截止前 30 天内刷新，失败只告警不阻断）、两个回补脚本（`backfill_share_capital.py`、`backfill_disclosure.py`）。
+- 与计划书的差异：
+  1. 主数据源改为**东财 `push2` 直连优先、akshare 兜底**（`stock_zh_a_spot_em` 与本机网络间歇性 `RemoteDisconnected`，两者同源，05:52 起 http/https 均被网络层重置）；快照复用已落盘本月文件（`--skip-fetch`）。
+  2. 明细表 `report_disclosure` 落在 `meta.db`（计划书原文即如此），未新增独立 `announcements.db`；`announce_date` 取「首次预约 / 一~三次变更 / 实际披露」中最晚可知日。
+  3. 总股本用「当期总/流通比例 × 逐日流通股本」外推并标 `source=proxy`（计划书原文口径），已写入报告限制段。
+- 数据结果：快照 5571 只（as_of 2026-10-29）；历史 6,356,770 行 / 5570 只（2021-09-06~2026-10-28）；北交所 353/353 全覆盖；1 只快照无日线、9 只退市无快照；披露日 99,191 行 / 5223 只 / 20 期（98.16% 有实际披露时间）。历史 `float_mv` 与快照比值中位 0.997（p05 0.9769 / p95 1.0084），与用户给定 4 只样例偏差 −0.71%~+0.03%。
+- 修复的问题：① 首次回补因 `load_market_maps(exclude_st=True)` 漏掉 197 只 ST 股，改为 `exclude_st=False` 重跑（历史股票数 5374 → 5570）；② `load_snapshot()` 曾误把 `history_total.parquet` 当快照（改为只认 `YYYY-MM.parquet`）；③ 无效日期曾回退到快照次日，改为直接降级；④ numpy 标量写 JSON 报 `TypeError: Object of type bool is not JSON serializable`，统一 `_json_safe`。
+- 测试：新增 `tests/test_share_capital.py`(15) + `tests/test_disclosure.py`(17) + `tests/test_fields.py`(12)，全量 `pytest -q` **547 passed / 85.60s**（Phase 11 为 503，+44 无失败），报告 `tests/reports/2026-10-29-05-55.report-1.md`。
+- 回归：7 策略 win_a 区间重跑，与 Phase 6 基线逐值一致（`tests/reports/2026-10-29-05-45.phase12-regression.{json,md}`）。
+- 数据与覆盖率报告：`tests/reports/2026-10-29-05-53.phase12-fields.md`。
+- 限制：历史总股本为比例外推（定增/回购/解禁不可回溯），只能用于市值分档；快照仅当期一份；东财接口本机间歇被重置。
 
 ### Phase 13 — 集成、文档、交付
 

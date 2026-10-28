@@ -197,6 +197,38 @@ uv run python -m stock_plan.data.delisted --all                   # 两者都补
 `requirements.txt` 无需新增依赖。完整调研数据与实现方案见
 [.github/plans/2026-10-15-1-new-delisted-stock-history-db.md](.github/plans/2026-10-15-1-new-delisted-stock-history-db.md)。
 
+### 股本与财报披露日（B 档字段，2026-10-29 起）
+
+日线表只有 `amount` 与 `turnover`，此前只能算 `流通市值 = 成交额 ÷ 换手率`，**没有总股本**（小市值类策略做不了），
+也**没有财报公告日**（`fundamentals.updated_at` 是抓取时刻，不是披露日）。这两项在 Phase 12 补齐，**日线表结构未动**：
+
+| 字段 | 来源与口径 | 落点 |
+| --- | --- | --- |
+| 总股本 / 流通股本 / 总市值 / 流通市值 | 东财快照：`总股本 = 总市值 ÷ 最新价`、`流通股本 = 流通市值 ÷ 最新价` | `data/processed/shares/YYYY-MM.parquet`（当月快照） |
+| 逐日流通股本 / 流通市值 | `float_shares = amount ÷ (turnover × close)`（由代理公式精确反推，无近似） | `data/processed/shares/history_float.parquet` |
+| 逐日总股本 / 总市值 | `total_shares = float_shares × 当期总/流通比例`，标 `source=proxy` | `data/processed/shares/history_total.parquet` |
+| 财报预约 / 实际披露日 | 东财预约披露接口，20 个报告期（2021Q4–2026Q3） | `meta.db` 表 `report_disclosure` |
+
+```powershell
+# 首次回补（需要网络；快照只抓一次）
+uv run python scripts/backfill_share_capital.py
+uv run python scripts/backfill_disclosure.py
+
+# 网络不通时复用已落盘快照（纯本地计算，约 28 秒）
+uv run python scripts/backfill_share_capital.py --skip-fetch
+
+# 只统计不落盘
+uv run python scripts/backfill_share_capital.py --skip-fetch --dry-run --json
+```
+
+消费一律走 `src/stock_plan/data/fields.py`（`as_of_total_shares / as_of_float_shares / as_of_total_mv / as_of_float_mv / as_of_disclosure`）：
+**缺数据返回 `None` + 中文 `degraded` 说明，不抛异常也不静默**。披露日缺失时退回法定截止日（年报/一季报 4-30、
+半年报 8-31、三季报 10-31），且 `as_of_disclosure()` 只返回 `announce_date <= 查询日` 的记录，杜绝未来函数。
+
+已知限制（务必看）：**总股本历史是比例外推**，定增/回购/解禁不可回溯，只能用于市值分档，不可用于精确市值；
+东财接口在本机间歇被网络层重置，重跑请用 `--skip-fetch`。完整覆盖率与降级实测见
+[tests/reports/2026-10-29-05-53.phase12-fields.md](tests/reports/2026-10-29-05-53.phase12-fields.md)。
+
 ## 开发进度
 
 当前 **Phase 0–16 全部完成**，并已修复数据层并发瓶颈与前复权回溯偏差。
@@ -242,7 +274,11 @@ uv run python -m stock_plan.data.delisted --all                   # 两者都补
 - ✅ Phase 11 两段式「先选类型 → LLM 发挥」+ 规则级降级链路（新增 `strategy/archetypes.py`、
   `codegen.normalize_config_typed()`、`SignalReport.degraded`；六类型下拉，事件驱动类型仅占位不可回测；
   缺字段的规则会被禁用并在报告/UI 里标明「今天少算了哪几条」）；
-- 🔄 Phase 12–13 进行中（B 档字段补齐：总股本 / 财报披露日；集成与文档收尾）。
+- ✅ Phase 12 B 档字段补齐（新增 `data/share_capital.py` / `data/disclosure.py` / `data/fields.py`；
+  总股本、逐日流通股本、财报披露日全部落盘，消费方缺数据一律 `degraded`）——
+  **结论：7 策略默认输出逐值不变**，覆盖率见
+  [字段报告](tests/reports/2026-10-29-05-53.phase12-fields.md)；
+- 🔄 Phase 13 进行中（集成、7 策略基线与最终对比、文档收尾）。
 
 ## 云端部署（Streamlit Community Cloud）
 
