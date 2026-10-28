@@ -221,6 +221,18 @@ uv run python -m stock_plan.data.delisted --all                   # 两者都补
 - ✅ 数据层修复（2026-10-15）：新浪日线并发化（全市场 **75.5 → 13.7 分钟**）、`--rebuild`
   全历史重建修正前复权回溯、`save_bars` 原子写、计划任务重写为可重注册的脚本 + XML
 
+### 策略刷新（`feature/strategy-refresh`，2026-10-29 起）
+
+按 [策略选型调研](docs/策略选型调研-2026-10-29.md) 与
+[实施计划书](.github/plans/2026-10-29-4-new-strategy-refresh-implementation.md) 落地五块改造，
+每块都用同策略/同区间/同配置的 A/B 数字判定「成立」或「不成立」。进度：
+
+- ✅ Phase 6 基线固化 + A/B 测量器（`scripts/measure_factor_ab.py`，7 策略 × 3 窗口基线）；
+- ✅ Phase 7 均线收敛因子 PCF/VCF/PVCF/ACF/TRCF（新增 5 列；`conv_weight` 默认 0）——
+  **结论：本数据上不成立，默认关闭**，理由见
+  [A/B 报告](tests/reports/2026-10-29-04-41.phase7-ab.md)；
+- 🔄 Phase 8–13 进行中（动量修正 / RRG 行业轮动 / 两段式 LLM / 字段补齐）。
+
 ## 云端部署（Streamlit Community Cloud）
 
 应用可免费部署到 [Streamlit Community Cloud](https://share.streamlit.io)，获得公网链接：

@@ -1,0 +1,10 @@
+[
+  {"label": "趋势跟随/conv0.0", "strategy": "趋势跟随策略", "params": {"conv_weight": 0.0}},
+  {"label": "趋势跟随/conv0.1", "strategy": "趋势跟随策略", "params": {"conv_weight": 0.1}},
+  {"label": "趋势跟随/conv0.2", "strategy": "趋势跟随策略", "params": {"conv_weight": 0.2}},
+  {"label": "趋势跟随/conv0.3", "strategy": "趋势跟随策略", "params": {"conv_weight": 0.3}},
+  {"label": "突破/conv0.0", "strategy": "突破策略", "params": {"conv_weight": 0.0}},
+  {"label": "突破/conv0.1", "strategy": "突破策略", "params": {"conv_weight": 0.1}},
+  {"label": "突破/conv0.2", "strategy": "突破策略", "params": {"conv_weight": 0.2}},
+  {"label": "突破/conv0.3", "strategy": "突破策略", "params": {"conv_weight": 0.3}}
+]

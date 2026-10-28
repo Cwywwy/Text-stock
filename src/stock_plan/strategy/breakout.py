@@ -12,11 +12,15 @@
 - 目标卖出价 = 买入价 + atr_m_exit × ATR（止盈）
 - 止损价     = 买入价 - atr_n_stop × ATR（止损，跌破突破位即离场）
 - 期望持仓天数 = 由参数 hold_days 决定
+
+修订记录：
+2026-10-29  (phase 7) 接入均线收敛加分 conv_weight（默认 0，收敛→突破前提）
 """
 from __future__ import annotations
 
 import pandas as pd
 
+from stock_plan.factors.convergence import cross_section_zscore
 from stock_plan.factors.filter import filter_universe
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.scorer import composite_score
@@ -52,6 +56,9 @@ class BreakoutStrategy(Strategy):
         "hold_days": 20,      # 突破失效快离场
         "w_tech": 0.7,        # 技术面权重（突破主要看技术）
         "w_fund": 0.3,        # 基本面权重
+        # 均线收敛加分权重（2026-10-29 起）：0 = 关闭（默认，保证旧行为不变）。
+        # 收敛后突破的胜率通常更高，这是「收敛 → 突破」组合的理论依据。
+        "conv_weight": 0.0,
     }
 
     def filter_universe(
@@ -66,6 +73,12 @@ class BreakoutStrategy(Strategy):
             df_factors["fund_score"],
             weights=(self.params["w_tech"], self.params["w_fund"], 0.0),
         )
+
+        # 均线收敛加分（默认关闭）：收敛是突破的前置条件，越收敛越给分。
+        # 原始 PCF 跨股票不可比，必须转成截面 z-score 再加权。
+        conv_weight = float(self.params.get("conv_weight", 0.0))
+        if conv_weight and "conv_pcf" in df_factors.columns:
+            score = score + conv_weight * cross_section_zscore(df_factors, "conv_pcf")
 
         # 必须中期趋势向上
         if "ma20" in df_factors.columns and "ma60" in df_factors.columns:

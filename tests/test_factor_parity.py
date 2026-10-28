@@ -247,6 +247,9 @@ def test_factor_values_match_between_paths() -> None:
         "close", "atr14", "ma20", "ma60", "rsi14", "vol_ratio", "mom_ret",
         "high20_ratio", "avg_amount20", "macd", "macd_signal",
         "trend_score", "fund_score", "ma5", "ma7", "ma10", "ma30",
+        # 均线收敛因子（2026-10-29 新增）：引擎整列预计算 vs 实盘末行计算必须同值。
+        # PVCF 在单只股票截面上 z-score 方差为 0 → 两边都应得 0（这条同时锁住该退化口径）。
+        "conv_pcf", "conv_vcf", "conv_acf", "conv_trcf", "conv_pvcf",
     ]
     diffs = []
     for col in numeric:

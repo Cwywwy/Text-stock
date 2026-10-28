@@ -13,6 +13,7 @@
 - 涨跌停：涨停无法买入、跌停无法卖出（简化判断）
 
 Revision History:
+    2026-10-29  (phase 7) inject convergence factor columns (conv_pcf/vcf/acf/trcf/pvcf) into candidates
     2026-10-28  (phase 1) expose equal-weight benchmark on BacktestResult
 """
 from __future__ import annotations
@@ -23,6 +24,11 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
+from stock_plan.factors.convergence import (
+    CONV_RAW_COLUMNS,
+    add_conv_columns,
+    compose_pvcf,
+)
 from stock_plan.factors.technical import compute_technical
 from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.strategy.base import Strategy
@@ -195,6 +201,9 @@ def run_backtest(
         # 自定义均线列（供自定义策略均线自由组合使用）
         for _p in (5, 7, 10, 30):
             f[f"ma{_p}"] = f["close"].rolling(_p).mean()
+        # 均线收敛因子（2026-10-29）：滚动计算天然无未来函数，整列预计算、按日取行。
+        # PVCF 依赖「当日截面」，只能在候选集拼成 DataFrame 后算（见下方 compose_pvcf）。
+        f = add_conv_columns(f, bars_map[code])
         factor_index[code] = f
     # 每只股票的日期数组（numpy datetime64），配合指针做单调递增查找
     code_dates = {code: factor_index[code].index.values for code in codes}
@@ -401,10 +410,19 @@ def run_backtest(
                         f"ma{_p}": float(last.get(f"ma{_p}"))
                         for _p in (5, 7, 10, 30)
                     },
+                    # 均线收敛因子（2026-10-29）：整列已在 factor_index 里预计算，
+                    # 这里按「当日行」取值，与 build_factor_rows 的末行口径一致；
+                    # 无未来函数（rolling 只回看）。PVCF 依赖当日截面，下面统一合成。
+                    **{
+                        column: (float(last[column]) if pd.notna(last.get(column)) else float("nan"))
+                        for column in CONV_RAW_COLUMNS
+                    },
                 }
             )
         if candidates:
             df = pd.DataFrame(candidates)
+            # 截面合成列：PCF、VCF 各自 z-score 后再相加（研报口径，见 compose_pvcf）
+            df["conv_pvcf"] = compose_pvcf(df)
             df["score"] = strategy.score(df)
             df = df.sort_values("score", ascending=False)
             # 买入 Top N（跳过已持仓与涨停）

@@ -2,6 +2,30 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 5）：策略刷新 Phase 7 — 均线收敛因子 A/B（结论：不成立，默认关闭）
+
+实现调研 Top 3 的第①项：均线收敛因子（PCF 收盘 / VCF 成交量 / PVCF 截面合成 / ACF 成交额 /
+TRCF 换手率），并做同策略、同区间、同配置的加/不加 A/B。**未改变任何策略默认行为。**
+
+- 新增 `src/stock_plan/factors/convergence.py`：`convergence_series()`（`−log(1+std(MA_1..MA_120))`，
+  `std` 用 `skipna=False`，避免均线未成形时把「算不出的窗口」当成「收敛」）、`convergence_columns()`
+  （四列 + 无量纲诊断列 `conv_pcf_cv`）、`add_conv_columns()`、`cross_section_zscore()`、
+  `compose_pvcf()`（截面 z-score 后相加，零方差截面取 0 中性值）；`MA_1` 即原始价格。
+- 接入两条路径：`strategy/builtin.py::build_factor_rows()` 与 `backtest/engine.py` 的因子预计算 /
+  候选行 / 打分前合成；`tests/test_factor_parity.py` 的列集双向断言与数值对拍各补 5 列，
+  保证「回测 → 今日信号」两条路径同值（单股票零方差截面两边都为 0）。
+- 趋势跟随、突破策略新增 `conv_weight` 参数（默认 0，`score += conv_weight × z(conv_pcf)`）；
+  默认 0 时 `win_a` 上收益/年化/回撤/夏普/胜率/笔数与 Phase 6 基线**逐指标完全一致**。
+- A/B 报告 `tests/reports/2026-10-29-04-41.phase7-ab.{md,json}`（8 arm，`conv_weight ∈ {0,0.1,0.2,0.3}`）。
+  **按预注册判定线 G2 结论：不成立，默认关闭。** 趋势跟随三档权重全部变差（年化 −0.7~−0.9pp、
+  回撤劣化 2.3~2.7pp）；突破仅 0.2 档年化 +0.69pp（<0.5pp 门槛外仅勉强）、回撤改善 1.13pp（<2pp），
+  且 2025 上涨年反而变差、三档无单调性 → 判为样本噪声。参数保留为可选开关，不删除。
+- 新增 `tests/test_convergence.py`（10 例）；`tests/test_metrics.py` 保持 6 例；全量 `pytest`
+  **461 passed**（Phase 6 的 459 + 2）。测试报告：`tests/reports/2026-10-29-04-42.report-1.md`。
+- 附带结论（诚实披露）：样本内 7 策略全部跑输同期等权基准，真正的共同短板是**日频换手 16–18 倍/年**
+  （估算年成本拖累 4–5pp），远大于本轮因子的贡献。建议后续把「调仓频率 / 持有期 / 成本假设」单独立项，
+  而不是继续加因子。
+
 ## 2026-10-29（续 4）：策略刷新 Phase 6 — 基线固化与 A/B 测量器
 
 进入 `feature/strategy-refresh` 实施阶段。Phase 6 不改任何策略行为，只把「现状」变成可复跑的数字，

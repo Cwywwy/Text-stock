@@ -2,7 +2,7 @@
 
 > 计划书编号：2026-10-29-4
 > 上游依据：`.github/plans/2026-10-29-2-new-strategy-research-and-selection.md`（调研计划，§10 为拍板记录）+ `docs/策略选型调研-2026-10-29.md`（候选评估正文，本次口径以它为准）
-> 状态：**执行中**（用户 2026-10-29 02:12 拍板 + 审阅确认；Q1–Q6 按推荐执行）。已完成 Phase 6，进行 Phase 7。
+> 状态：**执行中**（用户 2026-10-29 02:12 拍板 + 审阅确认；Q1–Q6 按推荐执行）。Phase 6 已完成并提交（`02db412`）；Phase 7 已完成并提交，**G2 结论「本数据上不成立、默认关闭」待用户拍板**。
 
 ---
 
@@ -329,11 +329,19 @@ Phase 6 基线+脚手架
 - A/B 报告（4 组 + 敏感度）+ G2 结论
 
 **完成标准**
-- [ ] 21 列数值逐列不变（与 Phase 6 基线 JSON 对比）
-- [ ] 默认参数下 7 策略回测指标与 `win_a` 基线完全一致
-- [ ] A/B 报告含四指标 + 分年度 + 敏感度表 + 判定结论
-- [ ] `pytest` 全绿且总数 ≥ 445 + 新增
-- [ ] commit `(phase 7) add PCF/VCF/PVCF/ACF/TRCF convergence factors and A/B report`
+- [x] 21 列数值逐列不变（与 Phase 6 基线 JSON 对比）
+- [x] 默认参数下 7 策略回测指标与 `win_a` 基线完全一致
+- [x] A/B 报告含四指标 + 分年度 + 敏感度表 + 判定结论
+- [x] `pytest` 全绿且总数 ≥ 445 + 新增
+- [x] commit `(phase 7) add PCF/VCF/PVCF/ACF/TRCF convergence factors and A/B report`
+
+**执行记录（2026-10-29 04:42）**
+- 新增 `factors/convergence.py`（`convergence_series` / `convergence_columns` / `add_conv_columns` / `cross_section_zscore` / `compose_pvcf` / `conv_series_for`）+ `tests/test_convergence.py`（10 例）；`builtin.build_factor_rows` 与 `engine` 预计算、候选行、打分前合成共四处同步，`tests/test_factor_parity.py` 列集与数值对拍各加 5 列。
+- 实现口径与计划 §A1 的一处偏离：`compose_pvcf` 在单只股票/零方差截面下取 **0（中性）** 而非 NaN。理由：z-score 无定义时返回中性值可避免 NaN 污染打分，且引擎与实盘两条路径行为一致（parity 用例锁定）。已在函数 docstring 注明。
+- 默认行为：`conv_weight` 默认 0，趋势跟随/突破在 `win_a` 上与 Phase 6 基线**逐指标完全一致**（收益/年化/回撤/夏普/胜率/笔数）。
+- A/B 报告：`tests/reports/2026-10-29-04-41.phase7-ab.{md,json}`（8 arm，样本 800 档，区间 2022-03-07~2026-10-28，基准 +33.05%）。
+- **G2 结论**：按 §3.3 判定线 **A-1 与 A-4 不满足** → 默认关闭，仅保留可选参数。趋势跟随在三档权重下均变差（年化 -0.7~-0.9pp、回撤劣化 2.3~2.7pp）；突破仅 0.2 档年化 +0.69pp、回撤改善 1.13pp（<2pp 门槛），且 2025 上涨年反而变差，敏感度无单调性 → 判为样本噪声。
+- 附带发现（写入交付报告）：全部策略大幅跑输同期等权基准，根因不是缺因子，而是**日频换手 16–18 倍/年**（年成本拖累约 4–5pp）。建议后续单独立项讨论调仓频率/持有期，而不是继续堆因子。
 
 ### Phase 8 — 任务 B：动量因子方向修正
 

@@ -10,6 +10,7 @@
 - 期望持仓天数 = 由参数 hold_days 决定
 
 修订记录：
+2026-10-29  (phase 7) 接入均线收敛因子（conv_pcf/vcf/acf/trcf/pvcf），新增 conv_weight 参数（默认 0，不改变旧行为）
 2026-10-28  (phase 1) 抽出 score_with_penalties 记录逐条扣分明细，score() 数值不变
 """
 from __future__ import annotations
@@ -18,6 +19,11 @@ from typing import Any
 
 import pandas as pd
 
+from stock_plan.factors.convergence import (
+    compose_pvcf,
+    convergence_columns,
+    cross_section_zscore,
+)
 from stock_plan.factors.filter import filter_universe
 from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.factors.technical import compute_technical
@@ -67,6 +73,9 @@ class TrendFollowingStrategy(Strategy):
         "hold_days": 30,      # 期望持仓天数
         "w_tech": 0.6,        # 技术面权重
         "w_fund": 0.4,        # 基本面权重
+        # 均线收敛加分权重（2026-10-29 起）：0 = 关闭（默认，保证旧行为不变）。
+        # 收敛 → 突破的前提，配合突破策略使用；量纲问题见 factors/convergence.py。
+        "conv_weight": 0.0,
     }
 
     def filter_universe(
@@ -101,6 +110,12 @@ class TrendFollowingStrategy(Strategy):
             df_factors["fund_score"],
             weights=(w_tech, w_fund, 0.0),
         )
+
+        # 均线收敛加分（默认关闭）。必须用**截面 z-score** 再乘权重，
+        # 否则高价股/高成交量股的原始 PCF 量级会主导排序（见 factors/convergence.py）。
+        conv_weight = float(self.params.get("conv_weight", 0.0))
+        if conv_weight and "conv_pcf" in df_factors.columns:
+            score = score + conv_weight * cross_section_zscore(df_factors, "conv_pcf")
 
         rows: list[dict[str, Any]] = []
         codes = df_factors["code"].astype(str) if "code" in df_factors.columns else None
@@ -214,6 +229,13 @@ def build_factor_rows(
             f"ma{_p}": float(factored["close"].rolling(_p).mean().iloc[-1])
             for _p in (5, 7, 10, 30)
         }
+        # 均线收敛因子（2026-10-29）：四列原始口径取末行；PVCF 是截面合成，
+        # 必须等全部股票的行拼成表后再算（见下方 compose_pvcf）。
+        conv_last = convergence_columns(bars).iloc[-1]
+        conv_values = {
+            column: (float(conv_last[column]) if pd.notna(conv_last[column]) else float("nan"))
+            for column in ("conv_pcf", "conv_vcf", "conv_acf", "conv_trcf")
+        }
         rows.append(
             {
                 "code": code,
@@ -233,10 +255,15 @@ def build_factor_rows(
                 "quality_score": fund.get("quality_score", 50.0),
                 "trend_score": last["trend_score"],
                 "fund_score": fund_score,
+                **conv_values,
                 **ma_cols,
             }
         )
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        # 截面合成列：PVCF = z(PCF) + z(VCF)，必须按**当日全体候选股**标准化
+        df["conv_pvcf"] = compose_pvcf(df)
+    return df
 
 
 if __name__ == "__main__":
