@@ -35,6 +35,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
+from stock_plan.data.clock import stamp_cn, to_cn
 from stock_plan.data.storage import PROJECT_ROOT
 
 BARS_DIR = PROJECT_ROOT / "data" / "processed" / "bars"
@@ -144,7 +145,7 @@ def build_snapshot(bars_dir: Path, out_dir: Path, part_size: int = PART_SIZE) ->
             index += 1
 
     manifest = {
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "created_at": stamp_cn(),
         "bars_count": n_files,
         "zip_bytes": zip_path.stat().st_size,
         "zip_sha256": _sha256_file(zip_path),
@@ -221,7 +222,8 @@ def manifest_age_days(manifest: dict, now: datetime | None = None) -> int | None
         created = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
     except ValueError:
         return None
-    return ((now or datetime.now()) - created).days
+    # 用 aware 的北京时间比较，避免云端 UTC 差 8 小时把快照判成「旧 0 天」
+    return (to_cn(now).replace(tzinfo=None) - created).days
 
 
 def _ensure_manifest_fresh(manifest: dict, max_age_days: int | None, base_url: str) -> None:
@@ -357,7 +359,7 @@ def publish_to_release(
     repo = (repo or os.getenv("DATA_SNAPSHOT_REPO") or DEFAULT_REPO).strip("/")
     tag = tag or os.getenv("DATA_SNAPSHOT_TAG") or SNAPSHOT_TAG
 
-    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    stamp = stamp_cn("%Y%m%d%H%M%S")
     # 分卷改成带版本号的名字，manifest 里也要同步引用这个名字
     renamed_parts = []
     for p in manifest["parts"]:
@@ -626,7 +628,7 @@ def restore_from_url(base_url: str, bars_dir: Path, tmp_dir: Path,
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     return {"bars_count": manifest["bars_count"], "zip_bytes": manifest["zip_bytes"],
-            "created_at": manifest["created_at"], "restored_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+            "created_at": manifest["created_at"], "restored_at": stamp_cn()}
 
 
 def restore_with_fallback(

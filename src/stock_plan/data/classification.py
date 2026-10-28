@@ -34,10 +34,12 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+
+from stock_plan.data.clock import today_cn
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CLASSIFY_DIR = PROJECT_ROOT / "data" / "processed" / "classify"
@@ -74,7 +76,7 @@ def norm_code(raw) -> str:
 
 def current_month() -> str:
     """当前快照月份（YYYY-MM）。按月快照的键。"""
-    return date.today().strftime("%Y-%m")
+    return today_cn().strftime("%Y-%m")
 
 
 def _month_dir(month: str | None = None) -> Path:

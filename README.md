@@ -231,7 +231,10 @@ uv run python -m stock_plan.data.delisted --all                   # 两者都补
 
 - 依赖读取根目录 `requirements.txt`（已按本地验证版本固定）
 - 云端**数据自动恢复**：启动时检测本地无缓存数据，自动从 GitHub Releases 的 `data-snapshot`
-  标签下载快照（约 350MB，首次 1~3 分钟），无需手动全量拉取
+  标签下载快照（约 350MB，首次 1~3 分钟），无需手动全量拉取；「🔄 数据更新」页的
+  「从云端快照恢复」走同一份地址表，快照超过 7 天会拒绝覆盖并提示
+- **时区**：云端容器是 UTC，所有「今天/期望交易日」判断统一走 `stock_plan.data.clock`
+  的北京时间，不依赖容器时区（否则北京时间 16:00–24:00 期望日会晚一天）
 - Windows 计划任务自动更新仅在本地部署生效，云端请在「🔄 数据更新」页手动更新（云端轻量模式自动降低并发）
 - LLM API Key 在云端走 **Secrets**：App 菜单 → Settings → Secrets，填入：
 

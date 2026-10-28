@@ -22,6 +22,8 @@ import akshare as ak
 import pandas as pd
 import py_mini_racer
 
+from stock_plan.data.clock import today_cn
+
 # ---------------------------------------------------------------------------
 # 新浪日线的 V8 并发问题
 #
@@ -247,7 +249,7 @@ class DataFetcher:
             )
 
         if days:
-            cutoff = pd.Timestamp(date.today() - timedelta(days=int(days)))
+            cutoff = pd.Timestamp(today_cn() - timedelta(days=int(days)))
             kept = []
             for row in result:
                 try:

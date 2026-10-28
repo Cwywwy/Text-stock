@@ -207,7 +207,10 @@ def _data_status() -> None:
     if b1.button("🔍 重新扫描数据日期", key="btn_rescan_freshness", help="重扫全部行情文件，约 8 秒"):
         freshness.refresh_marker()
         st.rerun()
-    b2.caption(f"体检时间：{info.get('bars_scanned_at') or '—'}（每次更新完成后自动刷新）")
+    b2.caption(
+        f"体检时间（北京时间）：{info.get('bars_scanned_at') or '—'}"
+        "（每次更新完成后自动刷新）"
+    )
 
 
 def _render_log_tail() -> None:
