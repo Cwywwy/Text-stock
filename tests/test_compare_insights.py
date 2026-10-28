@@ -65,8 +65,34 @@ def test_summary_line_without_benchmark_is_explicit():
     assert "无法计算超额收益" in line
 
 
-def test_styled_table_tints_best_and_formats_missing_values():
+def _tinted_cells(styler) -> dict[str, str]:
+    """展开 Styler 的 CSS 规则，返回 {row行_col列: 样式}。
+
+    同一款样式会被 pandas 合并成「多选择器一条规则」，所以必须先拆选择器再计数。
+    """
+    import re
+
+    tinted: dict[str, str] = {}
+    for selectors, body in re.findall(r"([^{}]*?)\{([^{}]*)\}", styler.to_html()):
+        if "background-color" not in body:
+            continue
+        for row, col in re.findall(r"#T_[0-9a-f]+_row(\d+)_col(\d+)", selectors):
+            tinted[f"row{row}_col{col}"] = body.strip()
+    return tinted
+
+
+def test_styled_table_tints_one_cell_per_metric_column():
+    """每列只给最优值上色；pandas 3.0 的 highlight_* 语义变了，这里锁死行为。"""
+    frame = pd.DataFrame(compare._excess_rows(_rows(), 10.0))
+    tinted = _tinted_cells(compare._styled_table(frame, has_benchmark=True))
+    # 5 个收益类指标 + 超额 + 回撤 = 7 个格子
+    assert len(tinted) == 7, tinted
+    assert compare.cs.BEST_UP in " ".join(tinted.values())
+    assert compare.cs.BEST_DOWN in " ".join(tinted.values())
+
+
+def test_styled_table_skips_excess_when_no_benchmark():
     frame = pd.DataFrame(compare._excess_rows(_rows(), None))
-    html = compare._styled_table(frame, has_benchmark=False).to_html()
-    assert "background-color" in html
-    assert "—" in html
+    tinted = _tinted_cells(compare._styled_table(frame, has_benchmark=False))
+    assert len(tinted) == 6, tinted
+    assert "—" in compare._styled_table(frame, has_benchmark=False).to_html()

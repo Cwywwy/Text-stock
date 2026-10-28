@@ -188,6 +188,26 @@ def _summary_line(rows: list[dict], bench_ret: float | None) -> str:
     )
 
 
+def _tint_best(column: pd.Series, colour: str) -> list[str]:
+    """按列上底色：只给该列最优值中的最大值上色（NaN 不参与）。
+
+    不用 ``Styler.highlight_max``：pandas 3.0 把它改成按子集整体/行方向选最大值，
+    表现与 2.x 的「每列一个」不同，容易被静默改坏；这里的逐列写法与版本无关。
+    """
+    if column.dropna().empty:
+        return ["" for _ in column]
+    top = column.max()
+    return [f"background-color: {colour}" if value == top else "" for value in column]
+
+
+def _tint_lowest(column: pd.Series, colour: str) -> list[str]:
+    """回撤列专用：最小（跌得最少）的那个上色。"""
+    if column.dropna().empty:
+        return ["" for _ in column]
+    low = column.min()
+    return [f"background-color: {colour}" if value == low else "" for value in column]
+
+
 def _styled_table(frame: pd.DataFrame, *, has_benchmark: bool) -> object:
     """只给每列最优值上底色；不改字体色，深色主题下保持可读。"""
     keep = [c for c in _BEST_COLUMNS if c in frame.columns]
@@ -195,11 +215,9 @@ def _styled_table(frame: pd.DataFrame, *, has_benchmark: bool) -> object:
         keep.remove("超额%")
     styler = frame.style.format(precision=2, na_rep="—")
     if keep:
-        styler = styler.highlight_max(subset=keep, axis=0, props=f"background-color: {cs.BEST_UP}")
+        styler = styler.apply(_tint_best, subset=keep, axis=0, colour=cs.BEST_UP)
     if "最大回撤%" in frame.columns:
-        styler = styler.highlight_min(
-            subset=["最大回撤%"], axis=0, props=f"background-color: {cs.BEST_DOWN}"
-        )
+        styler = styler.apply(_tint_lowest, subset=["最大回撤%"], axis=0, colour=cs.BEST_DOWN)
     return styler
 
 

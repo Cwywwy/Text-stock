@@ -20,7 +20,9 @@
 - **清理重复文案**：持仓诊断页「单股回测样本单一」原来在图注和 caption 各打一遍，删掉后者。
 - **`chart_style`**：新增 `BEST_UP` / `BEST_DOWN`（表格最优值底色，只染背景不改字体色）、
   `add_level_line(..., value_text=...)`（金额类参考线不再被迫显示两位小数）。
-- 结果：全量 `pytest` 由 309 增至 **323 passed**；测试报告见
+- 修一个静默错误：pandas 3.0 的 `Styler.highlight_max` 语义与 2.x 不同，会让「每列最优值」上错格子；
+  改为逐列 `Styler.apply()`，并加测试锁死着色格子数。
+- 结果：全量 `pytest` 由 309 增至 **324 passed**；测试报告见
   `tests/reports/2026-10-28-18-12.report-1.md`；样张 `.dsh-tmp/charts/shot-branch4-markers.png`。
 
 ## 2026-10-28（续 9）：图表观感重做（Phase 0/1）+ 信号可解释与 LLM 解读（Phase 0–3）
