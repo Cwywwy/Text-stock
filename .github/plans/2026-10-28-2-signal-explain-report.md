@@ -2,7 +2,7 @@
 
 - 日期：2026-10-28
 - 分支：`分支3`（图表升级 Phase 0/1 已提交：`c2f1f0c`、`d421d5f`）
-- 状态：**待用户审核**
+- 状态：**执行中** —— Phase 0 ✅（`6183fae`）、Phase 1 ✅（本次提交）；下一步 Phase 2（今日页对比表 + 瀑布图）
 - 环境：Python **3.13.15**（`.venv`）；streamlit **1.63.0**、plotly **7.0.0**、pandas **3.0.5**、numpy 2.5.2；pytest 9.1.1
 - 硬约束：**不新增依赖**（INSTRUCTION.md:35、README.md:176/214）；LLM 走现有 OpenAI 兼容客户端（`src/stock_plan/llm/client.py`）
 
@@ -110,24 +110,24 @@ class SignalReport:
 
 | 模块 | 职责 | 交互方式 | 状态 |
 | --- | --- | --- | --- |
-| `src/stock_plan/factors/filter.py` | 新增 `filter_universe_explained()`：返回 (通过, 淘汰样本+原因)，原 `filter_universe()` 改为其薄封装 | 被 `strategy/builtin.py`、`signal/generator.py` 调用 | 修改 |
-| `src/stock_plan/strategy/builtin.py` | 新增 `score_with_penalties()`：把扣分规则从 `score()` 抽出，返回 (分数, 逐行扣分明细)；`score()` 保证数值逐位不变 | 被 report 层调用 | 修改 |
-| `src/stock_plan/signal/generator.py` | 新增 `generate_signal_report()`：复用现有加载/过滤/打分流程，产出 `SignalReport`；原 `generate_signals()` 行为不变 | 被 `today.py` 调用 | 修改 |
-| `src/stock_plan/signal/report.py` | 事实层数据结构 + 分差/候选池统计/叙事输入序列化 | 纯数据模块 | 新增 |
-| `src/stock_plan/llm/budget.py` | token 估算（中文≈1 字 1 token、ASCII≈4 字符 1 token）+ 分段裁剪 + 截断记录 | 被 analyzer 调用 | 新增 |
-| `src/stock_plan/llm/cache.py` | `(任务, 输入哈希)` → `data/cache/llm/<sha1>.json`，TTL 7 天，`LLM_CACHE_DISABLE=1` 可关 | 被 client 调用 | 新增 |
-| `src/stock_plan/llm/client.py` | 新增 `ChatResult(text, error, cached, usage, elapsed_ms)`；`chat_result()` 支持并发闸门（`Semaphore(2)`）、429/超时退避 1 次、缓存；`last_error` 改 `threading.local`；`chat()` 保留返回 str 以兼容旧调用 | 全站 LLM 调用 | 修改 |
+| `src/stock_plan/factors/filter.py` | 新增 `filter_universe_explained()`：返回 (通过, 淘汰样本+原因)，原 `filter_universe()` 改为其薄封装 | 被 `strategy/builtin.py`、`signal/generator.py` 调用 | 修改 ✅ |
+| `src/stock_plan/strategy/builtin.py` | 新增 `score_with_penalties()`：把扣分规则从 `score()` 抽出，返回 (分数, 逐行扣分明细)；`score()` 保证数值逐位不变 | 被 report 层调用 | 修改 ✅ |
+| `src/stock_plan/signal/generator.py` | 新增 `generate_signal_report()`：复用现有加载/过滤/打分流程，产出 `SignalReport`；原 `generate_signals()` 行为不变（仅并列名次改为固定次键） | 被 `today.py` 调用 | 修改 ✅ |
+| `src/stock_plan/signal/report.py` | 事实层数据结构 + 分差/候选池统计/叙事输入序列化 | 纯数据模块 | 新增 ✅ |
+| `src/stock_plan/llm/budget.py` | token 估算（中文≈1 字 1 token、ASCII≈4 字符 1 token）+ 分段裁剪 + 截断记录 | 被 analyzer 调用 | 新增 ✅ |
+| `src/stock_plan/llm/cache.py` | `(任务, 输入哈希)` → `data/cache/llm/<sha1>.json`，TTL 7 天，`LLM_CACHE_DISABLE=1` 可关 | 被 client 调用 | 新增 ✅ |
+| `src/stock_plan/llm/client.py` | 新增 `ChatResult(text, error, cached, usage, elapsed_ms)`；`chat_result()` 支持并发闸门（`Semaphore(2)`）、429/超时退避 1 次、缓存；`last_error` 改 `threading.local`；`chat()` 保留返回 str 以兼容旧调用 | 全站 LLM 调用 | 修改 ✅ |
 | `src/stock_plan/llm/analyzer.py` | 新增 `explain_signal_report()` + `_template_narrative()` 兜底 | 被 `today.py` 调用 | 修改 |
 | `src/stock_plan/ui/views/today.py` | 新增「为什么是这 5 只」折叠区块：对比表、瀑布图、硬过滤样本卡、深度解读按钮 | 调 report + analyzer | 修改 |
 | `src/stock_plan/ui/widgets.py` | 新增 `score_waterfall_fig()`（分差瀑布），复用 `chart_style` | 被 today 调用 | 修改 |
-| `tests/test_signal_report.py` | 事实层：排序/分差/扣分归因/硬过滤分类/数值黄金对比 | pytest | 新增 |
-| `tests/test_llm_guardrails.py` | 预算截断、缓存命中/过期、并发上限、错误隔离、5 种坏输出全部兜底 | pytest | 新增 |
+| `tests/test_signal_report.py` | 事实层：排序/分差/扣分归因/硬过滤分类/数值黄金对比 | pytest | 新增 ✅ |
+| `tests/test_llm_guardrails.py` | 预算截断、缓存命中/过期、并发上限、错误隔离、5 种坏输出全部兜底 | pytest | 新增 ✅ |
 
 ---
 
 ## 4. 阶段拆分与完成标准
 
-### Phase 0 — LLM 基础设施加固（先做，UI 零变化）
+### Phase 0 — LLM 基础设施加固（先做，UI 零变化）✅ 已完成（`6183fae`）
 
 - 内容：`llm/budget.py`、`llm/cache.py`、`ChatResult` + 并发闸门 + 退避 + `threading.local` 错误归因
 - 完成标准：
@@ -136,14 +136,16 @@ class SignalReport:
   - 失败时页面文案从「【离线规则模式】」改为显式「本次调用失败：限流/超时（可重试）」
 - 预期产出：1 个 commit（`(phase 0) harden llm client with budget, cache and concurrency guard`）
 
-### Phase 1 — 事实层（无 UI、无 LLM）
+### Phase 1 — 事实层（无 UI、无 LLM）✅ 已完成
 
 - 内容：`filter_universe_explained`、`score_with_penalties`、`signal/report.py`、`generate_signal_report`
 - 完成标准：
-  - `score()` 改造前后数值**逐位一致**（黄金测试：固定 fixture 上 `pytest.approx`）
-  - `generate_signals()` 输出与改造前完全一致（同 fixture 断言 code/score/价格全等）
-  - `SignalReport` 三项齐备：入选 5、落选 3、硬过滤每类 1 只（用构造的小样本验证四类原因都能命中）
-- 预期产出：1 个 commit（`(phase 1) signal report facts with penalty and filter reasons`）
+  - `score()` 改造前后数值**逐位一致**（黄金测试：固定 fixture 上 `pytest.approx`）→ 已由 `tests/test_signal_report.py::test_score_with_penalties_matches_legacy_score` 锁死
+  - `generate_signals()` 输出与改造前完全一致（同 fixture 断言 code/score/价格全等）→ 已由 `test_report_matches_generate_signals` 锁死；顺带修掉一处**并列名次不确定**：排名改用「分数降序 + 代码升序」固定次键（`_rank_factor_rows`），否则信号页与报告可能各排一次、并列时选出不同的人
+  - `SignalReport` 三项齐备：入选 5、落选 3、硬过滤每类 1 只（用构造的小样本验证四类原因都能命中）→ 已覆盖
+- 实测（真实缓存数据）：股票列表 5576 只、有日线 5379 只、通过硬过滤 4130 只（ST 197／无日线 49／流动性不足 1200），日线截至 2026-10-27；入选第 5 名与紧随第 1 名**同为 87.6 分**（分差 0.0），报告如实标注"门槛非常接近"——这正是本功能要暴露的信息
+- 性能注意：冷启动约 47.7s（主要是 5379 只股票的 180 日窗口加载），页面必须走 `st.cache_data`（`today.py:59` 已有同款缓存范式）
+- 预期产出：1 个 commit（`(phase 1) explain why each signal was picked and who missed`）
 
 ### Phase 2 — 页面即时对比（不调 LLM）
 
@@ -167,7 +169,7 @@ class SignalReport:
 
 - 内容：全站 `pytest`、真实数据截图、`CHANGELOG.md`、测试报告、计划书归档、README 补一节
 - 完成标准：
-  - 全量测试绿（当前基线 229 passed）
+  - 全量测试绿（Phase 1 后基线 **270 passed**）
   - 测试报告 `tests/reports/<YYYY-MM-DD-HH-mm>.report-*.md`
   - 计划书移到 `.github/plans/done/`；`README.md` 说明 `data/cache/llm/` 与 `.env` 三个变量
 - 预期产出：1 个 commit + 报告

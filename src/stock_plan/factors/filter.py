@@ -26,8 +26,20 @@ baostock 也不提供）；要修必须新增数据源。
 但成交股票的 Jaccard 重合度只有 **0.226** —— 差异主要来自选股被大面积重排
 （路径依赖），而不是 ST 股本身的业绩（它们只成交 8 笔）。详见
 `.github/plans/2026-10-15-4-audit-path-dependence-and-lookahead.md`。
+
+排查用入口：
+- `filter_universe()`     只要「通过的代码」，行为与引入本函数前逐位一致
+- `filter_universe_explained()` 同时返回「谁被淘汰、为什么、相关数值」，
+  供「为什么是这 5 只」报告解释落选股票（.github/plans/2026-10-28-2 的 Phase 1）
+
+修订记录：
+2026-10-28 新增 RejectedStock / FilterOutcome / filter_universe_explained，
+           原 filter_universe 改为薄封装（数值与顺序不变）。
 """
 from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
 
 import pandas as pd
 
@@ -35,6 +47,146 @@ import pandas as pd
 MIN_AVG_AMOUNT = 50_000_000  # 5000 万元
 # 最少日线根数（保证 ma60 等长周期指标可计算）
 MIN_BARS = 60
+
+#: 淘汰原因 → 人类可读文案。报告层与页面共用这一份，避免两边文案漂移。
+REASON_LABELS: dict[str, str] = {
+    "st": "ST/*ST 风险警示（今天的状态，非历史时点）",
+    "no_bars": "无日线缓存（行情未更新）",
+    "empty_bars": "日线数据为空（数据异常）",
+    "new_listing": "次新股（日线不足 60 根，无法计算 ma60）",
+    "suspended": "停牌（最新交易日成交量为 0）",
+    "illiquid": "流动性不足（20 日均成交额低于 5000 万）",
+}
+
+
+@dataclass(frozen=True)
+class RejectedStock:
+    """一只被硬过滤淘汰的股票（含原因与触发数值）。"""
+
+    code: str
+    name: str
+    reason: str  # 见 REASON_LABELS 的键
+    detail: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def reason_text(self) -> str:
+        """原因的中文描述。"""
+        return REASON_LABELS.get(self.reason, self.reason)
+
+
+@dataclass(frozen=True)
+class FilterOutcome:
+    """硬过滤结果：通过列表 + 淘汰清单 + 各原因计数。"""
+
+    passed: tuple[str, ...]
+    rejected: tuple[RejectedStock, ...]
+    counts: dict[str, int]
+    total: int
+
+    @property
+    def passed_count(self) -> int:
+        return len(self.passed)
+
+    def samples(self, per_reason: int = 1) -> list[RejectedStock]:
+        """每类原因取前 ``per_reason`` 只（保持原始顺序），用于报告展示。"""
+        picked: list[RejectedStock] = []
+        seen: dict[str, int] = {}
+        for item in self.rejected:
+            used = seen.get(item.reason, 0)
+            if used >= per_reason:
+                continue
+            seen[item.reason] = used + 1
+            picked.append(item)
+        return picked
+
+    def count_of(self, reason: str) -> int:
+        return self.counts.get(reason, 0)
+
+
+def filter_universe_explained(
+    stock_list: pd.DataFrame, bars_map: dict[str, pd.DataFrame]
+) -> FilterOutcome:
+    """硬过滤，同时记录「谁被淘汰、为什么」。
+
+    与 `filter_universe()` 使用**完全相同的判据与顺序**，只是不再丢弃信息。
+    `passed` 的成员与顺序都和旧实现一致（先遍历 bars_map 的键），
+    这样下游 `build_factor_rows` 的行顺序不变，打分出现并列时的排序也不变。
+
+    参数：
+        stock_list: 全 A 股列表（含 code/name/is_st 列）。
+        bars_map:   {code: 日线 DataFrame}，只包含有缓存的股票。
+
+    返回：
+        FilterOutcome（通过代码、淘汰清单、按原因计数、总样本数）。
+    """
+    codes = [str(c) for c in stock_list["code"].tolist()] if "code" in stock_list.columns else []
+    names = (
+        dict(zip(stock_list["code"].astype(str), stock_list["name"].astype(str)))
+        if {"code", "name"}.issubset(stock_list.columns)
+        else {}
+    )
+    st_codes = (
+        set(stock_list.loc[stock_list["is_st"] == 1, "code"].astype(str))
+        if "is_st" in stock_list.columns
+        else set()
+    )
+
+    passed: list[str] = []
+    rejected: list[RejectedStock] = []
+    counts: dict[str, int] = {key: 0 for key in REASON_LABELS}
+
+    def _reject(code: str, reason: str, **detail: Any) -> None:
+        counts[reason] = counts.get(reason, 0) + 1
+        rejected.append(
+            RejectedStock(code=code, name=names.get(code, code), reason=reason, detail=detail)
+        )
+
+    # 第 1 轮：遍历有日线缓存的股票（顺序 = bars_map 的键顺序，与旧实现一致）
+    for code in bars_map:
+        code = str(code)
+        if code in st_codes:
+            _reject(code, "st", is_st=1)
+            continue
+        bars = bars_map[code]
+        if bars is None or bars.empty:
+            _reject(code, "empty_bars")
+            continue
+        bar_count = len(bars)
+        if bar_count < MIN_BARS:
+            _reject(code, "new_listing", bars=bar_count, min_bars=MIN_BARS)
+            continue
+        last_volume = float(bars["volume"].iloc[-1]) if "volume" in bars.columns else 0.0
+        if last_volume == 0:
+            _reject(code, "suspended", last_volume=last_volume)
+            continue
+        avg_amount = bars["amount"].tail(20).mean() if "amount" in bars.columns else float("nan")
+        if pd.isna(avg_amount) or avg_amount < MIN_AVG_AMOUNT:
+            _reject(
+                code,
+                "illiquid",
+                avg_amount20=None if pd.isna(avg_amount) else round(float(avg_amount), 2),
+                min_amount=MIN_AVG_AMOUNT,
+            )
+            continue
+        passed.append(code)
+
+    # 第 2 轮：股票列表里有、但没有日线缓存的（旧实现里它们只是"消失"，原因无从解释）
+    covered = set(bars_map)
+    for code in codes:
+        if code in covered:
+            continue
+        if code in st_codes:
+            _reject(code, "st", is_st=1)
+        else:
+            _reject(code, "no_bars")
+
+    counts["passed"] = len(passed)
+    return FilterOutcome(
+        passed=tuple(passed),
+        rejected=tuple(rejected),
+        counts=counts,
+        total=len(set(codes) | set(str(c) for c in bars_map)),
+    )
 
 
 def filter_universe(
@@ -52,29 +204,7 @@ def filter_universe(
     返回：
         通过所有过滤条件的股票代码列表（list[str]）。
     """
-    # 1. 排除 ST 股票（注意：这是今天的 ST 状态，回测时是未来信息）
-    st_codes = set(stock_list.loc[stock_list["is_st"] == 1, "code"].astype(str))
-    # 2. 排除没有日线缓存的股票
-    candidates = [c for c in bars_map if c not in st_codes]
-
-    passed: list[str] = []
-    for code in candidates:
-        bars = bars_map[code]
-        if bars is None or bars.empty:
-            continue
-        # 3. 排除日线不足的次新股
-        if len(bars) < MIN_BARS:
-            continue
-        # 4. 排除停牌（最新交易日成交量为 0）
-        if bars["volume"].iloc[-1] == 0:
-            continue
-        # 5. 排除流动性差（近 20 日均成交额 < 阈值）
-        avg_amount = bars["amount"].tail(20).mean()
-        if pd.isna(avg_amount) or avg_amount < MIN_AVG_AMOUNT:
-            continue
-        passed.append(code)
-
-    return passed
+    return list(filter_universe_explained(stock_list, bars_map).passed)
 
 
 if __name__ == "__main__":
@@ -89,6 +219,9 @@ if __name__ == "__main__":
             bars_map[code] = storage.load_bars(code)
 
     print(f"股票总数: {len(stock_list)}, 有日线缓存: {len(bars_map)}")
-    passed = filter_universe(stock_list, bars_map)
-    print(f"通过硬过滤: {len(passed)} 只")
-    print("示例:", passed[:10])
+    outcome = filter_universe_explained(stock_list, bars_map)
+    print(f"通过硬过滤: {outcome.passed_count} 只")
+    print("淘汰统计:", {k: v for k, v in outcome.counts.items() if v})
+    print("示例:", outcome.passed[:10])
+    for item in outcome.samples(per_reason=1):
+        print(f"  淘汰样本: {item.code} {item.name} | {item.reason_text} | {item.detail}")
