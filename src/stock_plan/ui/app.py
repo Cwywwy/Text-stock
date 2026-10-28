@@ -11,6 +11,7 @@
 Revision History:
     2026-09-04  sync public strategies and trigger local pending publication
     2026-10-28  add checkout-consistency guard for mixed venv/copy starts
+    2026-10-29  gate startup side effects with service-mode flags
 """
 from __future__ import annotations
 
@@ -68,7 +69,7 @@ if _MISMATCH:
 st.set_page_config(page_title="盘前选股系统", page_icon="📈", layout="wide")
 
 # 云端/空数据环境：启动时自动从 GitHub 快照恢复行情数据（有数据则秒过）
-from stock_plan.data.snapshot import PROJECT_ROOT, cloud_secrets_env, is_cloud
+from stock_plan.data.snapshot import PROJECT_ROOT, cloud_secrets_env
 
 cloud_secrets_env()
 if "snapshot_checked" not in st.session_state:
@@ -78,15 +79,18 @@ if "snapshot_checked" not in st.session_state:
     bootstrap_if_needed(ui=True)
 
 from stock_plan.strategy.publication import sync_public_strategies_to_local
+from stock_plan.ui.startup_flags import local_publish_enabled, remote_strategy_sync_enabled
 
 if "public_strategy_sync_checked" not in st.session_state:
     st.session_state["public_strategy_sync_checked"] = True
-    try:
-        sync_public_strategies_to_local()
-    except (RuntimeError, ValueError) as error:
-        st.warning(f"共享策略同步失败：{error}")
+    # 国内服务器访问 raw.githubusercontent.com 常超时（每次白等最多 30 秒），service 模式默认跳过
+    if remote_strategy_sync_enabled():
+        try:
+            sync_public_strategies_to_local()
+        except (RuntimeError, ValueError) as error:
+            st.warning(f"共享策略同步失败：{error}")
 
-if not is_cloud() and "pending_strategy_publication_started" not in st.session_state:
+if local_publish_enabled() and "pending_strategy_publication_started" not in st.session_state:
     st.session_state["pending_strategy_publication_started"] = True
     command = [sys.executable, "scripts/publish_snapshot.py", "--pending-only"]
     try:

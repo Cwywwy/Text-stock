@@ -1,0 +1,51 @@
+# 文件：stock-plan.service
+# 作者：Cwywwy
+# 用途：以 stockplan 用户常驻运行 Streamlit 应用，监听 0.0.0.0:8501，崩溃自动重启。
+# 所属模块：deploy（服务器部署物料，由 deploy/bootstrap.sh 安装到 /etc/systemd/system/）
+#
+# 安装：sudo install -m 644 deploy/stock-plan.service /etc/systemd/system/
+#       sudo systemctl daemon-reload && sudo systemctl enable --now stock-plan
+#
+# Revision History:
+#   2026-10-29  add systemd unit for china cloud deployment (phase 3)
+[Unit]
+Description=Stock Plan Streamlit service
+Documentation=file:///opt/stock-plan/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stockplan
+Group=stockplan
+WorkingDirectory=/opt/stock-plan
+
+# 关键：源码目录进 PYTHONPATH，绝不 pip install 本包
+# （storage.py 用 PROJECT_ROOT = Path(__file__).resolve().parents[3] 定位 data/，
+#   装进 site-packages 会让它算到 venv 里，数据目录全错）
+Environment=PYTHONPATH=/opt/stock-plan/src
+
+# 形态开关：服务器只消费快照，不发布、不抓公告、不同步境外 raw 链接
+Environment=STOCK_PLAN_SERVICE=1
+Environment=STOCK_PLAN_CLOUD=1
+Environment=STOCK_PLAN_REMOTE_SYNC=0
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/opt/stock-plan
+
+# 小内存机型（2C2G）防 OOM：NumPy 默认按核数开线程池，2G 上容易被打爆
+Environment=OMP_NUM_THREADS=2
+Environment=OPENBLAS_NUM_THREADS=2
+Environment=MKL_NUM_THREADS=2
+
+# 监听 0.0.0.0 才能被公网访问；fileWatcherType none 省 CPU（服务器上不需要热重载）
+ExecStart=/opt/stock-plan/.venv/bin/python -m streamlit run src/stock_plan/ui/app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true --server.fileWatcherType none --browser.gatherUsageStats false
+
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

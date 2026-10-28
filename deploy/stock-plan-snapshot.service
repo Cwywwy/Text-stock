@@ -1,0 +1,37 @@
+# 文件：stock-plan-snapshot.service
+# 作者：Cwywwy
+# 用途：每日（由 stock-plan-snapshot.timer 触发）从 GitHub Releases 拉最新数据快照，
+#      拉完重启 stock-plan 让页面用上新数据。oneshot：跑完即退出，无残留进程。
+# 所属模块：deploy（服务器部署物料）
+#
+# 安装：sudo install -m 644 deploy/stock-plan-snapshot.service /etc/systemd/system/
+#
+# 注意：--restart-service 需要允许 stockplan 用户免密重启 stock-plan，否则日志里会有
+#      「重启 stock-plan 失败」但数据已更新。配置方法见 deploy/README.md「定时快照」一节。
+#
+# Revision History:
+#   2026-10-29  add daily snapshot pull unit for china cloud deployment (phase 3)
+[Unit]
+Description=Stock Plan daily snapshot pull
+Documentation=file:///opt/stock-plan/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+# 与 Web 服务互不阻塞：应用先起，快照失败也不至于让页面打不开
+After=stock-plan.service
+
+[Service]
+Type=oneshot
+User=stockplan
+Group=stockplan
+WorkingDirectory=/opt/stock-plan
+Environment=PYTHONPATH=/opt/stock-plan/src
+Environment=STOCK_PLAN_SERVICE=1
+Environment=HOME=/opt/stock-plan
+# 国内直连 GitHub 不稳时，在这里加代理，例如：
+#   Environment=HTTPS_PROXY=http://127.0.0.1:7890
+#   Environment=HTTP_PROXY=http://127.0.0.1:7890
+ExecStart=/opt/stock-plan/.venv/bin/python deploy/pull_snapshot.py --max-age-days 7 --min-interval-hours 6 --restart-service --service-name stock-plan
+
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=1800
