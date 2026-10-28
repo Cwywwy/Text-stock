@@ -4,11 +4,13 @@
 架构（快照以本机为权威源，云端只读恢复）：
     本机 data/processed/bars (~300MB parquet)
       → build_snapshot(): 打包 zip 分卷（每卷 <90MB，GitHub 单文件 100MB 硬限制）
-      → publish(): git worktree 孤儿分支 data-snapshot，单 commit force push
-      → GitHub raw URL 分发
+      → publish(): 默认上传 GitHub Releases 资产（tag=data-snapshot）；旧方案为
+        git worktree 孤儿分支 data-snapshot 单 commit force push（branch 后端）
+      → GitHub Release 资产 URL / raw URL 分发
 
-    云端启动 / 手动触发
+    云端启动 / 手动触发（两处必须用同一份地址表 snapshot_restore_bases()）
       → bootstrap_if_needed(): bars 为空时下载分卷 → sha256 校验 → 解压落盘
+      → 数据更新页「从云端快照恢复」按钮（手动兜底）
 
 云端轻量模式（方案 2）：
     is_cloud() 检测（STOCK_PLAN_CLOUD=1 显式指定，或 Streamlit Cloud 特征），
@@ -19,6 +21,7 @@ Revision History:
     2026-09-04  add CLOUD_MAX_CODES cap for backtest/signal universe
     2026-09-04  preserve shared strategy payloads with market snapshots
     2026-09-04  reuse local snapshot branch for repeated publications
+    2026-10-28  manual restore shares Release-first base list; reject stale manifests
 """
 
 from __future__ import annotations
@@ -49,6 +52,9 @@ PART_SIZE = 90 * 1024 * 1024
 PART_TMPL = "bars.zip.part{:02d}"
 # 本地 bars 少于此数视为"无数据"，触发恢复
 MIN_BARS_READY = 100
+# 手动恢复可接受的快照最大年龄（天）：超过即拒绝，避免旧快照静默覆盖本地数据。
+# 2026-10-28：云端曾用 55 天前的孤儿分支快照恢复成功，页面还以为"恢复完成"。
+SNAPSHOT_MAX_AGE_DAYS = 7
 # 云端轻量模式参数。
 # 2026-10-28 提速：并发从 3 提到 8。云端容器约 1GB 内存、2 vCPU，不能按本机 32 线程跑；
 # 但瓶颈是 TLS 握手（88% 时间是等网络），加线程收益明显。内存测算：每个 worker 峰值
@@ -190,6 +196,45 @@ def snapshot_base_url(backend: str | None = None) -> str:
         backend or os.getenv("STOCK_PLAN_SNAPSHOT_BACKEND") or DEFAULT_BACKEND
     ).strip().lower()
     return raw_base_url() if backend == "branch" else release_base_url()
+
+
+def snapshot_restore_bases() -> list[str]:
+    """恢复时依次尝试的快照基地址：当前发布后端优先，其余地址兜底。
+
+    启动恢复与「从云端快照恢复」按钮必须共用这一份地址表。2026-10-28 的事故就是
+    手动恢复绕开了它、直接写死 raw_base_url()：发布早就改到 Releases，按钮却还读
+    半年前冻结的孤儿分支，于是"恢复成功"却把云端数据退回到 2026-09-03。
+    """
+    bases: list[str] = [snapshot_base_url()]
+    for alt in (release_base_url(), raw_base_url()):
+        if alt not in bases:
+            bases.append(alt)
+    return bases
+
+
+def manifest_age_days(manifest: dict, now: datetime | None = None) -> int | None:
+    """快照 manifest 生成距今的天数；created_at 缺失或格式异常时返回 None。"""
+    created_at = str(manifest.get("created_at") or "").strip()
+    if not created_at:
+        return None
+    try:
+        created = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+    return ((now or datetime.now()) - created).days
+
+
+def _ensure_manifest_fresh(manifest: dict, max_age_days: int | None, base_url: str) -> None:
+    """安全阀：快照太旧就抛错，绝不静默拿旧数据覆盖本地。"""
+    if not max_age_days:
+        return
+    age = manifest_age_days(manifest)
+    if age is not None and age > max_age_days:
+        raise ValueError(
+            f"快照过旧：生成于 {manifest['created_at']}，已 {age} 天（阈值 {max_age_days} 天），"
+            f"拒绝覆盖本地数据；请确认发布端仍在更新，或改用「立即增量更新」补最新数据。"
+            f"来源 {base_url}"
+        )
 
 
 # ---------- GitHub API（发布 Release 用） ----------
@@ -504,11 +549,13 @@ def _download(url: str, dest: Path, timeout: int = 120) -> None:
 
 
 def restore_from_url(base_url: str, bars_dir: Path, tmp_dir: Path,
-                     progress=None, part_workers: int = 4) -> dict:
-    """从 raw 基地址下载分卷 → 校验 → 解压到 bars_dir。返回恢复统计。
+                     progress=None, part_workers: int = 4,
+                     max_age_days: int | None = None) -> dict:
+    """从快照基地址下载分卷 → 校验 → 解压到 bars_dir。返回恢复统计。
 
     progress(done_bytes, total_bytes) 可选；任一分卷校验失败即整体失败，
     不污染既有数据（先落临时目录，成功后再原子替换）。
+    max_age_days 非空时校验 manifest.created_at，超期直接抛错（2026-10-28 新增）。
     """
     import urllib.request
 
@@ -521,6 +568,8 @@ def restore_from_url(base_url: str, bars_dir: Path, tmp_dir: Path,
     problems = validate_manifest(manifest)
     if problems:
         raise ValueError("快照 manifest 校验失败: " + "; ".join(problems[:3]))
+
+    _ensure_manifest_fresh(manifest, max_age_days, base_url)
 
     tmp_dir.mkdir(parents=True, exist_ok=True)
     parts = manifest["parts"]
@@ -586,17 +635,19 @@ def restore_with_fallback(
     tmp_dir: Path,
     progress=None,
     part_workers: int = 4,
+    max_age_days: int | None = None,
 ) -> dict:
     """依次尝试多个快照基地址，返回第一个成功的结果。
 
-    用于发布后端切换期：优先取 GitHub Release 资产，取不到时回退到旧的
-    data-snapshot 分支 —— 这样"改了发布方式"不会让云端在迁移窗口内拿不到数据。
+    用于发布后端切换期：优先取当前后端地址，取不到时回退到另一种 —— 这样
+    "改了发布方式"不会让云端在迁移窗口内拿不到数据。max_age_days 透传给
+    restore_from_url，旧快照会被判为失败并继续尝试下一个地址。
     """
     errors: list[str] = []
     for base in bases:
         try:
             return restore_from_url(base, bars_dir, tmp_dir, progress=progress,
-                                    part_workers=part_workers)
+                                    part_workers=part_workers, max_age_days=max_age_days)
         except Exception as e:  # 单个地址失败就换下一个
             errors.append(f"{base} → {str(e)[:140]}")
     raise RuntimeError("所有快照地址均恢复失败：" + " ｜ ".join(errors))
@@ -613,10 +664,7 @@ def bootstrap_if_needed(ui: bool = False) -> dict | None:
         return None
 
     # 首选当前后端（默认 Release），失败再回退到另一种地址
-    bases: list[str] = [snapshot_base_url()]
-    for alt in (release_base_url(), raw_base_url()):
-        if alt not in bases:
-            bases.append(alt)
+    bases = snapshot_restore_bases()
 
     def _report(done: int, total: int) -> None:
         if not ui:
