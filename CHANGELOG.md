@@ -2,6 +2,33 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-28（续 8）：归档旧副本，并拔掉脚本里写死的旧路径
+
+用户认可「清理现场」后执行三件事。
+
+- **改名而不是删除**：`D:\Vscode\stock plan` → `D:\Vscode\stock plan-已停用-20260905`
+  （该副本最后一次改动是 2026-09-05）。副本原样保留，随时能翻回去查历史，
+  但它已经不可能再被误用：其 `.venv\Lib\site-packages\stock_plan.pth` 写的是旧路径，
+  改名后 `import stock_plan` 直接 `ModuleNotFoundError`——**用错解释器会当场露馅**，
+  而不是再产生「app 在这边、报错在那边」的误导性 ImportError。
+- **`.cmd` 包装脚本改用相对锚点**：`scripts/run_update.cmd`、`scripts/publish_snapshot.cmd`
+  原本硬编码 `cd /d "D:\Vscode\stock plan\Text"`，旧副本一改名就彻底失效；
+  改为 `cd /d "%~dp0.."`（脚本所在 `scripts\` 的上一级＝项目根），换副本、换盘符都不用再改。
+  附带说明：现役计划任务**并不**调用这两个 `.cmd`——实测 `\StockPlan\Daily_Update` 与
+  `\StockPlan\Daily_Publish` 的 XML 动作是
+  `powershell -File "D:\DeepSeekHarness\案例区\stock plan\scripts\daily_job.ps1"`，
+  `WorkingDirectory` 也指向案例区副本；这两个 `.cmd` 属历史包装，留着供手工复现。
+- **清残留进程**：结束 06:10 起挂着的孤儿探测进程（`data\logs\_probe_fin.py`）。
+
+### 验证
+
+- 负向复验（改名前）：用旧副本 venv 跑本副本 `app.py` → 退出码 2、只输出中文说明、
+  **无 traceback、无 ImportError**，即上一节的自检按预期拦住。
+- 改名后：旧副本 venv 连 `stock_plan` 都 import 不到（`.pth` 指向已不存在的路径），
+  误用同样会立刻报错，不会静默跑起一个半旧版本。
+- `pytest tests -q`：**210 passed / 7.27 s**（报告见 `tests/reports/2026-10-28-15-34.report-1.md`）。
+- 8501 页面 `_stcore/health` = `200 ok`；`import stock_plan` 指向案例区副本。
+
 ## 2026-10-28（续 7）：启动环境自检——用错 venv 不再报「半个路径」的 ImportError
 
 用户贴来一段报错：`ImportError: cannot import name 'market' from 'stock_plan.ui.views'`，
