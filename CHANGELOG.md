@@ -4,7 +4,7 @@
 
 ## 2026-10-28（续 8）：归档旧副本，并拔掉脚本里写死的旧路径
 
-用户认可「清理现场」后执行三件事。
+用户认可「清理现场」后执行五件事。
 
 - **改名而不是删除**：`D:\Vscode\stock plan` → `D:\Vscode\stock plan-已停用-20260905`
   （该副本最后一次改动是 2026-09-05）。副本原样保留，随时能翻回去查历史，
@@ -19,6 +19,18 @@
   `powershell -File "D:\DeepSeekHarness\案例区\stock plan\scripts\daily_job.ps1"`，
   `WorkingDirectory` 也指向案例区副本；这两个 `.cmd` 属历史包装，留着供手工复现。
 - **清残留进程**：结束 06:10 起挂着的孤儿探测进程（`data\logs\_probe_fin.py`）。
+- **摘掉 3 个指向旧副本的 git worktree**：`D:\Vscode\stock plan.worktrees` 下的
+  `branch2`、`branch2-updates-and-improvements`、`fix-cloud-oom`，其 `.git` 文件仍指向
+  已归档副本的 `.git/worktrees\...`，`git -C` 进去直接报
+  `gitfile does not point to a valid repository`，`git worktree remove` 也拒绝
+  （`is not a .git file`）。做法是删目录 + `git worktree prune -v`：三个分支
+  （`branch2`、`agents/branch2-updates-and-improvements`、`分支1`）及其提交全部保留，
+  现在 `git worktree list` 只剩主工作区；空目录 `branch1-data-update`、
+  `error-handling-in-chatbot` 与空的 `stock plan.worktrees` 一并删除。
+- **把 490 MB 的嵌套旧副本挪出项目目录**：`案例区\stock plan\Text`（19,687 个文件、
+  最后改动 2026-09-04、未入版本控制）整体移到
+  `D:\DeepSeekHarness\_archive\stock-plan-Text-20260904`；项目目录里不再有第二份
+  `src\`/`.venv`/`data\`，也就没有"从项目内部再捡到半旧副本"的可能。
 
 ### 验证
 
@@ -28,6 +40,8 @@
   误用同样会立刻报错，不会静默跑起一个半旧版本。
 - `pytest tests -q`：**210 passed / 7.27 s**（报告见 `tests/reports/2026-10-28-15-34.report-1.md`）。
 - 8501 页面 `_stcore/health` = `200 ok`；`import stock_plan` 指向案例区副本。
+- 清理后：`git worktree list` 只剩主工作区、`git status` 干净、`import stock_plan` 正常。
+- 应用重启后 headless 渲染（`AppTest`）：`exceptions=[]`、`errors=[]`、退出码 0。
 
 ## 2026-10-28（续 7）：启动环境自检——用错 venv 不再报「半个路径」的 ImportError
 
