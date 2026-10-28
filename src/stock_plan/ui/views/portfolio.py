@@ -6,6 +6,7 @@
 
 Revision History:
 2026-10-28  (phase 2) route price and equity charts through widgets factories
+2026-10-28  (branch4 phase 1) drop duplicated single-stock backtest caption
 """
 from __future__ import annotations
 
@@ -138,7 +139,6 @@ def _render_cached():
                     name="portfolio-single-backtest",
                     caption="只用这一只股票跑出来的资产曲线，样本单一，别当成策略的普遍表现。",
                 )
-            st.caption("单股回测仅反映该策略在这只股票上的历史表现，样本单一，参考意义有限。")
 
 
 def _render_chan_structure(res) -> None:

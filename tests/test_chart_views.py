@@ -19,7 +19,13 @@ import pandas as pd
 import pytest
 
 from stock_plan.ui import chart_style as cs
-from stock_plan.ui.widgets import BENCHMARK_LABEL, benchmark_equity_fig, price_level_fig
+from stock_plan.backtest.engine import BacktestResult
+from stock_plan.ui.widgets import (
+    BENCHMARK_LABEL,
+    backtest_hero_fig,
+    benchmark_equity_fig,
+    price_level_fig,
+)
 
 UI_ROOT = Path(__file__).resolve().parents[1] / "src" / "stock_plan" / "ui"
 COLOUR_RE = re.compile(r"#[0-9a-fA-F]{6}\b")
@@ -156,3 +162,66 @@ def test_price_level_fig_returns_none_without_bars():
     assert price_level_fig(None) is None
     assert price_level_fig(pd.DataFrame()) is None
     assert price_level_fig(pd.DataFrame({"date": ["2026-06-01"], "open": [1.0]})) is None
+
+
+def _hero_result(*, with_trades: bool = True, with_benchmark: bool = True) -> BacktestResult:
+    index = pd.bdate_range("2025-01-01", periods=60)
+    equity = pd.Series([100_000.0 * (1.002 ** i) for i in range(60)], index=index)
+    benchmark = pd.Series([1.0 * (1.001 ** i) for i in range(60)], index=index)
+    trades = pd.DataFrame(
+        [
+            {"code": "600000", "entry_date": index[5], "exit_date": index[20],
+             "entry_price": 10.0, "exit_price": 10.6},
+            {"code": "300001", "entry_date": index[30], "exit_date": index[45],
+             "entry_price": 20.0, "exit_price": 19.2},
+        ]
+    ) if with_trades else pd.DataFrame(columns=["code", "entry_date", "exit_date"])
+    return BacktestResult(
+        equity_curve=equity,
+        trades=trades,
+        benchmark=benchmark if with_benchmark else None,
+    )
+
+
+def test_backtest_hero_fig_percent_mode_has_drawdown_band_and_benchmark():
+    fig = backtest_hero_fig(_hero_result())
+    names = [trace.name for trace in fig.data]
+    assert "策略" in names
+    assert BENCHMARK_LABEL in names
+    assert fig.layout.yaxis.ticksuffix == "%"
+    assert not fig.layout.xaxis.type == "category"
+
+
+def test_backtest_hero_fig_money_mode_uses_money_axis():
+    fig = backtest_hero_fig(_hero_result(), mode="金额")
+    assert "总资产" in [trace.name for trace in fig.data]
+    assert fig.layout.yaxis.tickformat == ",.0f"
+
+
+def test_backtest_hero_fig_marks_trades_only_when_asked():
+    plain = backtest_hero_fig(_hero_result())
+    marked = backtest_hero_fig(_hero_result(), trades=_hero_result().trades)
+    assert "买入" not in [trace.name for trace in plain.data]
+    buy = next(trace for trace in marked.data if trace.name == "买入")
+    sell = next(trace for trace in marked.data if trace.name == "卖出")
+    assert len(buy.x) == 2 and len(sell.x) == 2
+    assert list(buy.marker.symbol for _ in [0]) == ["triangle-up"]
+    assert buy.marker.color == cs.UP
+    assert sell.marker.color == cs.DOWN
+
+
+def test_backtest_hero_fig_without_benchmark_has_no_benchmark_trace():
+    fig = backtest_hero_fig(_hero_result(with_benchmark=False))
+    assert BENCHMARK_LABEL not in [trace.name for trace in fig.data]
+
+
+def test_backtest_hero_fig_returns_none_without_equity():
+    empty = BacktestResult(equity_curve=pd.Series(dtype=float), trades=pd.DataFrame())
+    assert backtest_hero_fig(empty) is None
+
+
+def test_equity_curve_fig_is_gone():
+    """主图只保留一个工厂，防止「改一处忘另一处」的老毛病复发。"""
+    source = io.open(UI_ROOT / "widgets.py", encoding="utf-8").read()
+    assert "def equity_curve_fig" not in source
+    assert "backtest_hero_fig" in source

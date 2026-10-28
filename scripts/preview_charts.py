@@ -4,7 +4,7 @@
 为什么需要它：
 Streamlit 页面要手动选策略、点「运行回测」才能看到图，没法自动截图；而且真实回测
 耗时几分钟。这个脚本用**确定性合成数据**（固定随机种子）走一遍真实的工厂链路
-（views/backtest.py 的 _hero_fig / _monthly_fig / _heatmap_fig / _tab_trades 里的图），
+（widgets.backtest_hero_fig 与 views/backtest.py 的 _monthly_fig / _heatmap_fig），
 把改造前（旧样式）与改造后（新规范）各渲染一份 HTML，供 Edge headless 截图与用户拍板。
 合成数据不代表真实收益，只用于看观感。
 
@@ -19,6 +19,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+
+from stock_plan.ui.widgets import backtest_hero_fig
 
 from stock_plan.backtest.engine import BacktestResult
 from stock_plan.backtest.metrics import calc_metrics
@@ -169,14 +171,18 @@ def legacy_figures(result: BacktestResult, report: dict) -> list[tuple[str, go.F
 
 def new_figures(result: BacktestResult, report: dict) -> list[tuple[str, go.Figure, str]]:
     out: list[tuple[str, go.Figure, str]] = []
-    hero_pct = bt._hero_fig(result, "收益率")
+    hero_pct = backtest_hero_fig(result)
     if hero_pct is not None:
         out.append(("主图 · 收益率口径", hero_pct,
                     "策略（绿）+ 基准虚线（灰）+ 红色回撤阴影；左上角口径可切「金额」，纵轴靠右、无网格。"))
-    hero_money = bt._hero_fig(result, "金额")
+    hero_money = backtest_hero_fig(result, mode="金额")
     if hero_money is not None:
         out.append(("主图 · 金额口径", hero_money,
                     "同一份数据切到金额口径：基准按同一起始资金等比缩放，虚线是初始资金参考线。"))
+    hero_marks = backtest_hero_fig(result, trades=result.trades)
+    if hero_marks is not None:
+        out.append(("主图 · 买卖点（可选，默认关）", hero_marks,
+                    "▲ 买入 / ▼ 卖出，红买绿卖与红涨绿跌一致；交易多时会比较密，所以默认不显示。"))
     monthly = bt._monthly_fig(report)
     if monthly is not None:
         out.append(("月度收益", monthly,
@@ -246,7 +252,7 @@ def main() -> None:
         metrics=metrics,
     )
     after = build_html(
-        "回测结果页 · 改造后（分支3 · Phase 1）",
+        "回测结果页 · 改造后（分支4 · 打磨收尾）",
         "新规范：近黑画布、无背景网格、右侧纵轴、红涨绿跌、策略 vs 等权基准、可切金额/收益率、"
         "四个标签页收纳明细。合成数据仅用于看观感。",
         new_figures(result, report),

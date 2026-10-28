@@ -10,6 +10,7 @@ Revision History:
     2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
     2026-09-04  show cloud sample-universe disclosure
     2026-10-28  (phase 1) tabbed result page with benchmark hero chart
+    2026-10-28  (branch4 phase 0) reuse shared hero factory with optional trade markers
 """
 from __future__ import annotations
 
@@ -26,7 +27,13 @@ from stock_plan.data.storage import Storage
 from stock_plan.llm.analyzer import review_backtest
 from stock_plan.strategy.registry import create_strategy
 from stock_plan.ui import chart_style as cs
-from stock_plan.ui.widgets import apply_time_axis, board_filter_ui, page_glossary, render_chart
+from stock_plan.ui.widgets import (
+    apply_time_axis,
+    backtest_hero_fig,
+    board_filter_ui,
+    page_glossary,
+    render_chart,
+)
 
 # 本页名词速览（R2 亲民化）
 BACKTEST_GLOSSARY = {
@@ -189,83 +196,33 @@ def _excess_caption(metrics: dict, result) -> str:
     )
 
 
-def _hero_fig(result, mode: str) -> go.Figure | None:
-    """首屏主图：策略净值 + 基准 + 回撤阴影。
-
-    mode="收益率"：看相对起点涨了多少，叠回撤阴影；
-    mode="金额"：看账户里有多少钱，基准按同一起始资金等比缩放，可直接比绝对金额。
-    """
-    eq = getattr(result, "equity_curve", None)
-    if eq is None or len(eq) < 2:
-        return None
-    eq = pd.Series(eq, dtype="float64")
-    base = float(eq.iloc[0])
-    if base <= 0:
-        return None
-    x = pd.to_datetime(eq.index)
-    bench = getattr(result, "benchmark", None)
-    fig = go.Figure()
-
-    if mode == "金额":
-        fig.add_trace(go.Scatter(
-            x=x, y=eq.to_numpy(), mode="lines", name="总资产",
-            line=dict(color=cs.PRIMARY, width=2),
-        ))
-        if bench is not None and len(bench) >= 2:
-            b = bench.astype(float).reindex(eq.index).ffill()
-            b = b.dropna()
-            if len(b) >= 2 and float(b.iloc[0]) > 0:
-                fig.add_trace(go.Scatter(
-                    x=pd.to_datetime(b.index),
-                    y=b / float(b.iloc[0]) * base,
-                    mode="lines",
-                    name="基准（同资金等权持有候选池）",
-                    line=dict(color=cs.BENCHMARK, width=1.5, dash="dash"),
-                ))
-        fig.add_hline(
-            y=base,
-            line=dict(color=cs.NEUTRAL, width=1, dash="dot"),
-            annotation_text=f"初始资金 {cs.fmt_money(base)}",
-            annotation_position="top left",
-            annotation_font=dict(size=11, color=cs.AXIS_TEXT),
-        )
-        cs.apply_base_layout(fig, height=cs.H_PRIMARY, y_title="总资产（元）")
-        fig.update_yaxes(**cs.axis_money())
-    else:
-        pct = (eq / base - 1) * 100
-        cs.add_drawdown_band(fig, x, pct, name="策略")
-        if bench is not None and len(bench) >= 2:
-            b = bench.astype(float).reindex(eq.index).ffill().dropna()
-            if len(b) >= 2 and float(b.iloc[0]) > 0:
-                fig.add_trace(go.Scatter(
-                    x=pd.to_datetime(b.index),
-                    y=(b / float(b.iloc[0]) - 1) * 100,
-                    mode="lines",
-                    name="基准（等权持有候选池）",
-                    line=dict(color=cs.BENCHMARK, width=1.5, dash="dash"),
-                    hovertemplate="%{x|%Y-%m-%d}<br>基准 %{y:.2f}%<extra></extra>",
-                ))
-        cs.apply_base_layout(fig, height=cs.H_PRIMARY, y_title="累计收益率（%）", zero_line=True)
-        fig.update_yaxes(**cs.axis_pct_points())
-
-    apply_time_axis(fig)
-    return fig
-
-
 def _render_hero(result, metrics: dict) -> None:
-    """首屏主图 + 口径切换 + 一句话结论。"""
-    mode = st.segmented_control(
-        "主图口径",
-        ["收益率", "金额"],
-        default="收益率",
-        key="backtest_hero_mode",
-        help="收益率 = 相对起点涨了多少（带红色回撤阴影）；金额 = 账户里有多少钱。",
-    )
-    fig = _hero_fig(result, mode or "收益率")
+    """首屏主图 + 口径切换 + 买卖点开关 + 一句话结论。"""
+    left, right = st.columns([3, 1], vertical_alignment="bottom")
+    with left:
+        mode = st.segmented_control(
+            "主图口径",
+            ["收益率", "金额"],
+            default="收益率",
+            key="backtest_hero_mode",
+            help="收益率 = 相对起点涨了多少（带红色回撤阴影）；金额 = 账户里有多少钱。",
+        )
+    with right:
+        show_trades = st.toggle(
+            "标注买卖点",
+            value=False,
+            key="backtest_show_trades",
+            help="在曲线上标出每笔交易的买入 ▲ / 卖出 ▼。交易多时会比较密，默认关闭。",
+        )
+    trades = getattr(result, "trades", None) if show_trades else None
+    fig = backtest_hero_fig(result, mode=mode or "收益率", trades=trades)
     if fig is None:
         st.info("回测数据不足，无法绘制资金曲线。")
         return
-    render_chart(fig, name="backtest-equity", caption=_excess_caption(metrics, result))
+    caption = _excess_caption(metrics, result)
+    if show_trades and trades is not None and len(trades) > 0:
+        caption += f" 已标注 {len(trades)} 笔交易的买卖点（▲ 买入 / ▼ 卖出）。"
+    render_chart(fig, name="backtest-equity", caption=caption)
 
 
 def _monthly_fig(report: dict) -> go.Figure | None:

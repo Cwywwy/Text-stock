@@ -9,6 +9,7 @@ Revision History:
     2026-10-28  (phase 0) add chart_style tokens, chart_config/render_chart
     2026-10-28  (phase 2) add score_waterfall_fig for signal explainability
     2026-10-28  (phase 3) waterfall: drop axis title, pad x range so edge bars fit
+2026-10-28  (branch4 phase 0) one shared backtest_hero_fig with optional trade markers
 """
 from __future__ import annotations
 
@@ -343,48 +344,153 @@ def market_regime_panel(expanded: bool = False) -> None:
         )
 
 
-def equity_curve_fig(equity: pd.Series, benchmark: pd.Series | None = None) -> go.Figure | None:
-    """累计收益率曲线（%）+ 回撤区域标注（R3 需求），可选叠加基准。
+BENCHMARK_LABEL = "等权基准（持有全部候选股）"
+
+
+def _trade_markers(fig: go.Figure, trades: pd.DataFrame | None, curve: pd.Series) -> None:
+    """在资金曲线上标出买卖点：▲ 买（红）/ ▼ 卖（绿），与红涨绿跌一致。
+
+    成交日不是每根 K 线都有，落在曲线上时取「当日或之前最近一个点」的曲线值，
+    避免标记悬空。默认不画，由调用方按需传入 trades。
+    """
+    if trades is None or len(trades) == 0 or "entry_date" not in trades.columns:
+        return
+    values = pd.Series(curve, dtype="float64").dropna()
+    if values.empty:
+        return
+    values.index = pd.to_datetime(values.index)
+
+    for column, price_column, symbol, colour, name in (
+        ("entry_date", "entry_price", "triangle-up", cs.UP, "买入"),
+        ("exit_date", "exit_price", "triangle-down", cs.DOWN, "卖出"),
+    ):
+        if column not in trades.columns:
+            continue
+        xs: list[pd.Timestamp] = []
+        ys: list[float] = []
+        texts: list[str] = []
+        for _, row in trades.iterrows():
+            day = row.get(column)
+            if pd.isna(day):
+                continue
+            stamp = pd.Timestamp(day)
+            pos = values.index.searchsorted(stamp, side="right") - 1
+            if pos < 0:
+                continue
+            price = row.get(price_column) if price_column in trades.columns else None
+            label = f"{name} {row.get('code', '')}"
+            if price is not None and pd.notna(price):
+                label += f" · {float(price):.2f} 元"
+            xs.append(stamp)
+            ys.append(float(values.iloc[pos]))
+            texts.append(label)
+        if not xs:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="markers",
+                name=name,
+                marker=dict(symbol=symbol, size=9, color=colour, line=dict(width=0)),
+                text=texts,
+                hovertemplate="%{text}<br>%{x|%Y-%m-%d}<extra></extra>",
+            )
+        )
+
+
+def backtest_hero_fig(
+    result,
+    *,
+    mode: str = "收益率",
+    trades: pd.DataFrame | None = None,
+    height: int | None = None,
+) -> go.Figure | None:
+    """回测主图：策略资金曲线 + 等权基准（灰色虚线）+ 回撤带，金额/收益率双口径。
 
     参数：
-        equity: 以日期为索引、总资产为值的 Series。
-        benchmark: 可选基准净值序列（同为日期索引），换算成同期累计收益率后叠加。
+        result: ``BacktestResult``，需要 ``equity_curve``，``benchmark`` 可选。
+        mode: 「收益率」（累计收益率 %）或「金额」（总资产，元）。
+        trades: 传入则标出买卖点；默认不传，因为百笔交易糊在图上会看不清。
+        height: 图高，默认 ``chart_style.H_PRIMARY``。
 
-    返回：
-        plotly Figure；数据为空时返回 None。
+    这是全站唯一的主图工厂：回测页、可视化构建页、样张脚本都调它，
+    避免「两处各写一遍、改一处忘另一处」。
     """
+    equity = getattr(result, "equity_curve", None)
     if equity is None or len(equity) < 2:
+        return None
+    equity = pd.Series(equity, dtype="float64").dropna()
+    if len(equity) < 2:
         return None
     base = float(equity.iloc[0])
     if base <= 0:
         return None
-    pct = (equity / base - 1) * 100
-    # 用真正的日期类型（不是 'YYYY-MM-DD' 字符串）：字符串会被 Plotly 当成分类轴，
-    # 缩放下刻度密度与格式不会重算。
-    x = pd.to_datetime(pct.index)
+    x = pd.to_datetime(equity.index)
+    benchmark = getattr(result, "benchmark", None)
+    money = mode == "金额"
+
     fig = go.Figure()
-    cs.add_drawdown_band(fig, x, pct)
-    if benchmark is not None and len(benchmark) >= 2:
-        aligned = benchmark.reindex(pct.index).ffill()
-        if aligned.notna().any():
-            b0 = float(aligned.dropna().iloc[0])
-            if b0 > 0:
-                fig.add_trace(
-                    go.Scatter(
-                        x=x,
-                        y=(aligned / b0 - 1) * 100,
-                        mode="lines",
-                        name="基准",
-                        line=dict(color=cs.BENCHMARK, width=1.5, dash="dash"),
-                        hovertemplate="%{x|%Y-%m-%d}<br>基准 %{y:.2f}%<extra></extra>",
-                    )
+    if money:
+        curve = equity
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=curve.to_numpy(),
+                mode="lines",
+                name="总资产",
+                line=dict(color=cs.PRIMARY, width=2),
+                hovertemplate="%{x|%Y-%m-%d}<br>总资产 %{y:,.0f} 元<extra></extra>",
+            )
+        )
+        cs.add_level_line(
+            fig,
+            base,
+            label="初始资金",
+            colour=cs.BENCHMARK,
+            value_text=cs.fmt_money(base),
+        )
+    else:
+        curve = (equity / base - 1.0) * 100.0
+        cs.add_drawdown_band(fig, x, curve, name="策略")
+        cs.add_level_line(fig, 0.0, label="零收益", colour=cs.GRID)
+
+    if benchmark is not None and len(benchmark) > 0:
+        bench = pd.Series(benchmark, dtype="float64").dropna()
+        if len(bench) > 0:
+            bench_base = float(bench.iloc[0])
+            if money:
+                bench_series = bench * base
+                hover = "%{x|%Y-%m-%d}<br>基准 %{y:,.0f} 元<extra></extra>"
+            else:
+                bench_series = (bench / bench_base - 1.0) * 100.0 if bench_base > 0 else bench * 0.0
+                hover = "%{x|%Y-%m-%d}<br>基准 %{y:.2f}%<extra></extra>"
+            fig.add_trace(
+                go.Scatter(
+                    x=pd.to_datetime(bench.index),
+                    y=bench_series.to_numpy(),
+                    mode="lines",
+                    name=BENCHMARK_LABEL,
+                    line=dict(color=cs.BENCHMARK, width=1.4, dash="dot"),
+                    hovertemplate=hover,
                 )
-    cs.apply_base_layout(fig, height=cs.H_PRIMARY, y_title="累计收益率（%）", zero_line=True)
-    apply_time_axis(fig, title="日期", rangeslider=True)
+            )
+
+    _trade_markers(fig, trades, curve)
+
+    cs.apply_base_layout(
+        fig,
+        height=height or cs.H_PRIMARY,
+        y_title="总资产（元）" if money else "累计收益率（%）",
+        zero_line=not money,
+        legend="h",
+    )
+    if money:
+        fig.update_yaxes(**cs.axis_money())
+    else:
+        fig.update_yaxes(**cs.axis_pct_points())
+    apply_time_axis(fig)
     return fig
-
-
-BENCHMARK_LABEL = "等权基准（持有全部候选股）"
 
 
 def benchmark_equity_fig(

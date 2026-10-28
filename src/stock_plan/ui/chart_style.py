@@ -61,6 +61,10 @@ LEVEL_TARGET = WARN  # 止盈区
 LEVEL_T_BUY = "#5B9BD5"  # 做T低吸（次要参考）
 LEVEL_T_SELL = "#B07FD0"  # 做T高抛（次要参考）
 
+# 表格里「这一列最优」的底色（只染背景，不改字体色，深色主题下才读得清）
+BEST_UP = "rgba(240, 97, 109, 0.28)"  # 收益类最优（红涨）
+BEST_DOWN = "rgba(46, 189, 133, 0.28)"  # 回撤类最优（绿＝跌得最少）
+
 # 多序列配色：按出场顺序取色，保证「自己的策略」不会是看不见的 #333
 SERIES: tuple[str, ...] = (
     PRIMARY,
@@ -333,16 +337,21 @@ def add_level_line(
     colour: str,
     dash: str = "dot",
     width: int = 1,
+    value_text: str | None = None,
 ) -> None:
     """画一条价位参考线（买入价 / 止损 / 止盈 / 做T价位），并统一标注样式。
 
     这些线的语义固定，颜色从 ``LEVEL_*`` token 取，不要在视图里临时挑颜色——
     否则同一张图里「止损红、止盈绿」会跟红涨绿跌的语义打架。
+
+    ``value_text`` 用于金额这类不该按两位小数显示的数值（例如「初始资金 10.0 万」），
+    传了就替换掉默认的 ``:.2f`` 格式。
     """
+    shown = value_text if value_text is not None else f"{float(y):.2f}"
     fig.add_hline(
         y=float(y),
         line=dict(color=colour, width=width, dash=dash),
-        annotation_text=f"{label} {float(y):.2f}",
+        annotation_text=f"{label} {shown}",
         annotation_position="left top",
         annotation=dict(
             x=0.006,
