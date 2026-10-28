@@ -11,9 +11,14 @@
 「入选者为什么入选、紧随其后 3 只差在哪、硬过滤淘汰了谁」，
 供「信号解释报告」页面与 LLM 解读使用（见 signal/report.py）。
 
+`generate_signals_with_report()`：一次打分同时产出「信号 + 解释报告」。
+今日信号页用它，避免为报告再跑一遍 40 多秒的加载与指标计算。
+`generate_signals()` 保持原样不动——云端发布与既有回测口径都依赖它。
+
 Revision History:
     2026-09-04  load only 180-day window to avoid cloud OOM
     2026-10-28  (phase 1) add generate_signal_report for explainability
+    2026-10-28  (phase 2) share one scoring pass between signals and report
 """
 from __future__ import annotations
 
@@ -23,7 +28,7 @@ from datetime import date, datetime
 import pandas as pd
 
 from stock_plan.data.storage import Storage
-from stock_plan.factors.filter import filter_universe_explained
+from stock_plan.factors.filter import FilterOutcome, filter_universe_explained
 from stock_plan.signal.report import (
     CandidateFacts,
     EntryGap,
@@ -145,27 +150,15 @@ def generate_signals(
 
     # 4. 打分并取 Top N（并列按代码升序，见 _rank_factor_rows）
     factor_rows["score"] = strategy.score(factor_rows)
-    top = _rank_factor_rows(factor_rows).head(top_n)
+    ranked = _rank_factor_rows(factor_rows)
 
     # 5. 生成信号
-    signals: list[Signal] = []
-    for _, row in top.iterrows():
-        atr = row["atr14"]
-        entry = strategy.entry_price(row, atr)
-        exit_price, stop_loss, hold_days = strategy.exit_price(entry, atr)
-        signals.append(
-            Signal(
-                code=row["code"],
-                name=name_map.get(row["code"], row["code"]),
-                score=round(row["score"], 1),
-                entry_price=entry,
-                exit_price=exit_price,
-                stop_loss=stop_loss,
-                hold_days=hold_days,
-                reasons=_build_reasons(row),
-            )
-        )
-    return signals
+    return _signals_from_ranked(
+        ranked,
+        top_n=top_n,
+        name_map=name_map,
+        strategy=strategy,
+    )
 
 
 def _row_value(row: pd.Series, key: str) -> float | None:
@@ -244,6 +237,212 @@ def _candidate_facts(
     )
 
 
+@dataclass(frozen=True)
+class _RankedFacts:
+    """一次打分产生的中间结果 —— 报告与信号共用，避免重复加载与重复计算。
+
+    为什么单独抽出来：
+    `load_market_maps()` 约 19 秒、`build_factor_rows()` 约 26 秒（真实 4130 只
+    候选股实测），今日信号页若为了解释报告再跑一遍，冷启动会从 46 秒变成 92 秒。
+    因此把「加载 → 硬过滤 → 因子行 → 打分 → 排名」做成可复用的中间层，
+    报告与信号各自只做最后的装配。
+    """
+
+    strategy: Strategy
+    name_map: dict[str, str]
+    bars_map: dict[str, pd.DataFrame]
+    outcome: FilterOutcome
+    codes: list[str]
+    ranked: pd.DataFrame
+    penalties_map: dict[str, list[Penalty]]
+    warnings: tuple[str, ...]
+    universe: UniverseFacts
+    aborted: bool
+    industry_note: str = ""
+
+
+def _collect_ranked(
+    strategy: Strategy,
+    *,
+    storage: Storage | None,
+    boards: list[str] | None,
+    exclude_st: bool,
+    industries: list[str] | None,
+    industry_level: str,
+) -> _RankedFacts:
+    """加载数据、硬过滤、算因子、打分排名 —— 报告与信号共用的一次性开销。"""
+    storage = storage or Storage()
+    strategy_name = str(getattr(strategy, "name", type(strategy).__name__))
+
+    # 1. 加载数据（窗口与 generate_signals 一致：最近 180 个日历日）
+    from datetime import timedelta
+
+    from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
+
+    end = date.today()
+    start = end - timedelta(days=180)
+    stock_list, bars_map, fund_map = storage.load_market_maps(
+        start=start, end=end,
+        boards=boards, exclude_st=exclude_st,
+        max_codes=CLOUD_MAX_CODES if is_cloud() else None,
+    )
+
+    warnings: list[str] = [
+        "硬过滤使用的 ST 判据是「今天」的 ST 状态，不是历史时点。",
+    ]
+    base_universe = UniverseFacts(
+        total_in_list=len(stock_list),
+        with_bars=len(bars_map),
+        strategy_name=strategy_name,
+        strategy_fingerprint=strategy_fingerprint(strategy),
+    )
+    empty_ranked = pd.DataFrame()
+
+    if stock_list.empty:
+        warnings.append("股票列表为空（数据尚未更新），无法生成报告。")
+        return _RankedFacts(
+            strategy=strategy,
+            name_map={},
+            bars_map=bars_map,
+            outcome=FilterOutcome(passed=(), rejected=(), counts={}, total=0),
+            codes=[],
+            ranked=empty_ranked,
+            penalties_map={},
+            warnings=tuple(warnings),
+            universe=base_universe,
+            aborted=True,
+        )
+
+    # 2. 硬过滤（保留淘汰原因）
+    name_map = dict(zip(stock_list["code"].astype(str), stock_list["name"].astype(str)))
+    outcome = filter_universe_explained(stock_list, bars_map)
+    codes = list(outcome.passed)
+
+    # 2b. 行业筛选（与 generate_signals 同序：先筛行业再打分）
+    if industries:
+        from stock_plan.data import classification
+
+        codes = classification.filter_codes_by_industries(codes, industries, level=industry_level)
+        if not codes:
+            warnings.append("行业筛选后没有候选股。")
+
+    # 3. 构建因子行 + 打分
+    factor_rows = build_factor_rows(codes, bars_map, fund_map) if codes else pd.DataFrame()
+    penalties_map: dict[str, list[Penalty]] = {}
+    if factor_rows.empty:
+        warnings.append("没有股票能算出因子（日线不足或指标计算失败）。")
+        ranked = factor_rows
+    else:
+        try:
+            scores, penalties = strategy.score_with_penalties(factor_rows)
+            penalties_map = _penalty_map(penalties)
+        except AttributeError:
+            warnings.append("该策略未提供扣分明细（score_with_penalties），报告不含扣分项。")
+            scores = strategy.score(factor_rows)
+        ranked = _rank_factor_rows(factor_rows.assign(score=scores))
+
+    # 4. 数据截止日：取实际参与打分的股票里最后一根日线（如实反映"数据到哪天"）
+    data_codes = [str(c) for c in ranked["code"].tolist()] if not ranked.empty else []
+    used_dates = [d for d in (_last_bar_date(bars_map.get(c)) for c in data_codes) if d]
+    data_until = max(used_dates) if used_dates else ""
+    if not used_dates:
+        warnings.append("日线数据缺失，无法确认数据截止日。")
+
+    universe = UniverseFacts(
+        total_in_list=base_universe.total_in_list,
+        with_bars=base_universe.with_bars,
+        passed=len(codes),
+        rejected_counts=dict(outcome.counts),
+        data_until=data_until,
+        strategy_name=base_universe.strategy_name,
+        strategy_fingerprint=base_universe.strategy_fingerprint,
+    )
+    industry_note = ""
+    if industries:
+        industry_note = (
+            f"已按行业筛选（{'、'.join(industries)}）：通过硬过滤 {outcome.passed_count} 只，"
+            f"可打分候选 {len(codes)} 只。"
+        )
+    return _RankedFacts(
+        strategy=strategy,
+        name_map=name_map,
+        bars_map=bars_map,
+        outcome=outcome,
+        codes=codes,
+        ranked=ranked,
+        penalties_map=penalties_map,
+        warnings=tuple(warnings),
+        universe=universe,
+        aborted=False,
+        industry_note=industry_note,
+    )
+
+
+def _build_report(
+    facts: _RankedFacts,
+    *,
+    top_n: int,
+    runners_up: int,
+    rejected_per_reason: int,
+) -> SignalReport:
+    """把共用中间结果装配成 SignalReport。"""
+    warnings = list(facts.warnings)
+    if facts.aborted:
+        return SignalReport(
+            generated_at=datetime.now(),
+            universe=facts.universe,
+            warnings=tuple(warnings),
+        )
+
+    # 入选者 + 紧随者（按名次连续切片，不重复计算）
+    picked: list[CandidateFacts] = []
+    runners: list[CandidateFacts] = []
+    if not facts.ranked.empty:
+        limit = top_n + runners_up
+        for position, row in facts.ranked.iterrows():
+            rank = int(position) + 1
+            if rank > limit:
+                break
+            picked_flag = rank <= top_n
+            candidate = _candidate_facts(
+                row,
+                rank=rank,
+                picked=picked_flag,
+                name_map=facts.name_map,
+                penalties_map=facts.penalties_map,
+                bars_map=facts.bars_map,
+            )
+            (picked if picked_flag else runners).append(candidate)
+
+    entry_gap = (
+        EntryGap(picked[-1].score, runners[0].score) if picked and runners else None
+    )
+    if facts.industry_note:
+        warnings.append(facts.industry_note)
+
+    # 硬过滤淘汰样本（每类各 N 只，便于逐类解释）
+    samples = tuple(
+        RejectedSample(
+            code=item.code,
+            name=item.name,
+            reason=item.reason,
+            reason_text=item.reason_text,
+            detail=dict(item.detail),
+        )
+        for item in facts.outcome.samples(per_reason=rejected_per_reason)
+    )
+
+    return SignalReport(
+        generated_at=datetime.now(),
+        universe=facts.universe,
+        picked=tuple(picked),
+        runners_up=tuple(runners),
+        rejected_samples=samples,
+        entry_gap=entry_gap,
+        warnings=tuple(warnings),
+    )
+
+
 def generate_signal_report(
     strategy: Strategy | None = None,
     top_n: int = 5,
@@ -277,141 +476,95 @@ def generate_signal_report(
         数据不可用时返回空报告，并在 `warnings` 里说明原因，不抛异常。
     """
     strategy = strategy or TrendFollowingStrategy()
-    storage = storage or Storage()
-    strategy_name = str(getattr(strategy, "name", type(strategy).__name__))
-
-    # 1. 加载数据（窗口与 generate_signals 一致：最近 180 个日历日）
-    from datetime import timedelta
-
-    from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
-
-    end = date.today()
-    start = end - timedelta(days=180)
-    stock_list, bars_map, fund_map = storage.load_market_maps(
-        start=start, end=end,
-        boards=boards, exclude_st=exclude_st,
-        max_codes=CLOUD_MAX_CODES if is_cloud() else None,
+    facts = _collect_ranked(
+        strategy,
+        storage=storage,
+        boards=boards,
+        exclude_st=exclude_st,
+        industries=industries,
+        industry_level=industry_level,
+    )
+    return _build_report(
+        facts,
+        top_n=top_n,
+        runners_up=runners_up,
+        rejected_per_reason=rejected_per_reason,
     )
 
-    warnings: list[str] = [
-        "硬过滤使用的 ST 判据是「今天」的 ST 状态，不是历史时点。",
-    ]
-    universe = UniverseFacts(
-        total_in_list=len(stock_list),
-        with_bars=len(bars_map),
-        strategy_name=strategy_name,
-        strategy_fingerprint=strategy_fingerprint(strategy),
-    )
-    if stock_list.empty:
-        warnings.append("股票列表为空（数据尚未更新），无法生成报告。")
-        return SignalReport(
-            generated_at=datetime.now(),
-            universe=universe,
-            warnings=tuple(warnings),
-        )
 
-    # 2. 硬过滤（保留淘汰原因）
-    name_map = dict(zip(stock_list["code"].astype(str), stock_list["name"].astype(str)))
-    outcome = filter_universe_explained(stock_list, bars_map)
-    codes = list(outcome.passed)
-
-    # 2b. 行业筛选（与 generate_signals 同序：先筛行业再打分）
-    if industries:
-        from stock_plan.data import classification
-
-        codes = classification.filter_codes_by_industries(codes, industries, level=industry_level)
-        if not codes:
-            warnings.append("行业筛选后没有候选股。")
-
-    # 3. 构建因子行 + 打分
-    factor_rows = build_factor_rows(codes, bars_map, fund_map) if codes else pd.DataFrame()
-    penalties_map: dict[str, list[Penalty]] = {}
-    if factor_rows.empty:
-        warnings.append("没有股票能算出因子（日线不足或指标计算失败）。")
-        ranked = factor_rows
-    else:
-        try:
-            scores, penalties = strategy.score_with_penalties(factor_rows)
-            penalties_map = _penalty_map(penalties)
-        except AttributeError:
-            warnings.append("该策略未提供扣分明细（score_with_penalties），报告不含扣分项。")
-            scores = strategy.score(factor_rows)
-        ranked = _rank_factor_rows(factor_rows.assign(score=scores))
-
-    # 4. 入选者 + 紧随者（按名次连续切片，不重复计算）
-    picked: list[CandidateFacts] = []
-    runners: list[CandidateFacts] = []
-    if not ranked.empty:
-        limit = top_n + runners_up
-        for position, row in ranked.iterrows():
-            rank = int(position) + 1
-            if rank > limit:
-                break
-            picked_flag = rank <= top_n
-            facts = _candidate_facts(
-                row,
-                rank=rank,
-                picked=picked_flag,
-                name_map=name_map,
-                penalties_map=penalties_map,
-                bars_map=bars_map,
+def _signals_from_ranked(
+    ranked: pd.DataFrame,
+    *,
+    top_n: int,
+    name_map: dict[str, str],
+    strategy: Strategy,
+) -> list[Signal]:
+    """把已排好名的因子行装配成 Signal 列表（与 generate_signals 第 5 步等价）。"""
+    if ranked.empty:
+        return []
+    signals: list[Signal] = []
+    for _, row in ranked.head(top_n).iterrows():
+        atr = row["atr14"]
+        entry = strategy.entry_price(row, atr)
+        exit_price, stop_loss, hold_days = strategy.exit_price(entry, atr)
+        signals.append(
+            Signal(
+                code=str(row["code"]),
+                name=name_map.get(str(row["code"]), str(row["code"])),
+                score=round(float(row["score"]), 1),
+                entry_price=entry,
+                exit_price=exit_price,
+                stop_loss=stop_loss,
+                hold_days=hold_days,
+                reasons=_build_reasons(row),
             )
-            (picked if picked_flag else runners).append(facts)
+        )
+    return signals
 
-    entry_gap = (
-        EntryGap(picked[-1].score, runners[0].score) if picked and runners else None
+
+def generate_signals_with_report(
+    strategy: Strategy | None = None,
+    top_n: int = 5,
+    runners_up: int = 3,
+    rejected_per_reason: int = 1,
+    storage: Storage | None = None,
+    boards: list[str] | None = None,
+    exclude_st: bool = True,
+    industries: list[str] | None = None,
+    industry_level: str = "sw_l1",
+) -> tuple[list[Signal], SignalReport]:
+    """一次打分同时产出「今日信号」与「信号解释报告」。
+
+    参数与 `generate_signal_report()` 相同。之所以单独提供这个入口、而不是让页面
+    分别调 `generate_signals()` + `generate_signal_report()`：两次调用会把
+    「加载 5576 只 + 算 4130 只指标」这 40 多秒重复一遍，冷启动从 46 秒变 92 秒。
+    这里只跑一次，信号与报告必然同源同名次（见同一批 `ranked` 行）。
+
+    `generate_signals()` 本身保持原样不动 —— 云端发布路径与既有回测口径都依赖它，
+    两条路径的一致性由 `tests/test_signal_report.py` 的逐项相等断言守住。
+    """
+    strategy = strategy or TrendFollowingStrategy()
+    facts = _collect_ranked(
+        strategy,
+        storage=storage,
+        boards=boards,
+        exclude_st=exclude_st,
+        industries=industries,
+        industry_level=industry_level,
     )
-
-    # 5. 数据截止日：取实际参与打分的股票里最后一根日线（如实反映"数据到哪天"）
-    data_codes = [str(c) for c in ranked["code"].tolist()] if not ranked.empty else []
-    used_dates = [d for d in (_last_bar_date(bars_map.get(c)) for c in data_codes) if d]
-    if used_dates:
-        universe = UniverseFacts(
-            total_in_list=universe.total_in_list,
-            with_bars=universe.with_bars,
-            passed=len(codes),
-            rejected_counts=dict(outcome.counts),
-            data_until=max(used_dates),
-            strategy_name=universe.strategy_name,
-            strategy_fingerprint=universe.strategy_fingerprint,
-        )
-    else:
-        warnings.append("日线数据缺失，无法确认数据截止日。")
-        universe = UniverseFacts(
-            total_in_list=universe.total_in_list,
-            with_bars=universe.with_bars,
-            passed=len(codes),
-            rejected_counts=dict(outcome.counts),
-            strategy_name=universe.strategy_name,
-            strategy_fingerprint=universe.strategy_fingerprint,
-        )
-    if industries:
-        warnings.append(
-            f"已按行业筛选（{'、'.join(industries)}）：通过硬过滤 {outcome.passed_count} 只，"
-            f"可打分候选 {len(codes)} 只。"
-        )
-
-    # 6. 硬过滤淘汰样本（每类各 N 只，便于逐类解释）
-    samples = tuple(
-        RejectedSample(
-            code=item.code,
-            name=item.name,
-            reason=item.reason,
-            reason_text=item.reason_text,
-            detail=dict(item.detail),
-        )
-        for item in outcome.samples(per_reason=rejected_per_reason)
+    signals = _signals_from_ranked(
+        facts.ranked,
+        top_n=top_n,
+        name_map=facts.name_map,
+        strategy=strategy,
     )
-
-    return SignalReport(
-        generated_at=datetime.now(),
-        universe=universe,
-        picked=tuple(picked),
-        runners_up=tuple(runners),
-        rejected_samples=samples,
-        entry_gap=entry_gap,
-        warnings=tuple(warnings),
+    report = _build_report(
+        facts,
+        top_n=top_n,
+        runners_up=runners_up,
+        rejected_per_reason=rejected_per_reason,
     )
+    return signals, report
 
 
 if __name__ == "__main__":

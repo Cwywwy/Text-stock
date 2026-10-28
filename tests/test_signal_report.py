@@ -24,7 +24,11 @@ from stock_plan.factors.filter import (
     filter_universe,
     filter_universe_explained,
 )
-from stock_plan.signal.generator import generate_signal_report, generate_signals
+from stock_plan.signal.generator import (
+    generate_signal_report,
+    generate_signals,
+    generate_signals_with_report,
+)
 from stock_plan.signal.report import (
     CandidateFacts,
     EntryGap,
@@ -247,6 +251,62 @@ def test_report_matches_generate_signals():
     )
     assert [item.code for item in report.picked] == [sig.code for sig in signals]
     assert [item.name for item in report.picked] == [sig.name for sig in signals]
+
+
+def test_combined_call_matches_signal_page_field_by_field():
+    """一次调用产出的信号必须与 generate_signals() 逐字段一致。"""
+    stock_list, bars_map, fund_map = _market()
+    storage = _FakeStorage(stock_list, bars_map, fund_map)
+    signals, report = generate_signals_with_report(storage=storage, top_n=5)
+    legacy = generate_signals(
+        strategy=TrendFollowingStrategy(), top_n=5, storage=storage
+    )
+    assert len(signals) == len(legacy) == 5
+    for new, old in zip(signals, legacy):
+        assert new.code == old.code
+        assert new.name == old.name
+        assert new.score == old.score
+        assert new.entry_price == old.entry_price
+        assert new.exit_price == old.exit_price
+        assert new.stop_loss == old.stop_loss
+        assert new.hold_days == old.hold_days
+        assert new.reasons == old.reasons
+    assert [item.code for item in report.picked] == [sig.code for sig in legacy]
+    assert [item.rank for item in report.picked] == [1, 2, 3, 4, 5]
+
+
+def test_combined_call_loads_market_only_once():
+    """合并入口只允许加载一次行情：省下的正是那 ~40 秒。"""
+    stock_list, bars_map, fund_map = _market()
+
+    class _CountingStorage(_FakeStorage):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            self.calls = 0
+
+        def load_market_maps(self, **kwargs):
+            self.calls += 1
+            return super().load_market_maps(**kwargs)
+
+    storage = _CountingStorage(stock_list, bars_map, fund_map)
+    generate_signals_with_report(storage=storage, top_n=5)
+    assert storage.calls == 1
+
+
+def test_combined_call_with_industry_filter_keeps_note():
+    """行业筛选的说明仍写在报告 warnings 末尾（与单跑报告逐字一致）。"""
+    stock_list, bars_map, fund_map = _market()
+    storage = _FakeStorage(stock_list, bars_map, fund_map)
+    signals, report = generate_signals_with_report(
+        storage=storage, top_n=3, industries=["不存在的行业"]
+    )
+    single = generate_signal_report(
+        storage=storage, top_n=3, industries=["不存在的行业"]
+    )
+    # 行业分类缺失时 filter_codes_by_industries 原样返回（既有约定），因此候选不变
+    assert report.warnings == single.warnings
+    assert any("已按行业筛选" in item for item in report.warnings)
+    assert [sig.code for sig in signals] == [item.code for item in report.picked]
 
 
 def test_report_data_until_comes_from_bars():

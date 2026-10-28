@@ -2,7 +2,7 @@
 
 - 日期：2026-10-28
 - 分支：`分支3`（图表升级 Phase 0/1 已提交：`c2f1f0c`、`d421d5f`）
-- 状态：**执行中** —— Phase 0 ✅（`6183fae`）、Phase 1 ✅（本次提交）；下一步 Phase 2（今日页对比表 + 瀑布图）
+- 状态：**执行中** —— Phase 0 ✅（`6183fae`）、Phase 1 ✅（`222d4fb`）、Phase 2 ✅（本次提交）；下一步 Phase 3（LLM 深度解读）
 - 环境：Python **3.13.15**（`.venv`）；streamlit **1.63.0**、plotly **7.0.0**、pandas **3.0.5**、numpy 2.5.2；pytest 9.1.1
 - 硬约束：**不新增依赖**（INSTRUCTION.md:35、README.md:176/214）；LLM 走现有 OpenAI 兼容客户端（`src/stock_plan/llm/client.py`）
 
@@ -155,6 +155,12 @@ class SignalReport:
   - 样张截图（合成数据 + Edge headless）经用户确认观感
   - 首屏渲染不新增超过 300ms（报告与信号共用一次打分）
 - 预期产出：1 个 commit + 截图
+- 实际落地：
+  - `signal/generator.py` 抽出 `_collect_ranked()`（加载 → 硬过滤 → 因子 → 打分 → 定序），`generate_signal_report()` 与新增的 `generate_signals_with_report()` 共用这一趟；`generate_signals()` 只剩「调用 + 拼价格」两行，行为不变
+  - `ui/widgets.py` 新增 `score_waterfall_fig()`（柱底 = 入选门槛，另加分数圆点，分差 0 时也看得见）；新增 `ui/signal_report_section.py`（对比表 / 扣分清单 / 硬过滤样本表 / caption）
+  - `ui/views/today.py`：`_cached_signals` → `_cached_signals_and_report`，一次缓存同时拿信号与报告，多周期分支按周期各存一份；新区块挂在每个周期信号表之后、默认折叠
+  - 测试：`tests/test_signal_report.py` 新增 3 项（合并调用与信号页逐字段相等、只加载一次市场数据、行业筛选保留提示），`tests/test_signal_report_section.py` 新增 9 项（含 AppTest 渲染冒烟）；全量 **282 passed**
+  - 踩坑记录：以 `#` 开头的柱子标签会被 plotly.js 当数字（`"#6 300908"` → `6300908`），x 轴退化成 6M/7M 数值轴 → 标签改为「第 6 名 300908」并显式 `update_xaxes(type="category")`
 
 ### Phase 3 — LLM 深度解读
 
@@ -169,7 +175,7 @@ class SignalReport:
 
 - 内容：全站 `pytest`、真实数据截图、`CHANGELOG.md`、测试报告、计划书归档、README 补一节
 - 完成标准：
-  - 全量测试绿（Phase 1 后基线 **270 passed**）
+  - 全量测试绿（Phase 2 后基线 **282 passed**）
   - 测试报告 `tests/reports/<YYYY-MM-DD-HH-mm>.report-*.md`
   - 计划书移到 `.github/plans/done/`；`README.md` 说明 `data/cache/llm/` 与 `.env` 三个变量
 - 预期产出：1 个 commit + 报告

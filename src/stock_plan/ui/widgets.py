@@ -4,6 +4,10 @@
 
 图表交互（暂时需求 1）：所有 Plotly 图表统一走 PLOTLY_CONFIG，并通过
 apply_time_axis 使用**真正的日期轴**，使刻度密度随缩放连续重算。
+
+Revision History:
+    2026-10-28  (phase 0) add chart_style tokens, chart_config/render_chart
+    2026-10-28  (phase 2) add score_waterfall_fig for signal explainability
 """
 from __future__ import annotations
 
@@ -371,4 +375,97 @@ def equity_curve_fig(equity: pd.Series, benchmark: pd.Series | None = None) -> g
                 )
     cs.apply_base_layout(fig, height=cs.H_PRIMARY, y_title="累计收益率（%）", zero_line=True)
     apply_time_axis(fig, title="日期", rangeslider=True)
+    return fig
+
+
+def score_waterfall_fig(report) -> go.Figure | None:
+    """「入选门槛 vs 紧随其后」的分差瀑布图（信号解释报告用）。
+
+    画法：每只落选股一根柱子，柱底落在**入选门槛**（第 N 名的综合分），柱高 = 它与
+    门槛的分数差。这样所有柱子共用一条基准线，肉眼立刻看出「差 0.1 分」和「差 6 分」
+    的区别；比把 87.6 / 87.1 / 86.2 三个数字画成从 0 开始的柱状图清楚得多。
+
+    颜色沿用红涨绿跌：高于门槛（几乎不会出现）为红、低于门槛为绿、持平为灰。
+
+    参数：
+        report: SignalReport（只要有 `picked` / `runners_up` / `entry_gap` 即可）。
+
+    返回：
+        plotly Figure；没有入选者或没有落选者时返回 None（页面据此不渲染图）。
+    """
+    if report is None:
+        return None
+    picked = list(getattr(report, "picked", ()) or ())
+    runners = list(getattr(report, "runners_up", ()) or ())
+    if not picked or not runners:
+        return None
+
+    gate_item = picked[-1]
+    gate = float(gate_item.score)
+    labels: list[str] = []
+    deltas: list[float] = []
+    scores: list[float] = []
+    names: list[str] = []
+    for item in runners:
+        score = float(item.score)
+        # 不要用 "#6 300908" 这类标签：以 # 加数字开头的字符串会被 plotly.js 当成
+        # 数值（"#6 300908" → 6300908），x 轴退化成 6M/7M 的数值轴。
+        labels.append(f"第{item.rank}名 {item.code}")
+        deltas.append(score - gate)
+        scores.append(score)
+        names.append(str(item.name))
+
+    colours = [
+        cs.DOWN if delta < 0 else (cs.NEUTRAL if delta == 0 else cs.UP)
+        for delta in deltas
+    ]
+    score_labels = [f"{score:.1f}" for score in scores]
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=labels,
+            y=deltas,
+            base=[gate] * len(deltas),
+            marker=dict(color=colours, line=dict(width=0)),
+            customdata=[[name, score, delta] for name, score, delta in zip(names, scores, deltas)],
+            hovertemplate=(
+                "%{x} %{customdata[0]}<br>综合分 %{customdata[1]:.1f}"
+                "<br>与门槛 %{customdata[2]:+.1f} 分<extra></extra>"
+            ),
+            name="紧随其后",
+            showlegend=False,
+        )
+    )
+    # 分差为 0 时柱子高度是 0、什么都看不见，所以额外画一个分数圆点：圆点落在门槛
+    # 虚线上就说明「并列」，落在下方就是落后多少，比只有柱子稳。
+    fig.add_trace(
+        go.Scatter(
+            x=labels,
+            y=scores,
+            mode="markers+text",
+            text=score_labels,
+            textposition="top center",
+            textfont=dict(size=cs.FONT_AXIS, color=cs.TEXT),
+            marker=dict(size=6, color=colours, line=dict(width=0)),
+            hoverinfo="skip",
+            showlegend=False,
+            cliponaxis=False,
+        )
+    )
+    fig.add_hline(
+        y=gate,
+        line=dict(color=cs.BENCHMARK, width=1, dash="dot"),
+    )
+    fig.update_xaxes(type="category")
+    span = max(scores + [gate]) - min(scores + [gate])
+    pad = max(0.3, span * 0.25)
+    cs.apply_base_layout(
+        fig,
+        height=cs.H_SECONDARY,
+        y_title="综合分",
+        right_axis=False,
+        legend=None,
+        margin=dict(l=52, r=14, t=24, b=26),
+    )
+    fig.update_yaxes(range=[min(scores + [gate]) - pad, max(scores + [gate]) + pad])
     return fig
