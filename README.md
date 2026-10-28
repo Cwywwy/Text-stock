@@ -131,6 +131,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\register_tasks.ps1 -
 
 - 增量只拉最近 30 天并按日期去重合并，已是最新数据的股票自动跳过，不联网（实测全市场约 23 秒）。
 - 手动更新入口：左侧导航 **「🔄 数据更新」** 页——显示缓存状态指标，可点击「立即增量更新」实时查看进度；若存在未缓存的股票会提示并可单独补拉。
+- 页面按访问者分两套：**本机（维护者）**看到增量更新为主操作；**云端（普通用户）**第一屏只有「同步到最新快照」，
+  增量更新收进折叠的「🔧 维护者功能（普通用户无需操作）」。判定见 `maintainer_mode()`，
+  可用环境变量 `STOCK_PLAN_MAINTAINER=1/0` 强制指定。
 - 更新日志：`data/logs/update.log`、`data/logs/daily_job.log`（数据更新页内可直接查看最近记录）。
 
 ### 全历史重建（`--rebuild`）
