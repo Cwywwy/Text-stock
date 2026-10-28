@@ -47,6 +47,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from stock_plan.data.clock import today_cn
 from stock_plan.data.storage import PROJECT_ROOT, Storage
 
 UNIVERSE_DIR = PROJECT_ROOT / "data" / "processed" / "universe"
@@ -351,7 +352,7 @@ def update_universes(years: int = 5, force: bool = False) -> dict:
     本地推导，**不产生按月 API 请求**：先取一次证券基础表，再由 [ipoDate, outDate]
     推算每个历史日期的在市集合。因此不再受"非交易日返回空"和"长会话退化"影响。
     """
-    end = date.today()
+    end = today_cn()
     start = end - timedelta(days=365 * years)
     days = month_ends(start, end)
 
@@ -419,7 +420,7 @@ def update_delisted_bars(limit: int = 0, force: bool = False) -> dict:
         for r in existing.to_dict("records"):
             recorded[str(r["code"])] = r
 
-    today = date.today().isoformat()
+    today = today_cn().isoformat()
     stats = {"total": len(rows), "saved": 0, "empty": 0, "failed": 0,
              "skipped": 0, "refetched": 0, "errors": [], "elapsed": 0.0}
     t0 = time.time()

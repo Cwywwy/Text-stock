@@ -18,10 +18,12 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
+
+from stock_plan.data.clock import stamp_cn, today_cn
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ANN_DB = PROJECT_ROOT / "data" / "processed" / "announcements.db"
@@ -115,7 +117,7 @@ def add_watch(code: str, note: str = "") -> str:
     try:
         conn.execute(
             "INSERT OR IGNORE INTO watch(code, added_at, note) VALUES (?, ?, ?)",
-            (c, datetime.now().isoformat(timespec="seconds"), note),
+            (c, stamp_cn("%Y-%m-%dT%H:%M:%S"), note),
         )
     finally:
         _close(conn)
@@ -140,7 +142,7 @@ def fetch_one(code: str, days: int = 7) -> pd.DataFrame:
     """抓单只股票的公告（东财个股公告，实测约 1.0 秒/只）。"""
     import akshare as ak
 
-    end = date.today()
+    end = today_cn()
     begin = end - timedelta(days=max(1, int(days)))
     df = ak.stock_individual_notice_report(
         security=norm_code(code),
@@ -166,7 +168,7 @@ def save(df: pd.DataFrame) -> int:
     """写入并存档，返回**新增行数**（重复公告被主键挡掉，不算新增）。"""
     if df is None or df.empty:
         return 0
-    now = datetime.now().isoformat(timespec="seconds")
+    now = stamp_cn("%Y-%m-%dT%H:%M:%S")
     rows = [
         (str(r["code"]), str(r["ann_date"]), str(r["title"]),
          str(r.get("ann_type", "") or ""), str(r.get("url", "") or ""), now)

@@ -2,6 +2,47 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-28（续 12）：统一按北京时间算「今天」，修云端期望交易日慢一天
+
+用户反馈：本机（Windows，北京时区）页面正确，云端同一时刻「期望最新交易日」却停在 10-27。
+查下来是容器时区问题，不是数据问题：
+
+- **根因**：云端容器跑 UTC。`latest_expected_trade_date()` 用 `datetime.now()` 读容器本地时间，
+  北京时间 16:00–24:00 之间容器还停在当天 15:00–15:59，判定「未过 16:00」→ 期望日退回上一交易日，
+  每天慢 8 小时窗口。页面「体检时间 2026-10-28T15:07:51」正好是北京 23:07，差 8 小时整。
+  同一问题还潜伏在交易历缓存有效期、情绪快照日期目录、公告抓取区间、快照 manifest 时间戳上。
+
+改法：新增 `src/stock_plan/data/clock.py`（`CN_TZ` 固定 UTC+8、`to_cn()`、`now_cn()`、
+`today_cn()`、`stamp_cn()`），data 层与 UI 默认区间全部改走它：`updater`（交易历判期、
+增量/全量区间、股票列表当日标记、更新日志时间戳）、`freshness`（`scanned_at` 带 +08:00）、
+`snapshot`（`created_at` / `restored_at` / 分卷戳、`manifest_age_days` 用 aware 时间比较）、
+`market_snapshot`、`classification`、`announcements`、`delisted`、`fetcher`、`ui/widgets`（市场温度窗口）。
+naive 入参仍视为北京时间，既有调用与测试语义不变。
+
+页面同步把「体检时间」标注为（北京时间）。新增 `tests/test_clock.py`（10 个用例，含
+「UTC 容器 15:07 必须给出当天」「UTC 17:30 跨日」「manifest 年龄不受容器时区影响」）。
+结果：全量 `pytest` 330 → **340 passed**；测试报告见 `tests/reports/2026-10-28-23-32.report-1.md`。
+
+## 2026-10-28（续 11）：修「从云端快照恢复」读旧分支导致云端行情停在 9 月
+
+用户反馈云端「行情最新交易日 2026-09-03」，点恢复快照也没变化。查下来是两个入口各写一套地址：
+
+- **根因一**：`update_center._restore_from_snapshot()` 写死 `raw_base_url()`，读孤儿分支
+  `data-snapshot`；该分支最后更新仍是 2026-09-04（`manifest.created_at 2026-09-04 02:50:51`，
+  5553 只），而发布端 2026-10-15 起已改到 GitHub Releases —— 于是每次"恢复成功"都把云端
+  数据退回 9 月，页面还提示完成。
+- **根因二**：`bootstrap_if_needed()` 只要 bars ≥ 100 就直接返回，云端已有 5553 个旧文件，
+  冷启动再也不会从 Release 追平，唯一入口就是那个错地址按钮。
+
+改法（P0）：`snapshot.py` 新增 `snapshot_restore_bases()`，启动恢复与手动恢复共用同一份
+地址表（Release 优先、旧分支兜底、去重）；恢复成功后 `freshness.refresh_marker()` 重扫并
+在页面显示恢复后的行情最新交易日。
+安全阀（P0.5）：`restore_from_url()` / `restore_with_fallback()` 增加 `max_age_days`，
+手动恢复按 `SNAPSHOT_MAX_AGE_DAYS = 7` 校验 `manifest.created_at`，旧快照直接判失败并继续
+尝试下一个地址 —— 宁可报错也不静默拿旧数据覆盖。启动恢复（本地无数据）不卡年龄，有旧快照
+好过没有。
+结果：全量 `pytest` 324 → **330 passed**；测试报告见 `tests/reports/2026-10-28-23-23.report-1.md`。
+
 ## 2026-10-28（续 10）：分支4 收尾打磨（删冗余 / 补买卖点 / 对比页结论化）
 
 `分支3` 上线后回头通读图表代码，揪出四处「能用但不干净」的地方，在 `分支4` 一次改完；

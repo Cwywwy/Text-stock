@@ -260,6 +260,7 @@ def _regime_data(max_codes: int = 800, lookback_days: int = 900):
     """算等权指数与市场阶段，返回纯 dict / DataFrame 以便被缓存。"""
     from datetime import date, timedelta
 
+    from stock_plan.data.clock import today_cn
     from stock_plan.data.storage import Storage
     from stock_plan.factors.regime import (
         MIN_CONTRIBUTORS,
@@ -269,7 +270,7 @@ def _regime_data(max_codes: int = 800, lookback_days: int = 900):
         suggest_playbook,
     )
 
-    end = date.today()
+    end = today_cn()
     start = end - timedelta(days=lookback_days)
     _, bars_map, _ = Storage().load_market_maps(start=start, end=end, max_codes=max_codes)
     if not bars_map:

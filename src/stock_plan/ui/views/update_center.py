@@ -8,6 +8,9 @@
   子进程隔离保证 UI 稳定，更新进程崩溃也不影响页面）
 - 进度与结果通过 data/logs/update_progress.json 传递，fragment 每 3 秒轮询
 - 展示最近几次自动/手动更新的日志
+
+Revision History:
+    2026-10-28  snapshot restore uses Release-first base list and rejects stale manifests
 """
 
 from __future__ import annotations
@@ -204,7 +207,10 @@ def _data_status() -> None:
     if b1.button("🔍 重新扫描数据日期", key="btn_rescan_freshness", help="重扫全部行情文件，约 8 秒"):
         freshness.refresh_marker()
         st.rerun()
-    b2.caption(f"体检时间：{info.get('bars_scanned_at') or '—'}（每次更新完成后自动刷新）")
+    b2.caption(
+        f"体检时间（北京时间）：{info.get('bars_scanned_at') or '—'}"
+        "（每次更新完成后自动刷新）"
+    )
 
 
 def _render_log_tail() -> None:
@@ -308,22 +314,45 @@ def _extra_sources_panel() -> None:
             st.code(res["tail"] or "（无输出）", language="text")
 
 
-def _restore_from_snapshot() -> None:
-    """手动从 GitHub data-snapshot 分支恢复行情数据（带进度显示）。"""
-    from stock_plan.data.snapshot import BARS_DIR, PROJECT_ROOT, raw_base_url, restore_from_url
+def _snapshot_restore_plan() -> tuple[list[str], int]:
+    """手动恢复使用的地址表与最大快照年龄（与启动恢复同源，便于单测钉住）。"""
+    from stock_plan.data.snapshot import SNAPSHOT_MAX_AGE_DAYS, snapshot_restore_bases
 
-    url = raw_base_url()
+    return snapshot_restore_bases(), SNAPSHOT_MAX_AGE_DAYS
+
+
+def _restore_from_snapshot() -> None:
+    """手动从云端快照恢复行情数据（带进度显示）。
+
+    地址表与启动恢复共用 snapshot_restore_bases()：Release 资产优先、旧分支兜底。
+    2026-10-28：此前这里写死 raw_base_url()，发布改到 Releases 后按钮仍在读冻结的
+    旧分支，点一次就等于把云端数据退回 2026-09-03，页面却提示"恢复完成"。
+    另外超过 SNAPSHOT_MAX_AGE_DAYS 天的旧快照会被判失败并继续尝试下一个地址。
+    """
+    from stock_plan.data.freshness import refresh_marker
+    from stock_plan.data.snapshot import BARS_DIR, PROJECT_ROOT, restore_with_fallback
+
+    bases, max_age_days = _snapshot_restore_plan()
     tmp_dir = PROJECT_ROOT / "data" / "snapshot_tmp"
     with st.status("⬇️ 正在从云端快照恢复行情数据 …", expanded=True) as status:
-        st.write(f"快照地址：{url}")
+        st.write(f"快照地址（按顺序回退）：{' → '.join(bases)}")
+        st.caption(f"超过 {max_age_days} 天的旧快照会被拒绝，不会再静默覆盖本地数据。")
 
         def on_prog(done_bytes: int, total_bytes: int) -> None:
             st.write(f"下载进度 {done_bytes / 1048576:.0f}/{total_bytes / 1048576:.0f} MB")
 
         try:
-            stats = restore_from_url(url, BARS_DIR, tmp_dir, progress=on_prog)
+            stats = restore_with_fallback(
+                bases, BARS_DIR, tmp_dir, progress=on_prog,
+                max_age_days=max_age_days,
+            )
+            marker = refresh_marker()
+            latest = marker.get("latest_date") or "未知"
             status.update(label="✅ 快照恢复完成", state="complete", expanded=False)
-            st.success(f"已恢复 {stats['bars_count']} 只股票的行情数据（快照生成于 {stats['created_at']}）")
+            st.success(
+                f"已恢复 {stats['bars_count']} 只股票的行情数据（快照生成于 {stats['created_at']}），"
+                f"行情最新交易日 {latest}"
+            )
             st.rerun(scope="app")
         except Exception as e:  # noqa: BLE001
             status.update(label="❌ 快照恢复失败", state="error")
@@ -349,7 +378,11 @@ def render() -> None:
     _cloud_badge()
 
     with st.expander("☁️ 从云端快照恢复数据", expanded=False):
-        st.caption("从 GitHub data-snapshot 分支下载最新数据快照并覆盖本地行情数据（本机数据为权威源，云端数据丢失时使用）。")
+        st.caption(
+            "从云端最新快照（GitHub Release 资产，旧的 data-snapshot 分支仅作兜底）"
+            "下载行情数据并覆盖本地（本机数据为权威源，云端数据丢失时使用）；"
+            "超过 7 天的旧快照会被拒绝，避免用过期数据覆盖。"
+        )
         if st.button("⬇️ 立即从快照恢复", key="btn_restore_snapshot"):
             _restore_from_snapshot()
 

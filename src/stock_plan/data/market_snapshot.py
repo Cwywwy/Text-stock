@@ -36,6 +36,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from stock_plan.data.clock import today_cn
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MARKET_DIR = PROJECT_ROOT / "data" / "processed" / "market"
 
@@ -118,7 +120,7 @@ def _money_series(s: pd.Series) -> pd.Series:
 
 def today_str(day: str | date | None = None) -> str:
     if day is None:
-        return date.today().strftime("%Y-%m-%d")
+        return today_cn().strftime("%Y-%m-%d")
     if isinstance(day, date):
         return day.strftime("%Y-%m-%d")
     return str(day)
