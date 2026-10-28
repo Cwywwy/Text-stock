@@ -256,7 +256,7 @@ uv run python scripts/backfill_share_capital.py --skip-fetch --dry-run --json
 ### 策略刷新（`feature/strategy-refresh`，2026-10-29 起）
 
 按 [策略选型调研](docs/策略选型调研-2026-10-29.md) 与
-[实施计划书](.github/plans/2026-10-29-4-new-strategy-refresh-implementation.md) 落地五块改造，
+[实施计划书](.github/plans/done/2026-10-29-4-new-strategy-refresh-implementation.md) 落地五块改造，
 每块都用同策略/同区间/同配置的 A/B 数字判定「成立」或「不成立」。进度：
 
 - ✅ Phase 6 基线固化 + A/B 测量器（`scripts/measure_factor_ab.py`，7 策略 × 3 窗口基线）；
@@ -278,7 +278,14 @@ uv run python scripts/backfill_share_capital.py --skip-fetch --dry-run --json
   总股本、逐日流通股本、财报披露日全部落盘，消费方缺数据一律 `degraded`）——
   **结论：7 策略默认输出逐值不变**，覆盖率见
   [字段报告](tests/reports/2026-10-29-05-53.phase12-fields.md)；
-- 🔄 Phase 13 进行中（集成、7 策略基线与最终对比、文档收尾）。
+- ✅ Phase 13 集成与终验：全量 **547 passed**（改造前 445，+102 无下降）；7 策略在 full 窗口与 Phase 6 基线
+  **逐值相同**（收益 / 年化 / 回撤 / 夏普 / 笔数 / 胜率），证明本轮所有新增能力默认全部关闭、未改变既有行为，见
+  [基线 vs 最终对比](tests/reports/2026-10-29-06-02.phase13-compare.md)；
+  计划书已归档到 `.github/plans/done/`，分支未合并 `main`。
+
+**本轮总评（诚实版）**：A 收敛因子、B 动量方向、C RRG 三块在本数据上都没通过预注册判定线，因此保留为可选能力、默认关闭；
+D 两段式与 E 字段补齐是纯增量能力，已可用。真正的主要矛盾是**日频换手 13–21 倍/年（年成本拖累约 5.8%–7.6%）与熊市段缺择时**，
+建议下一阶段优先用已经存在但没人使用的 `factors/regime.py` + `BacktestConfig.market_timing`。
 
 ## 云端部署（Streamlit Community Cloud）
 
