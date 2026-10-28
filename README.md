@@ -80,6 +80,24 @@ stock plan/
 └── tests/                  # 测试用例
 ```
 
+## 图表规范
+
+所有图表共用一套观感（近黑画布、无背景网格、价格轴靠右、红涨绿跌、小字号紧凑行高），
+目标是「像专业看盘软件」而不是「像默认的 Plotly 示例」。
+
+- **样式单一真源**：`src/stock_plan/ui/chart_style.py` 只有 token 与样式函数（颜色、字号、
+  页边距、轴格式、hover、`uirevision`），不 import streamlit，可单独做单元测试。
+- **通用图只从工厂出**：`src/stock_plan/ui/widgets.py` 提供 `multi_line_fig()`、
+  `equity_curve_fig()`、`benchmark_equity_fig()`、`price_level_fig()`、`score_waterfall_fig()`；
+  页面里不要直接 `st.plotly_chart()`，统一走 `render_chart(fig, name=..., caption=...)`，
+  导出文件名与缓存键都跟着图名走。
+- **页面专用图可以自己组合**（如回测页的主图 / 月度柱 / 热力图），但颜色、字号、坐标轴
+  必须全部取自 `chart_style`，视图里不许出现硬编码颜色。
+  这三条由 `tests/test_chart_views.py` 守护，跑测试就能拦住回退。
+- **改观感先看样张**：`scripts/preview_charts.py`（回测页）、`scripts/preview_report_section.py`
+  （信号解释区块）、`scripts/preview_compare_portfolio.py`（策略对比 / 持仓诊断）用合成数据
+  生成静态 HTML，不必启动 Streamlit 或等待全 A 股数据（40 秒以上）就能出图对比。
+
 ## 数据自动更新
 
 数据需在**股票交易日**收盘后刷新。调度由 `scripts/daily_job.ps1` 承担（幂等，重复执行不会重复写入），

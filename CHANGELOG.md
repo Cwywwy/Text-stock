@@ -33,7 +33,10 @@
   加上的价位标签整批冲掉；改成先保留图上已有注释。
 - **新增 `tests/test_chart_views.py`**（9 项守护）：视图层不许硬编码颜色、不许再用
   `use_container_width`、`st.plotly_chart` 只能出现在 `widgets.py`，并断言基准换算与五条价位线齐全。
-- 结果：全量 `pytest` **309 passed**；**Phase 3（全站回归 + 报告 + 归档）进行中。**
+- **Phase 3 回归与收尾**：README 新增「图表规范」一节（样式单一真源、通用图只从工厂出、
+  页面专用图也不许硬编码颜色、改观感先看样张）；全量 `pytest` **309 passed**；
+  测试报告归档到 `tests/reports/2026-10-28-18-03.report-1.md`；计划书移入 `.github/plans/done/`。
+  至此图表升级 Phase 0–3 全部完成。
 
 ### B. 信号可解释 + LLM 并发加固（`.github/plans/2026-10-28-2-signal-explain-report.md`）
 

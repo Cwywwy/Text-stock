@@ -2,7 +2,7 @@
 
 - 日期：2026-10-28
 - 分支：`分支3`（基线 `agents/merge-envcheck-into-branch1`，main + 19 提交）
-- 状态：**执行中** —— Phase 0 ✅（`c2f1f0c`）、Phase 1 ✅（`d421d5f`）、Phase 2 ✅（对比页 / 持仓页 / 可视化构建器统一规范，守护测试 `tests/test_chart_views.py`）；Phase 3（全站回归 + 报告 + 归档）进行中
+- 状态：**已完成**（2026-10-28 归档）—— Phase 0 ✅ `c2f1f0c`、Phase 1 ✅ `d421d5f`、Phase 2 ✅ `0313fc4`、Phase 3 ✅ 回归 **309 passed**（报告 `tests/reports/2026-10-28-18-03.report-1.md`）
 - 环境：Python **3.13.15**（`.venv`）；plotly **7.0.0**、streamlit **1.63.0**、pandas **3.0.5**、numpy 2.5.2；pytest 9.1.1
 - 硬约束：**不新增依赖**（INSTRUCTION.md:35、README.md:176/214）
 
