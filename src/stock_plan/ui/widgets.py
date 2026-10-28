@@ -426,6 +426,9 @@ def score_waterfall_fig(report) -> go.Figure | None:
             x=labels,
             y=deltas,
             base=[gate] * len(deltas),
+            # 只有两三只落选股，柱子按容器宽度铺开就变成"大色块"、看着很肥；
+            # width 是分类轴单位（一格 = 1），固定成 0.36 格让柱子窄下来、留白变多。
+            width=0.36,
             marker=dict(color=colours, line=dict(width=0)),
             customdata=[[name, score, delta] for name, score, delta in zip(names, scores, deltas)],
             hovertemplate=(
