@@ -266,6 +266,7 @@ stock plan/
 | 2026-10-28 | 「从 0 重建」用 `fetch_uncached(codes)` 显式传全市场列表，**不用** `rebuild_history()` | `rebuild_history()` 只遍历已缓存的 parquet，目录一空就什么都不做，会让人误以为"重建完成"；显式传列表才能真正从零开始 |
 | 2026-10-28 | 重建后必须把备份库的**历史行并回**（日期并集、同日以新为准） | 新列表取新浪 spot，停牌股不在列表里（4 只只存在于备份）；5 年窗口起点比旧库首日晚（35 只少 1~13 行）。不并回，回测会悄悄少一段历史 |
 | 2026-10-28 | 重建前把 `bars` 整体**改名备份**而不是删除，且先停应用 | 改名是秒级、可一键回滚；删除无法挽回。停应用是为了让页面不读"半个库"，否则会显示 0 只股票、被误判为坏库 |
+| 2026-10-28 | `app.py` 启动时自检「app 所在副本 == import 到的 stock_plan 副本」，不一致就中文说明并停止 | 本机两个副本各自 venv 的 `stock_plan.pth` 只指自己 `src`，用错 venv 会报"app 在案例区、报错在 Vscode"的 ImportError，极易误判为代码坏了。自检把原因和修法直接写在页面上，且裸跑时用 `SystemExit(2)` 兜底避免继续抛那个误导性异常 |
 
 ## 8. 常用命令
 
@@ -329,3 +330,37 @@ python -m stock_plan.data.freshness --refresh
 ```
 
 ⚠️ 第 3 步不能省：新浪全市场列表不含停牌股，且 5 年窗口起点晚于旧库首日。
+
+## 9. 排障（本机特有陷阱）
+
+### 9.1 用错 venv 会报「半个路径」的 ImportError
+
+本机有两个项目副本，各自 `.venv\Lib\site-packages\stock_plan.pth` 只指向自己的 `src`：
+
+| 副本 | venv | `.pth` 指向 |
+|---|---|---|
+| 权威副本 `D:\DeepSeekHarness\案例区\stock plan` | `.venv\Scripts\python.exe` | 本副本 `src` |
+| 只读副本 `D:\Vscode\stock plan` | 自己的 `.venv` | Vscode 的 `src` |
+
+若用 A 副本的 Python 跑 B 副本的 `app.py`，则 app 文件来自 B、`stock_plan` 包来自 A。
+A 若是旧版本，就会抛这种**看起来自相矛盾**的错：
+
+```
+ImportError: cannot import name 'market' from 'stock_plan.ui.views'
+  (D:\Vscode\stock plan\src\stock_plan\ui\views\__init__.py)
+  File "D:\DeepSeekHarness\案例区\stock plan\src\stock_plan\ui\app.py", line 56
+```
+
+`app.py` 已加**启动自检**：两个 `src` 不一致时直接在页面与终端给出中文说明并停止，
+不再抛出那个误导性 ImportError。自查一行：
+
+```powershell
+.\.venv\Scripts\python.exe -c "import stock_plan; print(stock_plan.__file__)"
+# 必须是本副本 src 下的路径
+```
+
+### 9.2 不要把 Python 报错粘回 PowerShell 提示符
+
+把 traceback 整段粘进 `PS>` 会看到 `“<” 运算符是为将来使用而保留的`、
+`此语言版本中不支持 "from" 关键字`、`ParserError: RedirectionNotSupported` ——
+这是 PowerShell 在把报错文本当命令解析，与 Python 无关，纯属二次伤害。

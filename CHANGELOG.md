@@ -2,6 +2,35 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-28（续 7）：启动环境自检——用错 venv 不再报「半个路径」的 ImportError
+
+用户贴来一段报错：`ImportError: cannot import name 'market' from 'stock_plan.ui.views'`，
+而下面一行却指向 `D:\Vscode\stock plan\src\stock_plan\ui\views\__init__.py`，同时终端里还叠着
+`“<” 运算符是为将来使用而保留的` / `ParserError: RedirectionNotSupported`。
+
+### 根因（两条，互不相关）
+
+1. **用错虚拟环境**：本机两个副本各有一个 `.venv`，其 `stock_plan.pth` 只指向自己的 `src`。
+   用户用 `D:\Vscode\stock plan` 的 Python 跑了 `案例区` 的 `app.py` → app 文件来自案例区、
+   `stock_plan` 包来自 Vscode（旧版本，没有 `views/market.py`）→ ImportError。
+   实测 Vscode 副本 `views/` 下只有 13 个模块，确实没有 `market.py`。
+2. **把 traceback 粘回 PowerShell 提示符**：PowerShell 把 `+ …`、`from …` 当命令解析，
+   于是出现"运算符""关键字"这类与 Python 无关的 ParserError。
+
+### 修法：`app.py` 启动自检
+
+`_checkout_mismatch()` 比较 `Path(__file__).parents[2]`（app 所在副本的 `src`）与
+`stock_plan.__file__` 的 `src`，不一致时：终端打印 + 页面 `st.error` 中文说明
+（两个真实路径、为什么错、正确启动命令、一行自查命令），然后 `st.stop()`；
+再用 `SystemExit(2)` 兜底裸跑场景（否则 `st.stop()` 不中断，仍会抛那个误导性 ImportError）。
+
+### 验证
+
+- 负向（`D:\Vscode\stock plan\.venv\python` 跑本副本 app.py）：输出只有中文说明，**无 ImportError**。
+- 正向（本副本 venv）：无任何告警，正常进入启动流程。
+- `compileall` 0 错误、`pytest` **210 passed**。
+- 文档：`INSTRUCTION.md` 新增 §9 排障（9.1 用错 venv / 9.2 别把报错粘回提示符）+ 1 条决策记录。
+
 ## 2026-10-28（续 6）：行情数据全量重建（从 0 清洗）
 
 用户要求「**以防万一，重新做一次数据清洗，从 0 开始重新下载全部股票数据**，以保证目前数据
