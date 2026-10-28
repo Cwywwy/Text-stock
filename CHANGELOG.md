@@ -2,6 +2,29 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 2）：国内云服务器部署（方案 C）
+
+Streamlit Cloud 在国内打开要跨境，首屏 20 秒以上。新增「在自己国内的云服务器上跑一份」的完整物料；
+服务器只做展示，数据仍由本机发布、服务器定时拉。
+
+- 新增 `deploy/`（7 个文件）：`bootstrap.sh`（幂等引导：系统依赖 → 北京时间 → 建 `stockplan` 用户 →
+  uv 装 Python 3.13 → venv 装 `requirements.txt` → 建数据目录 → 装 systemd → 首次拉快照）、
+  `pull_snapshot.py`（6 小时冷却 + 文件锁 + 重试 3 次 + `--dry-run`/`--force` + 可选重启）、
+  `stock-plan.service`（`0.0.0.0:8501`、`Restart=always`、`PYTHONPATH=src`）、
+  `stock-plan-snapshot.service`/`.timer`（每交易日 17:10 拉快照）、`secrets.toml.example`、
+  `README.md`（选机型到排障、续费迁移的 10 节手册）
+- 新增 `src/stock_plan/ui/startup_flags.py`：`is_service_mode()` / `remote_strategy_sync_enabled()` /
+  `local_publish_enabled()` / `describe()`，只认 `1/true/yes/on`。服务器形态下默认跳过共享策略同步
+  （`raw.githubusercontent.com` 国内常超时）并禁止本机自动发布；不设变量时本机行为完全不变
+- `src/stock_plan/ui/app.py`：两处启动副作用改由上面两个开关判定（原 `if not is_cloud()` 判断移除）
+- 新增 `.gitattributes`：`*.sh` / `*.service` / `*.timer` 强制 LF，避免 Windows 检出带 CRLF 到 Linux 上
+  出现 `bad interpreter`
+- 新增 81 项测试（`tests/test_startup_flags.py` 34 + `tests/test_deploy_assets.py` 47）：开关矩阵、
+  unit 关键字段、脚本参数、无 CRLF、`--dry-run`、冷却/强制/重试/锁超时/重启告警、`app.py` 集成回归。
+  全量 `pytest` **445 passed**，报告 `tests/reports/2026-10-29-00-26.report-1.md`
+- `README.md` 新增「国内云服务器部署（方案 C）」章节，原 Streamlit Cloud 章节加交叉引用
+- 未做（按 2026-10-29 拍板）：本机 scp 推送脚本（改由服务器自己拉 GitHub Releases）、Docker 方案、访问鉴权
+
 ## 2026-10-29（续 1）：修「快照同步失败」+ 快照一次带上全部数据
 
 用户反馈三个问题：① 点「同步到最新快照」报「恢复失败」；② 长时间不用的访问者是不是也得先点增量更新；

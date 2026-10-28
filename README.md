@@ -240,6 +240,7 @@ uv run python -m stock_plan.data.delisted --all                   # 两者都补
 - **时区**：云端容器是 UTC，所有「今天/期望交易日」判断统一走 `stock_plan.data.clock`
   的北京时间，不依赖容器时区（否则北京时间 16:00–24:00 期望日会晚一天）
 - Windows 计划任务自动更新仅在本地部署生效，云端请在「🔄 数据更新」页手动更新（云端轻量模式自动降低并发）
+- 国内访问慢（首屏 20 秒以上）时，可改用下方「国内云服务器部署（方案 C）」，用同一份代码在自己的国内机器上跑
 - LLM API Key 在云端走 **Secrets**：App 菜单 → Settings → Secrets，填入：
 
 ```toml
@@ -250,6 +251,48 @@ LLM_API_KEY = "你的key"
 # 可选：显式启用云端轻量模式（推荐，比自动检测更可靠）
 STOCK_PLAN_CLOUD = "1"
 ```
+
+## 国内云服务器部署（方案 C）
+
+Streamlit Community Cloud 的服务器在境外，国内首屏常要 20 秒以上。想快就在国内云服务器上自己跑一份，
+代价是要自己维护机器。**设计前提**：服务器只做「托管 + 展示」，数据仍由本机发布快照、服务器定时拉取。
+
+与云端实例的差别只有两点：
+
+- 服务器是**常驻访客实例**（`STOCK_PLAN_SERVICE=1` + `STOCK_PLAN_CLOUD=1`），不跑 `update_daily` /
+  分类 / 情绪 / 公告那一整套生产流程，也就不存在两套数据各自漂移
+- 启动时不再同步 `raw.githubusercontent.com` 上的共享策略（国内常超时，每次白等最多 30 秒），
+  也不再拉起本机发布脚本（这两个副作用由 `src/stock_plan/ui/startup_flags.py` 关掉）
+
+三步跑起来（完整步骤、排障表、续费迁移见 [`deploy/README.md`](deploy/README.md)）：
+
+1. 领机器：腾讯云轻量 **2 核 4G / 5Mbps / 60GB / Ubuntu 24.04**（新用户免费 1 个月）；控制台安全组放行 **TCP 8501**
+2. 上传代码：服务器直连 GitHub `git clone`，或本机 `git bundle` 后 `scp`（国内回源 GitHub 慢时用后者）
+3. 装依赖并起服务：
+
+```bash
+sudo bash deploy/bootstrap.sh        # 系统依赖 → uv → Python 3.13 venv → systemd → 首次拉快照
+cp deploy/secrets.toml.example .streamlit/secrets.toml   # 填 LLM_API_KEY，然后 chmod 600
+sudo systemctl enable --now stock-plan
+```
+
+之后浏览器打开 `http://<公网IP>:8501` 即可。
+
+数据怎么更新：本机每交易日 16:30 由 `publish_snapshot.py` 发到 GitHub Releases 的 `data-snapshot` 标签，
+服务器的 `stock-plan-snapshot.timer` 每天 **17:10** 拉一次，成功后重启服务让页面用上新数据（约 10–30 秒空窗）。
+
+常被问到的问题：
+
+- **不需要备案**：只用「公网 IP + 非 80 端口」，腾讯云文档明确「不使用域名解析指向服务器时不需要备案」；
+  一旦绑了未备案域名，任何端口都会被监测阻断
+- **GitHub 拉不动**：`deploy/README.md` 给了三种法子（设 `HTTPS_PROXY`、走镜像、从本机 `scp data/processed`），
+  拉取失败只影响数据新旧，页面照常可用
+- **没有鉴权**：任何人拿到 `IP:8501` 都能用，也会消耗你的 LLM 额度；要收回时在手册里加一层 Nginx/Caddy
+  Basic Auth（本轮未提供）
+- **不要在服务器上 `pip install .`**：`PROJECT_ROOT` 是按 `__file__` 往上三层算出来的，装进 site-packages
+  会让 `data/` 指到 venv 里；依赖只装 `requirements.txt`，代码用 `PYTHONPATH=src` 引入
+- **环境变量与阶段拆分的完整口径**：见
+  [.github/plans/2026-10-29-1-new-deploy-on-china-cloud-server.md](.github/plans/2026-10-29-1-new-deploy-on-china-cloud-server.md)
 
 ## 云端数据快照（Phase 16）
 
