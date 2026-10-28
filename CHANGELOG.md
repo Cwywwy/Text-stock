@@ -15,6 +15,7 @@
   `plan.md` §16 新增策略刷新进度行。
 - 计划书 `.github/plans/done/2026-10-29-4-new-strategy-refresh-implementation.md` 标记完成并归档到 `.github/plans/done/`；分支 `feature/strategy-refresh`
   **未合并 `main`**，等用户指示。
+- 新增 `docs/策略刷新工作报告-2026-10-29.md`：面向非开发者的全过程复盘（大白话 → 每个决策的备选与利弊 → 量化代码思路逐段解释），供日后复盘与交接使用。
 - 本轮结论（诚实版）：A 收敛因子、B 动量方向修正、C RRG 行业轮动在本数据上均未通过预注册判定线，保留为可选能力、默认关闭；
   D 两段式与 E 字段补齐为纯增量能力，已可用。真正的主要矛盾是**日频换手 13–21 倍/年（年成本拖累约 5.8%–7.6%）与熊市段缺择时**，
   建议下一阶段优先用现成的 `factors/regime.py` + `BacktestConfig.market_timing`。
