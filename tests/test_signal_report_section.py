@@ -222,6 +222,9 @@ render_report_section(report, "中线")
         item.value for item in at.caption
     )
     assert len(at.caption) >= 2
+    # 大模型解读默认不调用：只有按钮 + 一句说明
+    assert [button.label for button in at.button] == ["🤖 让大模型写一段解读"]
+    assert any("不点按钮不会调用大模型" in item.value for item in at.caption)
 
 
 def test_render_report_section_empty_report(tmp_path):

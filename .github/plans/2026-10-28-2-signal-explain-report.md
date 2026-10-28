@@ -2,7 +2,7 @@
 
 - 日期：2026-10-28
 - 分支：`分支3`（图表升级 Phase 0/1 已提交：`c2f1f0c`、`d421d5f`）
-- 状态：**执行中** —— Phase 0 ✅（`6183fae`）、Phase 1 ✅（`222d4fb`）、Phase 2 ✅（本次提交）；下一步 Phase 3（LLM 深度解读）
+- 状态：**执行中** —— Phase 0 ✅（`6183fae`）、Phase 1 ✅（`222d4fb`）、Phase 2 ✅（`6734816`、`34ed5a8`）、Phase 3 ✅（本次提交）；下一步 Phase 4（回归、文档与归档）
 - 环境：Python **3.13.15**（`.venv`）；streamlit **1.63.0**、plotly **7.0.0**、pandas **3.0.5**、numpy 2.5.2；pytest 9.1.1
 - 硬约束：**不新增依赖**（INSTRUCTION.md:35、README.md:176/214）；LLM 走现有 OpenAI 兼容客户端（`src/stock_plan/llm/client.py`）
 
@@ -92,17 +92,16 @@ class SignalReport:
     entry_gap: dict                     # 入选末位 vs 落选第一名的分差与构成
 ```
 
-### 2.2 LLM 提示与输出（`src/stock_plan/llm/analyzer.py` 新增 `explain_signal_report`）
+### 2.2 LLM 提示与输出（落地在 `src/stock_plan/llm/signal_narrative.py`）
 
-- 输入：`SignalReport` 压平成 ≤ 1200 字的紧凑文本（只含代码/名称/排名/分数/扣分项/分差），经 `llm/budget.py` 预算裁剪
+- 输入：`SignalReport.to_facts_text()` 压平的紧凑文本（代码/名称/名次/分数/扣分项/分差/淘汰计数），经 `llm/budget.py` 按 1400 token 预算裁剪
 - 输出：严格 JSON
   ```json
-  {"summary": "...", "picked": [{"code": "...", "why": "..."}],
-   "runners_up": [{"code": "...", "why_behind": "...", "key_gap": "..."}],
-   "risk_note": "..."}
+  {"summary": "...", "picks": [{"code": "...", "note": "..."}],
+   "runners": [{"code": "...", "note": "..."}], "risks": ["..."]}
   ```
-- 校验（任一不过 → 模板兜底，并在页面显示原因）：JSON 可解析 / 字段齐全 / `code` ⊆ 事实集合 / 叙述字段不含 `[0-9]` / 单字段 ≤ 120 字
-- 参数：`temperature=0.2`、`max_tokens` 上限 800、`timeout=30s`
+- 校验（任一不过 → 模板兜底，并在页面显示原因）：JSON 可解析 / 字段齐全 / `code` ⊆ 事实集合且归属正确（入选者不许出现在 `runners`）/ 数字必须能在事实清单里原样找到（编造数字会被拦截）/ `summary` ≤ 160 字、其余字段 ≤ 60 字
+- 参数：`temperature=0.3`、预算 1400 prompt token、`timeout=30s`；真实一次耗时约 21s，结果进 `data/cache/llm/` 缓存（同输入 7 天内命中）
 
 ---
 
@@ -162,20 +161,27 @@ class SignalReport:
   - 测试：`tests/test_signal_report.py` 新增 3 项（合并调用与信号页逐字段相等、只加载一次市场数据、行业筛选保留提示），`tests/test_signal_report_section.py` 新增 9 项（含 AppTest 渲染冒烟）；全量 **282 passed**
   - 踩坑记录：以 `#` 开头的柱子标签会被 plotly.js 当数字（`"#6 300908"` → `6300908`），x 轴退化成 6M/7M 数值轴 → 标签改为「第 6 名 300908」并显式 `update_xaxes(type="category")`
 
-### Phase 3 — LLM 深度解读
+### Phase 3 — LLM 深度解读 ✅ 已完成
 
 - 内容：`explain_signal_report` + 数字闸门 + 模板兜底 + 按钮（缓存命中显示「缓存于 x 分钟前」）
 - 完成标准：
-  - 5 种坏输出（非 JSON / 缺字段 / 多余 code / 含阿拉伯数字 / 空串）全部自动兜底，页面标注原因
+  - 5 种坏输出（非 JSON / 缺字段 / 多余 code / 编造数字 / 空串）全部自动兜底，页面标注原因
   - mock 模式（无 key）可完整跑通，展示模板叙事
   - 真实调用路径用假 client 验证（不烧额度）
 - 预期产出：1 个 commit（`(phase 3) llm narrative for signal comparison`）
+- 实际落地：
+  - `src/stock_plan/llm/signal_narrative.py`（新）：`build_prompt()` 走 `to_facts_text()` + `budget.fit_sections()`（1400 token 预算）；`validate_narrative()` 用白名单校验 code 归属、字数上限；`render_narrative()` 排版；`explain_signal_report()` 返回 `NarrativeResult(text, source, error, age, usage)`，`source` ∈ `llm` / `template`
+  - **数字闸门改了两次**：初版「正文不许出现任何阿拉伯数字」，真实调用（glm-4-flash）直接被拒——它写了「入选 5 只、紧随 3 只」这种常识性数字。改为「只能引用事实清单里出现过的数字」（`_facts_numbers()` + `_quoted()`，允许 `13` 引用 `13.00`），编造的数字仍会拦截并说明原因；实测第二次真实调用 `source=llm`、usage 1311/269/1580、约 21s
+  - 模型把 `risks` 写成 `{"code","note"}` 对象也能接受（取 `note` 文本），避免形态偏差导致整份解读白跑
+  - `ui/signal_report_section.py` 新增 `render_narrative_block(report, period_label, key)`：默认折叠、按钮触发、缓存命中提示、失败原因 `st.caption`
+  - 测试：`tests/test_signal_narrative.py` 18 项（prompt 结构 / 5 类坏输出 / 引用数字放行 / 编造数字拦截 / 缓存命中 / 时间戳）；`tests/test_signal_report_section.py` 补按钮断言；全量 **300 passed**
+  - 样张：`scripts/preview_report_section.py` 追加「大模型解读」区块（模板兜底样式），截图 `shot-report-section4.png`
 
 ### Phase 4 — 回归、文档与归档
 
 - 内容：全站 `pytest`、真实数据截图、`CHANGELOG.md`、测试报告、计划书归档、README 补一节
 - 完成标准：
-  - 全量测试绿（Phase 2 后基线 **282 passed**）
+  - 全量测试绿（Phase 3 后基线 **300 passed**）
   - 测试报告 `tests/reports/<YYYY-MM-DD-HH-mm>.report-*.md`
   - 计划书移到 `.github/plans/done/`；`README.md` 说明 `data/cache/llm/` 与 `.env` 三个变量
 - 预期产出：1 个 commit + 报告

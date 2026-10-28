@@ -13,6 +13,7 @@
 
 Revision History:
     2026-10-28  (phase 2) new preview generator for the signal explainability section
+    2026-10-28  (phase 3) add llm narrative block using the template fallback
 """
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
+from stock_plan.llm.signal_narrative import template_narrative
 from stock_plan.signal.report import (
     CandidateFacts,
     EntryGap,
@@ -130,6 +132,30 @@ def synthetic_report() -> SignalReport:
     )
 
 
+def _narrative_html(text: str) -> str:
+    """把解读文本（段落 + 「- 」列表）转成静态 HTML，模拟页面里的 markdown 渲染效果。"""
+    blocks: list[str] = []
+    bullets: list[str] = []
+
+    def flush() -> None:
+        if bullets:
+            blocks.append("<ul>" + "".join(f"<li>{item}</li>" for item in bullets) + "</ul>")
+            bullets.clear()
+
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            flush()
+            continue
+        if line.startswith(("- ", "* ")):
+            bullets.append(line[2:].strip())
+            continue
+        flush()
+        blocks.append(f"<p>{line}</p>")
+    flush()
+    return "".join(blocks)
+
+
 def _table_html(frame) -> str:
     head = "".join(f"<th>{column}</th>" for column in frame.columns)
     body = []
@@ -175,6 +201,7 @@ def build_html(report: SignalReport) -> str:
     )
     gap_note = report.entry_gap.note() if report.entry_gap else "—"
     gate = report.picked[-1]
+    narrative = _narrative_html(template_narrative(report))
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <title>为什么是这几只 — 样张</title>
@@ -195,7 +222,10 @@ def build_html(report: SignalReport) -> str:
   td.picked {{ color: {cs.UP}; font-weight: 600; }}
   td.runner {{ color: {cs.AXIS_TEXT}; }}
   td.wrap {{ white-space: normal; max-width: 320px; }}
-  .chart {{ margin: 6px -8px 0; }}
+  .chart {{ margin: 6px 0 0; }}
+  .narrative p {{ margin: 4px 0; font-size: 13px; }}
+  .tag {{ color: {cs.AXIS_TEXT}; font-size: 11px; font-weight: 400; margin-left: 6px;
+         border: 1px solid {cs.GRID}; border-radius: 999px; padding: 1px 8px; }}
   ul {{ margin: 6px 0 0 18px; padding: 0; color: {cs.TEXT}; font-size: 12.5px; }}
   li {{ margin: 3px 0; }}
 </style></head>
@@ -222,6 +252,11 @@ def build_html(report: SignalReport) -> str:
   {_table_html(rejected_frame(report.rejected_samples))}
   <p class="caption">各类淘汰数量：{counts}。</p>
   <p class="caption">· 硬过滤使用的 ST 判据是「今天」的 ST 状态，不是历史时点。</p>
+
+  <p class="block-title">🤖 大模型解读<span class="tag">模板兜底样式</span></p>
+  <div class="narrative">{narrative}</div>
+  <p class="caption">上面是模型不可用或输出校验不过时的兜底文本；模型可用时会换成模型组织
+    的语言，但数字同样只能引用上面的表格与事实清单。</p>
 </body></html>
 """
 

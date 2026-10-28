@@ -8,6 +8,7 @@ apply_time_axis 使用**真正的日期轴**，使刻度密度随缩放连续重
 Revision History:
     2026-10-28  (phase 0) add chart_style tokens, chart_config/render_chart
     2026-10-28  (phase 2) add score_waterfall_fig for signal explainability
+    2026-10-28  (phase 3) waterfall: drop axis title, pad x range so edge bars fit
 """
 from __future__ import annotations
 
@@ -465,10 +466,12 @@ def score_waterfall_fig(report) -> go.Figure | None:
     cs.apply_base_layout(
         fig,
         height=cs.H_SECONDARY,
-        y_title="综合分",
+        y_title=None,
         right_axis=False,
         legend=None,
-        margin=dict(l=52, r=14, t=24, b=26),
+        margin=dict(l=44, r=14, t=24, b=26),
     )
+    # 两边各留半格，避免首尾柱子贴着画布边缘被裁掉
+    fig.update_xaxes(range=[-0.55, len(labels) - 0.45])
     fig.update_yaxes(range=[min(scores + [gate]) - pad, max(scores + [gate]) + pad])
     return fig

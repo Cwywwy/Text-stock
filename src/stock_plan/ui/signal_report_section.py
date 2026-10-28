@@ -9,6 +9,7 @@
 
 Revision History:
     2026-10-28  (phase 2) new module: render signal explainability section
+    2026-10-28  (phase 3) add optional llm narrative block with cached result
 """
 from __future__ import annotations
 
@@ -200,6 +201,53 @@ def render_report_section(report: SignalReport | None, period_label: str = "") -
 
     for warning in report.warnings:
         st.caption(f"· {warning}")
+
+    render_narrative_block(report, period_label)
+
+
+def _narrative_key(report: SignalReport, period_label: str) -> str:
+    """同一天、同一策略、同一周期 → 同一个会话键（换周期/换策略各自独立）。"""
+    universe = report.universe
+    return (
+        f"signal-narrative::{period_label}::{universe.strategy_fingerprint}"
+        f"::{universe.data_until}::{len(report.picked)}"
+    )
+
+
+def render_narrative_block(report: SignalReport | None, period_label: str = "") -> None:
+    """大模型解读：默认不调用，点按钮才发请求，结果存 session_state 并落盘缓存。
+
+    为什么不自动跑：一次调用要几秒、要花钱；用户先看事实层，觉得有必要再点。
+    兜底（no key / 超时 / 编造代码 / 含数字）都在 `llm/signal_narrative.py` 里判定，
+    这里只负责把 `source` 与 `error` 如实显示出来，不美化、不静默。
+    """
+    if report is None or report.is_empty:
+        return
+
+    from stock_plan.llm.signal_narrative import explain_signal_report
+
+    st.markdown("**大模型解读（可选）**")
+    key = _narrative_key(report, period_label)
+    if st.button(
+        "🤖 让大模型写一段解读",
+        key=f"btn::{key}",
+        help="数字全部由代码计算，模型只负责解释性文字；同一份数据只会真正调用一次。",
+    ):
+        with st.spinner("正在调用大模型…"):
+            st.session_state[key] = explain_signal_report(report)
+
+    result = st.session_state.get(key)
+    if result is None:
+        st.caption("不点按钮不会调用大模型；生成后会落盘缓存，同一份数据重复点击不再消耗额度。")
+        return
+
+    st.markdown(result.text)
+    if result.source == "cache":
+        st.caption(f"缓存于{result.age}，本次没有重复调用模型。")
+    elif result.source == "llm":
+        st.caption("大模型生成：所有数字来自代码计算，模型只负责解释文字。")
+    else:
+        st.caption(f"模板兜底：{result.error}")
 
 
 def _reason_label(reason: str) -> str:

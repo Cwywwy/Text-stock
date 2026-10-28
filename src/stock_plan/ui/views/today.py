@@ -10,6 +10,7 @@
 Revision History:
     2026-09-04  show version-matched published full-market public signals
     2026-10-28  (phase 2) one scoring pass also yields the explainability report
+    2026-10-28  (phase 3) optional llm narrative inside the explainability section
 """
 from __future__ import annotations
 
