@@ -2,6 +2,9 @@
 
 输入：资金曲线（equity_curve）与交易明细（trades）。
 输出：绩效指标 dict，供 UI 展示与策略对比。
+
+Revision History:
+    2026-10-29  add annual metrics and turnover helpers for factor A/B measurement
 """
 from __future__ import annotations
 
@@ -75,6 +78,128 @@ def calc_metrics(equity: pd.Series, trades: pd.DataFrame) -> dict:
         "trade_count": trade_count,
         "avg_hold_days": round(avg_hold_days, 1),
         "avg_pnl_pct": round(avg_pnl_pct, 2),
+    }
+
+
+def calc_annual_metrics(equity: pd.Series, trades: pd.DataFrame) -> dict[str, dict]:
+    """按自然年度拆分绩效指标（分年度表）。
+
+    参数：
+        equity: 资金曲线（日期索引，值为总资产）。
+        trades: 交易明细（含 exit_date/pnl/pnl_pct 列）。
+
+    返回：
+        {年份字符串: 该年度指标 dict}，年度指标复用 calc_metrics：
+        total_return / annual_return / max_drawdown / sharpe / win_rate /
+        profit_loss / trade_count / avg_hold_days / avg_pnl_pct。
+        首年与末年可能是不完整年度（取决于资金曲线起止），报告中需注明。
+
+    说明：
+        - 年度收益按「该年资金曲线首末值」计算，不是把日收益简单相加；
+        - 交易归属按 **exit_date** 所在年（今年平的仓才算今年的交易），
+          跨年持仓在平仓年一次性计入，避免同笔交易重复计数。
+    """
+    if equity is None or equity.empty:
+        return {}
+
+    eq = equity.copy()
+    eq.index = pd.to_datetime(eq.index)
+    tr = trades.copy() if trades is not None else pd.DataFrame()
+    if not tr.empty and "exit_date" in tr.columns:
+        tr["exit_date"] = pd.to_datetime(tr["exit_date"])
+
+    out: dict[str, dict] = {}
+    for year in sorted(set(eq.index.year)):
+        eq_y = eq[eq.index.year == year]
+        if tr.empty:
+            tr_y = tr
+        elif "exit_date" in tr.columns:
+            tr_y = tr[tr["exit_date"].dt.year == year]
+        else:
+            tr_y = tr.iloc[0:0]
+        m = calc_metrics(eq_y, tr_y)
+        if m:
+            out[str(year)] = m
+    return out
+
+
+def calc_turnover(equity: pd.Series, trades: pd.DataFrame) -> dict:
+    """计算换手率指标（单边 / 双边 / 分年度）。
+
+    定义（预注册口径，所有 A/B 报告统一使用，避免事后换算法）：
+        - 单边换手 = 买入成交额 ÷ 期间平均总资产；
+        - 双边换手 = (买入成交额 + 卖出成交额) ÷ 期间平均总资产；
+        - 年度换手 = 当年买入(卖出)成交额 ÷ 当年平均总资产。
+
+    成交额按 `entry_price × shares`（买入）与 `exit_price × shares`（卖出）估算，
+    entry/exit 价格已含滑点，未含佣金印花税（费率 <0.1%，对换手率量级无影响）。
+
+    参数：
+        equity: 资金曲线（日期索引）。
+        trades: 交易明细（含 entry_date/exit_date/entry_price/exit_price/shares）。
+
+    返回：
+        dict，含 single_side / double_side / buy_amount / sell_amount /
+        avg_equity / buy_trades / sell_trades / annual（{年份: 年度换手 dict}）。
+        换手率为**倍数**（如 3.5 表示一年买卖了 3.5 倍平均资产）。
+    """
+    empty = {
+        "single_side": 0.0,
+        "double_side": 0.0,
+        "buy_amount": 0.0,
+        "sell_amount": 0.0,
+        "avg_equity": 0.0,
+        "buy_trades": 0,
+        "sell_trades": 0,
+        "annual": {},
+    }
+    if equity is None or equity.empty:
+        return empty
+    if trades is None or trades.empty:
+        eq0 = equity.copy()
+        eq0.index = pd.to_datetime(eq0.index)
+        return {**empty, "avg_equity": round(float(eq0.mean()), 2)}
+
+    eq = equity.copy()
+    eq.index = pd.to_datetime(eq.index)
+    tr = trades.copy()
+    tr["entry_date"] = pd.to_datetime(tr["entry_date"])
+    tr["exit_date"] = pd.to_datetime(tr["exit_date"])
+    tr["buy_amount"] = tr["entry_price"].astype(float) * tr["shares"].astype(float)
+    tr["sell_amount"] = tr["exit_price"].astype(float) * tr["shares"].astype(float)
+
+    avg_equity = float(eq.mean())
+    buy_amount = float(tr["buy_amount"].sum())
+    sell_amount = float(tr["sell_amount"].sum())
+
+    def _ratio(amount: float, base: float) -> float:
+        return round(amount / base, 4) if base > 0 else 0.0
+
+    annual: dict[str, dict] = {}
+    for year in sorted(set(eq.index.year) | set(tr["exit_date"].dt.year)):
+        eq_y = eq[eq.index.year == year]
+        avg_y = float(eq_y.mean()) if not eq_y.empty else 0.0
+        buy_y = float(tr.loc[tr["entry_date"].dt.year == year, "buy_amount"].sum())
+        sell_y = float(tr.loc[tr["exit_date"].dt.year == year, "sell_amount"].sum())
+        annual[str(year)] = {
+            "single_side": _ratio(buy_y, avg_y),
+            "double_side": _ratio(buy_y + sell_y, avg_y),
+            "buy_amount": round(buy_y, 2),
+            "sell_amount": round(sell_y, 2),
+            "avg_equity": round(avg_y, 2),
+            "buy_trades": int((tr["entry_date"].dt.year == year).sum()),
+            "sell_trades": int((tr["exit_date"].dt.year == year).sum()),
+        }
+
+    return {
+        "single_side": _ratio(buy_amount, avg_equity),
+        "double_side": _ratio(buy_amount + sell_amount, avg_equity),
+        "buy_amount": round(buy_amount, 2),
+        "sell_amount": round(sell_amount, 2),
+        "avg_equity": round(avg_equity, 2),
+        "buy_trades": int(len(tr)),
+        "sell_trades": int(len(tr)),
+        "annual": annual,
     }
 
 
