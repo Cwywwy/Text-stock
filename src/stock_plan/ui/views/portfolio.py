@@ -3,16 +3,19 @@
 
 数据优先读本地缓存；无缓存个股自动尝试在线拉取（新浪源），
 次新股 / 无数据个股给出明确提示。
+
+Revision History:
+2026-10-28  (phase 2) route price and equity charts through widgets factories
+2026-10-28  (branch4 phase 1) drop duplicated single-stock backtest caption
 """
 from __future__ import annotations
 
-import plotly.graph_objects as go
 import streamlit as st
 
 from stock_plan.analysis.holding import diagnose_holding, single_stock_backtest
 from stock_plan.data.storage import Storage
 from stock_plan.strategy import store
-from stock_plan.ui.widgets import page_glossary
+from stock_plan.ui.widgets import multi_line_fig, page_glossary, price_level_fig, render_chart
 
 HOLD_GLOSSARY = {
     "持仓诊断": "把你手上的股票交给系统检查：赚了还是亏了、拿了多久、趋势好不好，再对照策略规则给个建议。",
@@ -111,6 +114,10 @@ def _render_cached():
     # ---------- 走势图 ----------
     _render_chart(res)
 
+    # ---------- 缠论结构（暂时需求 6 后半） ----------
+    with st.expander("🧩 缠论结构分析（笔 / 中枢 / 三买）", expanded=False):
+        _render_chan_structure(res)
+
     # ---------- 单股重回测 ----------
     st.subheader("📈 重新回测参考")
     if st.button("用该策略回测这只股票（近一年）"):
@@ -127,42 +134,81 @@ def _render_cached():
             m4.metric("交易次数", m.get("trade_count", 0))
             eq = bt["equity"]
             if eq is not None and not eq.empty:
-                fig = go.Figure(go.Scatter(
-                    x=[str(d)[:10] for d in eq.index], y=eq.values, mode="lines",
-                    line=dict(color="#1f77b4", width=2), name="单股回测",
-                ))
-                fig.update_layout(height=320, margin=dict(l=40, r=20, t=30, b=30),
-                                  yaxis_title="资产（元）", xaxis_title="日期")
-                st.plotly_chart(fig, use_container_width=True)
-            st.caption("单股回测仅反映该策略在这只股票上的历史表现，样本单一，参考意义有限。")
+                render_chart(
+                    multi_line_fig({"单股回测": eq}, y_title="总资产（元）", money=True),
+                    name="portfolio-single-backtest",
+                    caption="只用这一只股票跑出来的资产曲线，样本单一，别当成策略的普遍表现。",
+                )
+
+
+def _render_chan_structure(res) -> None:
+    """缠论结构辅助分析（暂时需求 6 后半）。
+
+    只展示**机械可算**的结构：包含处理后的分型、笔、中枢，以及机械判定的三买。
+    并显式声明未实现的部分，避免把「识别出中枢」误当成买卖信号。
+    """
+    from stock_plan.factors.chan import chan_analysis
+
+    bars = res.get("bars")
+    if bars is None or bars.empty:
+        return
+
+    result = chan_analysis(bars)
+    st.markdown("**🧩 缠论结构（辅助参考）**")
+    if not result.strokes:
+        st.caption("K 线不足或结构不完整，未形成有效的笔。")
+        return
+
+    cols = st.columns(4)
+    cols[0].metric("笔", len(result.strokes))
+    cols[1].metric("中枢", len(result.pivots))
+    cols[2].metric("分型", len(result.fractals))
+    cols[3].metric("三买", len(result.third_buys))
+
+    if result.pivots:
+        pv = result.pivots[-1]
+        st.markdown(pv.describe())
+        st.caption(
+            f"价格在 [{pv.zd:.2f}, {pv.zg:.2f}] 这个区间里反复 → 中枢。"
+            "站上上沿才算真正离开，跌回区间内则说明离开失败。"
+        )
+        last_close = float(bars["close"].iloc[-1])
+        if last_close > pv.zg:
+            st.caption(f"当前收盘 {last_close:.2f} 在中枢**上沿之上**。")
+        elif last_close < pv.zd:
+            st.caption(f"当前收盘 {last_close:.2f} 在中枢**下沿之下**。")
+        else:
+            st.caption(f"当前收盘 {last_close:.2f} **仍在中枢区间内**（方向未选择）。")
+
+    if result.third_buys:
+        tb = result.third_buys[-1]
+        st.success(f"最近一个「三买」：{tb.describe()}")
+    else:
+        st.caption("近期没有出现三买（价格未在离开中枢后站稳于上沿之上）。")
+
+    for line in result.explain[-1:]:
+        st.caption(f"⚠️ {line}")
 
 
 def _render_chart(res):
     """个股走势 + 买点 + 止损止盈 + 做T价位标注。"""
-    t = res["bars"].tail(120)  # 近半年
-    cur = res["current"]
-    lv = res["levels"]
-    tt = res["t_trade"]
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=[str(d)[:10] for d in t["date"]], y=t["close"],
-        mode="lines", name="收盘价", line=dict(color="#1f77b4", width=2),
-    ))
-    fig.add_hline(y=res["buy_price"], line_dash="dot", line_color="purple",
-                  annotation_text="买入价")
-    if lv.get("stop_loss"):
-        fig.add_hline(y=lv["stop_loss"], line_dash="dash", line_color="red",
-                      annotation_text="止损位")
-    if lv.get("take_profit"):
-        fig.add_hline(y=lv["take_profit"], line_dash="dash", line_color="green",
-                      annotation_text="止盈区")
-    fig.add_hline(y=tt["buy_low"], line_dash="dot", line_color="orange",
-                  annotation_text="做T低吸")
-    fig.add_hline(y=tt["sell_high"], line_dash="dot", line_color="#2ca02c",
-                  annotation_text="做T高抛")
-    fig.update_layout(
-        height=420, margin=dict(l=40, r=20, t=40, b=30),
-        title=f"{res['code']} 近 120 个交易日走势（现价 {cur['close']:.2f}）",
-        yaxis_title="价格（元）", xaxis_title="日期",
+    render_chart(
+        _price_level_fig(res),
+        name="portfolio-price",
+        caption="实线是收盘价；虚线是系统给的价位参考——绿色为目标买入价、红色为止损、"
+                "琥珀色为止盈区，蓝/紫点线是做T的低吸与高抛位置。线只代表规则算出来的位置，不是预测。",
     )
-    st.plotly_chart(fig, use_container_width=True)
+
+
+def _price_level_fig(res):
+    """走势图 + 价位参考线（纯函数，样张截图与页面同源）。"""
+    lv = res.get("levels") or {}
+    tt = res.get("t_trade") or {}
+    return price_level_fig(
+        res.get("bars"),
+        buy_price=res.get("buy_price"),
+        stop_loss=lv.get("stop_loss"),
+        take_profit=lv.get("take_profit"),
+        t_buy=tt.get("buy_low"),
+        t_sell=tt.get("sell_high"),
+    )

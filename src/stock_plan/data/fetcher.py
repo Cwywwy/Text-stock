@@ -6,13 +6,70 @@
 
 注意：Windows 控制台默认 GBK 编码，打印中文列名会乱码，但数据本身正常。
 运行脚本时建议设置环境变量 PYTHONIOENCODING=utf-8。
+
+Revision History:
+    2026-09-04  serialise Sina V8 decoding to prevent MiniRacer crashes
+    2026-10-15  per-thread V8 context; the global lock no longer serialises HTTP
 """
 from __future__ import annotations
 
+import os
+import threading
 from datetime import date, datetime, timedelta
+from threading import Lock
 
 import akshare as ak
 import pandas as pd
+import py_mini_racer
+
+# ---------------------------------------------------------------------------
+# 新浪日线的 V8 并发问题
+#
+# akshare 的 stock_zh_a_daily 每次调用都会 new 一个 py_mini_racer.MiniRacer()
+# 来解密新浪返回的 JS。mini-racer 的 V8 上下文不是线程安全的，多线程**并发创建**
+# 会触发原生崩溃（partition_address_space.cc）。
+#
+# 原先的应对是用一把全局锁把整段调用串行化。但那段调用里包含 3 个串行 HTTP 请求
+# （日线 blob、outstanding_share、前复权因子），于是网络也被一起串行化：
+# 实测 8 线程相对单线程只有 1.03x 加速，全市场 5553 只要 78~104 分钟。
+#
+# 正确做法：V8 上下文本身可以复用，只要"每个线程一个、各自串行使用"即可。
+# 这里把 MiniRacer 换成线程本地单例，并且**只把"创建"这一步**加锁保护 ——
+# 创建每线程仅发生一次，竞争可忽略，而网络请求完全并发。
+#
+# 兜底：若仍需旧的全局串行行为，设 STOCK_PLAN_SINA_LOCK=1。
+# ---------------------------------------------------------------------------
+_thread_local = threading.local()
+_v8_create_lock = Lock()
+_RealMiniRacer = py_mini_racer.MiniRacer
+
+
+class _ThreadLocalMiniRacer:
+    """MiniRacer 的线程本地单例：每线程创建一个 V8 上下文并复用。
+
+    创建动作由 _v8_create_lock 串行化，避免多线程同时初始化 V8 触发的原生崩溃；
+    上下文的使用始终发生在创建它的那一个线程里，因此不存在并发使用同一个上下文。
+    """
+
+    def __new__(cls, *args, **kwargs):
+        ctx = getattr(_thread_local, "v8", None)
+        if ctx is None:
+            with _v8_create_lock:  # 只保护"创建"，不保护网络与解码
+                ctx = _RealMiniRacer(*args, **kwargs)
+            _thread_local.v8 = ctx
+        return ctx
+
+
+def _install_thread_local_v8() -> None:
+    """把 akshare 内部使用的 py_mini_racer.MiniRacer 换成线程本地单例。"""
+    if py_mini_racer.MiniRacer is not _ThreadLocalMiniRacer:
+        py_mini_racer.MiniRacer = _ThreadLocalMiniRacer
+
+
+_install_thread_local_v8()
+
+# 默认 None（并发）。仅当显式设置 STOCK_PLAN_SINA_LOCK=1 时才启用旧的全局串行锁。
+SINA_DAILY_LOCK = Lock() if os.environ.get("STOCK_PLAN_SINA_LOCK") == "1" else None
 
 
 def _to_sina_symbol(code: str) -> str:
@@ -69,9 +126,18 @@ class DataFetcher:
         symbol = _to_sina_symbol(code)
         start_str = start.strftime("%Y%m%d") if isinstance(start, date) else start
         end_str = end.strftime("%Y%m%d") if isinstance(end, date) else end
-        df = ak.stock_zh_a_daily(
-            symbol=symbol, start_date=start_str, end_date=end_str, adjust="qfq"
-        )
+        # 默认并发调用：线程本地 V8 上下文已消除"并发创建"这一崩溃成因，
+        # 因此不再需要把 3 个串行 HTTP 请求一起锁起来（那会让并发完全失效）。
+        # 如需退回旧的全局串行锁，设置环境变量 STOCK_PLAN_SINA_LOCK=1。
+        if SINA_DAILY_LOCK is not None:
+            with SINA_DAILY_LOCK:
+                df = ak.stock_zh_a_daily(
+                    symbol=symbol, start_date=start_str, end_date=end_str, adjust="qfq"
+                )
+        else:
+            df = ak.stock_zh_a_daily(
+                symbol=symbol, start_date=start_str, end_date=end_str, adjust="qfq"
+            )
         if df is None or df.empty:
             return pd.DataFrame(
                 columns=["date", "open", "high", "low", "close", "volume", "amount", "turnover"]
@@ -125,47 +191,72 @@ class DataFetcher:
             )
         return result
 
-    def get_news(self, code: str, days: int = 7) -> list[dict]:
-            """获取个股近期公告/新闻（东方财富公告接口）。
+    def get_news(
+        self, code: str, page_size: int = 20, days: int | None = None
+    ) -> list[dict]:
+        """获取个股公告（东方财富 np-anotice-stock 接口）。
 
-            返回字段：title, time, source, url, content
-            说明：东方财富搜索新闻接口在当前环境不可用（仅返回用户主页），
-            改用公告接口（np-anotice-stock）获取个股公告作为新闻时间线数据源。
-            """
-            import requests
+        参数：
+            code: 6 位股票代码。
+            page_size: 取回条数，接口上限约 100（超出会被服务端截断）。
+            days: 只要最近 N 天内的公告；None 表示不按时间过滤。
+                  接口本身只支持页码/条数，所以日期在本地过滤。
 
-            url = "https://np-anotice-stock.eastmoney.com/api/security/ann"
-            params = {
-                "sr": "-1",
-                "page_size": "20",
-                "page_index": "1",
-                "ann_type": "A",
-                "client_source": "web",
-                "stock_list": code,
-            }
-            headers = {
-                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
-                "referer": f"https://data.eastmoney.com/notices/detail/{code}.html",
-            }
-            try:
-                r = requests.get(url, params=params, headers=headers, timeout=10)
-                data = r.json()
-                items = data.get("data", {}).get("list", []) or []
-                result = []
-                for it in items:
-                    result.append(
-                        {
-                            "title": it.get("title", ""),
-                            "time": it.get("notice_date", ""),
-                            "source": "东方财富公告",
-                            "url": it.get("art_code", ""),
-                            "content": it.get("columns", [{}])[0].get("column_name", "")
-                            if it.get("columns") else "",
-                        }
-                    )
-                return result
-            except Exception:
-                return []
+        返回字段：title, time, source, url, content
+
+        Revision History:
+            2026-10-15  修正参数语义：原第二参数名 days 既未被使用，调用方又把
+                        page_size 当成它传入，导致条数与时间跨度都不生效；
+                        现 page_size 生效，并新增 days 时间跨度过滤。
+        """
+        import requests
+
+        url = "https://np-anotice-stock.eastmoney.com/api/security/ann"
+        params = {
+            "sr": "-1",
+            "page_size": str(max(1, min(int(page_size), 100))),
+            "page_index": "1",
+            "ann_type": "A",
+            "client_source": "web",
+            "stock_list": code,
+        }
+        headers = {
+            "user-agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+            ),
+            "referer": f"https://data.eastmoney.com/notices/detail/{code}.html",
+        }
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=10)
+            items = (r.json().get("data") or {}).get("list") or []
+        except Exception:
+            return []
+
+        result = []
+        for it in items:
+            columns = it.get("columns") or [{}]
+            result.append(
+                {
+                    "title": it.get("title", ""),
+                    "time": it.get("notice_date", ""),
+                    "source": "东方财富公告",
+                    "url": it.get("art_code", ""),
+                    "content": columns[0].get("column_name", ""),
+                }
+            )
+
+        if days:
+            cutoff = pd.Timestamp(date.today() - timedelta(days=int(days)))
+            kept = []
+            for row in result:
+                try:
+                    if pd.Timestamp(str(row["time"])[:10]) >= cutoff:
+                        kept.append(row)
+                except Exception:
+                    kept.append(row)  # 日期解析不了就保留，不静默丢数据
+            result = kept
+        return result
 
 
 def get_latest_price(code: str) -> float | None:

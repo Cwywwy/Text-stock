@@ -27,6 +27,7 @@ from pathlib import Path
 import pandas as pd
 
 from stock_plan.data.fetcher import DataFetcher
+from stock_plan.data.http_pool import keepalive_requests
 from stock_plan.data.storage import PROJECT_ROOT, Storage
 
 logger = logging.getLogger(__name__)
@@ -124,9 +125,46 @@ def merge_bars(storage: Storage, code: str, new_bars: pd.DataFrame) -> int:
 
 # ---------- 增量更新 ----------
 
+def _list_marker(storage: Storage) -> Path:
+    """股票列表刷新标记放在该 Storage 自己的 db 目录里（测试/临时库互不干扰）。"""
+    return storage.db_path.parent / "stock_list_date.txt"
+
+
+def _refresh_stock_list(fetcher: DataFetcher, storage: Storage) -> pd.DataFrame:
+    """取全市场股票列表：当天已刷新过就读本地，否则在线刷新并记标记。
+
+    为什么加这个（2026-10-28 实测）：在线列表走新浪 spot 接口要翻 70 页、约 20 秒，
+    而它一天只会变一次（新股上市）。原先每跑一次增量更新都重刷，全市场 5550 只
+    的净抓取时间才 5~9 分钟，这 20 秒白花得可惜；更糟的是列表接口失败会让整轮
+    更新直接退回本地并打印告警。所以「当天刷过就跳过」。
+    """
+    today = date.today().isoformat()
+    marker = _list_marker(storage)
+    try:
+        if marker.exists() and marker.read_text(encoding="utf-8").strip() == today:
+            cached_list = storage.load_stock_list()
+            if not cached_list.empty:
+                return cached_list
+    except Exception:  # noqa: BLE001 - 标记文件损坏就当没刷过
+        pass
+
+    try:
+        stock_list = fetcher.get_stock_list()
+        storage.save_stock_list(stock_list)
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(today, encoding="utf-8")
+        except Exception:  # noqa: BLE001 - 写不了标记不影响本次结果
+            pass
+        return stock_list
+    except Exception as e:  # noqa: BLE001
+        logger.warning("在线股票列表拉取失败，使用本地列表: %s", e)
+        return storage.load_stock_list()
+
+
 def update_incremental(
     days: int = 30,
-    workers: int = 8,
+    workers: int = 32,
     force: bool = False,
     storage: Storage | None = None,
     fetcher: DataFetcher | None = None,
@@ -146,28 +184,58 @@ def update_incremental(
     start = date.today() - timedelta(days=days)
     end = date.today()
 
-    # 股票列表：优先在线刷新（顺带捕获新股），失败退回本地
+    # 缺口保护（2026-10-28）：`days=30` 的固定窗口只适用于「一直有在用」的机器。
+    # 如果本机上次更新在 30 天以前，从今天往回只抓 30 天，旧数据和新抓取之间就会
+    # 留一整段空洞 —— 任务显示"成功"，回测却凭空少了几十天。所以先问一次本地最新
+    # 交易日，落后超过窗口就把窗口撑大到覆盖缺口（多抓几天互相重叠，合并时天然去重）。
+    data_lag_days: int | None = None
     try:
-        stock_list = fetcher.get_stock_list()
-        storage.save_stock_list(stock_list)
-    except Exception as e:
-        logger.warning("在线股票列表拉取失败，使用本地列表: %s", e)
-        stock_list = storage.load_stock_list()
+        from stock_plan.data.freshness import latest_bar_date
+
+        local_latest = latest_bar_date(bars_dir=getattr(storage, "bars_dir", None))
+        if local_latest is not None:
+            gap = (end - local_latest.date()).days
+            data_lag_days = int(gap)
+            if gap > days:
+                days = min(gap + 5, 365 * 5)
+                start = end - timedelta(days=days)
+                logger.warning(
+                    "本地行情最新 %s，已落后 %d 天，增量窗口自动扩到 %d 天",
+                    local_latest.date(),
+                    gap,
+                    days,
+                )
+    except Exception as e:  # noqa: BLE001 —— 体检失败不该挡住抓取
+        logger.debug("数据新鲜度检查失败，按原窗口执行：%s", e)
+
+    # 股票列表：优先在线刷新（顺带捕获新股），失败退回本地。
+    # 2026-10-28 提速：全市场列表走新浪 spot 接口要翻 70 页、实测约 20 秒，
+    # 而列表一天只会变一次 —— 所以当天已经刷过就直接读本地，省掉这 20 秒。
+    stock_list = _refresh_stock_list(fetcher, storage)
 
     all_codes = stock_list["code"].astype(str).tolist() if not stock_list.empty else []
-    cached = [c for c in all_codes if storage.cache_exists(c)]
-    uncached = [c for c in all_codes if not storage.cache_exists(c)]
+    # 单次遍历分桶：原先 cached / uncached 各调一次 cache_exists，等于每只股票 stat 两次
+    cached: list[str] = []
+    uncached: list[str] = []
+    for c in all_codes:
+        (cached if storage.cache_exists(c) else uncached).append(c)
 
-    # 幂等预筛：本地已到期望交易日的直接跳过（只读本地文件，不联网）
-    todo = []
-    for c in cached:
-        last = _last_date(storage, c)
-        if not force and last is not None and last >= expected:
-            continue
-        todo.append(c)
+    # 幂等预筛：本地已到期望交易日的直接跳过（只读本地文件，不联网）。
+    # 2026-10-28 提速：每只读一次 parquet 约 5ms，5550 只串行就是 28 秒 ——
+    # pyarrow 读文件会释放 GIL，所以丢进线程池并行，实测降到 2~3 秒。
+    if force:
+        todo = list(cached)
+    else:
+        with ThreadPoolExecutor(max_workers=min(32, max(4, workers))) as pool:
+            last_dates = list(pool.map(lambda c: _last_date(storage, c), cached))
+        todo = [
+            c for c, last in zip(cached, last_dates) if last is None or last < expected
+        ]
 
     stats = {
         "expected_date": str(expected.date()),
+        "window_days": days,
+        "data_lag_days": data_lag_days,
         "total_cached": len(cached),
         "todo": len(todo),
         "updated": 0,
@@ -191,7 +259,9 @@ def update_incremental(
             except Exception as e:
                 return code, False, str(e)
 
-        with ThreadPoolExecutor(max_workers=workers) as pool:
+        # keep-alive：每只股票 3 个新浪请求，复用连接把 TLS 握手从「每请求一次」
+        # 降到「每线程一次」，实测 16 线程 8.78 → 15.6 只/秒（详见 http_pool 模块注释）
+        with keepalive_requests(timeout=30), ThreadPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(fetch_one, c): c for c in todo}
             for fut in as_completed(futures):
                 code, success, err = fut.result()
@@ -217,13 +287,20 @@ def update_incremental(
 
     stats["elapsed"] = round(time.time() - t0, 1)
     _log_run("incremental", stats)
+    # 更新完把体检缓存刷掉，否则页面上的「行情最新交易日」要等到手动重扫才会变新
+    try:
+        from stock_plan.data.freshness import refresh_marker
+
+        refresh_marker(getattr(storage, "bars_dir", None))
+    except Exception as e:  # noqa: BLE001
+        logger.debug("体检缓存刷新失败：%s", e)
     return stats
 
 
 def fetch_uncached(
     codes: list[str],
     years: int = 5,
-    workers: int = 8,
+    workers: int = 16,
     storage: Storage | None = None,
     fetcher: DataFetcher | None = None,
     progress: ProgressFn | None = None,
@@ -246,14 +323,22 @@ def fetch_uncached(
             bars = fetcher.get_daily_bars(code, start, end)
             storage.save_bars(code, bars)
             try:
-                storage.save_fundamentals(code, fetcher.get_fundamentals(code))
+                # 传最新收盘价才能算出 pe/pb（2026-10-28 修正，原先不传导致全表 NULL）
+                latest_price = (
+                    float(bars["close"].iloc[-1])
+                    if bars is not None and not bars.empty
+                    else None
+                )
+                storage.save_fundamentals(
+                    code, fetcher.get_fundamentals(code, latest_price=latest_price)
+                )
             except Exception:
                 pass  # 财务失败不影响日线入库
             return code, True, ""
         except Exception as e:
             return code, False, str(e)
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    with keepalive_requests(timeout=30), ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(fetch_one, c): c for c in codes}
         for fut in as_completed(futures):
             code, success, err = fut.result()
@@ -274,15 +359,94 @@ def fetch_uncached(
     return stats
 
 
+# ---------- 全历史重建（修正前复权回溯） ----------
+
+def rebuild_history(
+    years: int = 5,
+    workers: int = 16,
+    storage: Storage | None = None,
+    fetcher: DataFetcher | None = None,
+    progress: ProgressFn | None = None,
+) -> dict:
+    """重拉全部已缓存股票的完整历史日线并整体覆盖。
+
+    为什么需要这个：
+    前复权价是**回溯性**的 —— 每次分红/送转后，新浪返回的整段历史价格都会按新因子
+    改写。而"增量补最近 N 天再合并"只会覆盖最近那段，更早的行仍停留在旧因子上，
+    结果是历史序列在除权日出现人为跳空，均线/ATR/涨跌幅/回测全线失真。
+    （实测：间隔约 6 周后，000001 全历史偏移 2.19%、601318 偏移 1.74%。）
+
+    为什么这个操作不贵：
+    新浪日线接口每次请求都返回**整份历史文件**（akshare 再按日期裁剪），
+    所以"重拉 5 年"与"补 30 天"的网络成本几乎相同，全量重建是很划算的。
+
+    建议：每次发现持仓/候选股除权后，或每月跑一次。
+    """
+    storage = storage or Storage()
+    fetcher = fetcher or DataFetcher()
+    t0 = time.time()
+
+    start = date.today() - timedelta(days=365 * years)
+    end = date.today()
+    codes = sorted(p.stem for p in storage.bars_dir.glob("*.parquet"))
+
+    stats = {
+        "mode": "rebuild",
+        "total": len(codes),
+        "updated": 0,
+        "failed": 0,
+        "errors": [],
+        "elapsed": 0.0,
+    }
+    _notify(progress, done=0, total=len(codes), ok=0, failed=0, current="")
+
+    lock = threading.Lock()
+    done = ok = failed = 0
+
+    def fetch_one(code: str) -> tuple[str, bool, str]:
+        try:
+            bars = fetcher.get_daily_bars(code, start, end)
+            if bars is None or bars.empty:
+                return code, False, "返回空数据"
+            storage.save_bars(code, bars)  # save_bars 为整体覆盖写，正是重建所需
+            return code, True, ""
+        except Exception as e:
+            return code, False, str(e)
+
+    with keepalive_requests(timeout=30), ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(fetch_one, c): c for c in codes}
+        for fut in as_completed(futures):
+            code, success, err = fut.result()
+            with lock:
+                done += 1
+                if success:
+                    ok += 1
+                else:
+                    failed += 1
+                    stats["errors"].append((code, err))
+                _notify(
+                    progress,
+                    done=done,
+                    total=len(codes),
+                    ok=ok,
+                    failed=failed,
+                    current=code,
+                )
+
+    stats["updated"] = ok
+    stats["failed"] = failed
+    stats["errors"] = stats["errors"][:50]
+    stats["elapsed"] = round(time.time() - t0, 1)
+    _log_run("rebuild", stats)
+    return stats
+
+
 # ---------- 内部工具 ----------
 
 def _last_date(storage: Storage, code: str) -> pd.Timestamp | None:
-    """读取某只股票本地缓存的最新日期（只读 date 列附近，快速判断）。"""
+    """读取某只股票本地缓存的最新日期（只读 date 列，避免整文件解析）。"""
     try:
-        df = storage.load_bars(code)
-        if df.empty:
-            return None
-        return pd.Timestamp(df["date"].max())
+        return storage.last_date(code)
     except Exception:
         return None
 

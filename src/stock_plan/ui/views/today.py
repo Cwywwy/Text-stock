@@ -4,17 +4,26 @@
 - 策略选择（下拉框）+ 持仓周期（短线/中短线/中线/多周期并存）
 - 生成信号按钮（带缓存，避免重复计算）
 - Top5 信号表格（代码/名称/综合分/买入价/卖出价/止损/持仓天数/理由）
+- 「为什么是这几只」对比解释（可折叠，数据层零额外开销）
 - 一键把信号发送到模拟交易
 
 Revision History:
     2026-09-04  show version-matched published full-market public signals
+    2026-10-28  (phase 2) one scoring pass also yields the explainability report
+    2026-10-28  (phase 3) optional llm narrative inside the explainability section
 """
 from __future__ import annotations
 
 import streamlit as st
 
-from stock_plan.signal.generator import Signal, generate_signals
-from stock_plan.ui.widgets import board_filter_ui, page_glossary
+from stock_plan.signal.generator import Signal, generate_signals_with_report
+from stock_plan.ui.signal_report_section import render_report_section
+from stock_plan.ui.widgets import (
+    board_filter_ui,
+    industry_filter_ui,
+    market_regime_panel,
+    page_glossary,
+)
 
 # 本页名词速览（R2 亲民化）
 TODAY_GLOSSARY = {
@@ -52,15 +61,24 @@ def _get_strategy(name: str, params: dict | None = None):
 
 
 @st.cache_data(ttl=600, show_spinner="正在生成信号…")
-def _cached_signals(
+def _cached_signals_and_report(
     strategy_name: str, top_n: int, params_json: str, config_json: str,
-    boards_json: str = "[]", exclude_st: bool = True,
+    boards_json: str = "[]", exclude_st: bool = True, industries_json: str = "[]",
 ):
-    """带缓存的信号生成（10 分钟内不重复计算）。"""
+    """带缓存的信号生成（10 分钟内不重复计算）。
+
+    返回 `(信号列表, 解释报告)`：报告与信号来自**同一次打分**，
+    所以页面展示的分数与「为什么是这几只」里的分数必然一致，
+    也不会因为多要一份报告就把 40 多秒的行情加载与指标计算跑两遍。
+
+    `industries_json` 加在最后并带默认值：这样既有调用与缓存键不受影响，
+    也避免"忘了传行业"时静默变成全行业。
+    """
     import json
 
     params = json.loads(params_json) if params_json else None
     boards = json.loads(boards_json)
+    industries = json.loads(industries_json) if industries_json else []
     if strategy_name == "自定义策略":
         from stock_plan.strategy.custom import CustomStrategy
 
@@ -80,10 +98,13 @@ def _cached_signals(
         if record is not None:
             published = load_public_signals().get(strategy_name)
             if published is None or published.get("fingerprint") != strategy_fingerprint(record["config"]):
-                return []
-            return [Signal(**signal) for signal in published.get("signals", [])[:top_n]]
-    return generate_signals(
-        strategy=strategy, top_n=top_n, boards=boards, exclude_st=exclude_st
+                return [], None
+            signals = [Signal(**signal) for signal in published.get("signals", [])[:top_n]]
+            return signals, None
+        return [], None
+    return generate_signals_with_report(
+        strategy=strategy, top_n=top_n, boards=boards, exclude_st=exclude_st,
+        industries=industries,
     )
 
 
@@ -151,7 +172,7 @@ def _store_signals(signals, period_label: str):
 def _render_signal_block(signals, period_label: str):
     """渲染一组信号的表格 + 理由 + 发送按钮。"""
     st.subheader(f"📌 {period_label}信号（持仓 {signals[0].hold_days} 天）")
-    st.dataframe(_signals_to_rows(signals), use_container_width=True, hide_index=True)
+    st.dataframe(_signals_to_rows(signals), width="stretch", hide_index=True)
 
     st.markdown("**入选理由**")
     for s in signals:
@@ -190,14 +211,32 @@ def _render_signal_block(signals, period_label: str):
                 )
 
 
+def _render_signal_report(report, period_label: str) -> None:
+    """「为什么是这几只」对比解释区块（默认折叠，不抢首屏注意力）。
+
+    报告与信号同一次打分产出，所以展开也不会触发重新计算；
+    云端只读发布信号时 report 为 None，直接跳过（不在云端重算全 A 股）。
+    """
+    if report is None:
+        return
+    with st.expander("🔍 为什么是这几只（入选 vs 紧随对比）", expanded=False):
+        render_report_section(report, period_label)
+
+
 def render():
     st.header("📋 今日信号")
     st.caption("基于最新缓存数据，按策略打分选出 Top 标的，输出目标买入/卖出价与止损位。")
     page_glossary(TODAY_GLOSSARY)
 
+    # 市场阶段（暂时需求 6）：先看大盘处于什么阶段，再决定用哪类策略与仓位
+    market_regime_panel()
+    st.divider()
+
     # 板块筛选（R5：自定义股票板块 + 剔除 ST）
     st.markdown("**选股范围**")
     boards, exclude_st = board_filter_ui("today")
+    # 行业筛选（暂时需求 3）：用申万一级行业把策略限定在某个赛道里
+    industries = industry_filter_ui("today")
 
     # 策略选择
     from stock_plan.strategy import store
@@ -241,32 +280,35 @@ def render():
             all_groups = {}
             for label, (hold_days, _desc) in PERIODS.items():
                 period_params = {**saved, "hold_days": hold_days}
-                signals = _cached_signals(
+                signals, report = _cached_signals_and_report(
                     strategy_name, top_n,
                     json.dumps(period_params, ensure_ascii=False),
                     json.dumps(config, ensure_ascii=False),
                     json.dumps(boards, ensure_ascii=False),
                     exclude_st,
+                    json.dumps(industries, ensure_ascii=False),
                 )
                 if signals:
-                    all_groups[label] = signals
+                    all_groups[label] = (signals, report)
             if not all_groups:
                 st.warning("未生成信号。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")
                 return
             st.success(f"已生成 {len(all_groups)} 组信号（短线/中短线/中线）")
-            for label, signals in all_groups.items():
+            for label, (signals, report) in all_groups.items():
                 _store_signals(signals, label)
                 _render_signal_block(signals, label)
+                _render_signal_report(report, label)
         else:
             # 单周期
             hold_days = PERIODS[period_label][0]
             period_params = {**saved, "hold_days": hold_days}
-            signals = _cached_signals(
+            signals, report = _cached_signals_and_report(
                 strategy_name, top_n,
                 json.dumps(period_params, ensure_ascii=False),
                 json.dumps(config, ensure_ascii=False),
                 json.dumps(boards, ensure_ascii=False),
                 exclude_st,
+                json.dumps(industries, ensure_ascii=False),
             )
             if not signals:
                 st.warning("未生成信号。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")
@@ -274,5 +316,6 @@ def render():
             st.success(f"共生成 {len(signals)} 条{period_label}信号")
             _store_signals(signals, period_label)
             _render_signal_block(signals, period_label)
+            _render_signal_report(report, period_label)
     else:
         st.info("点击上方按钮生成今日盘前信号。")
