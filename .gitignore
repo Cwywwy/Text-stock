@@ -21,6 +21,8 @@ data/raw/
 data/processed/
 data/db/
 data/logs/
+# LLM 结果缓存（可随时删除重建，不得入库）
+data/cache/
 
 # 快照发布临时 worktree
 .snapshot_worktree/
