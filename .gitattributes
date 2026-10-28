@@ -1,6 +1,8 @@
 # Linux 部署物料必须是 LF 行尾。
 # Windows 上 core.autocrlf=true 的检出会把 LF 换成 CRLF，传到服务器后
 # bootstrap.sh 会报 "bad interpreter: /usr/bin/env bash^M"，systemd 也可能拒绝 unit 文件。
+# 整个 deploy/ 一律 LF：其中文件会被 scp/打包直接搬到服务器上执行。
+deploy/*   text eol=lf
 *.sh       text eol=lf
 *.service  text eol=lf
 *.timer    text eol=lf

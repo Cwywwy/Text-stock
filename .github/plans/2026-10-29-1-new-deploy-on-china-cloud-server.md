@@ -1,9 +1,9 @@
 # 新增需求：把系统部署到国内云服务器（方案 C）
 
-> 状态：**已实施（2026-10-29）**——Phase 1/2/3 与 Phase 6 本机部分完成；Phase 4（本机推送脚本）按拍板取消；
-> Phase 5 的顶级 README/CHANGELOG 因并发改动推迟。剩余为真机验收（§12 后四条）。
+> 状态：**已实施（2026-10-29）**——Phase 1/2/3/5 与本机侧 Phase 6 完成；Phase 4（本机推送脚本）按拍板取消。
+> 剩余仅为真机验收（§12 后四条）。
 > 日期：2026-10-29
-> 分支：`feature/deploy-china-server`（从 `main` = 7315819 新建）。
+> 分支：`feature/deploy-china-server`（从 `main` = 7315819 新建；2026-10-29 已随 main 更新，README/CHANGELOG 补齐）。
 > 用户 2026-10-29 确认方向：不再折腾 Pages 类静态托管，直接用国内云服务器（先用厂商新用户免费试用跑 1–3 个月）。
 
 ---
@@ -153,11 +153,13 @@ Streamlit 进程会把行情读进内存/缓存，磁盘数据换了页面不一
 
 - 用户选 B（服务器自己拉 GitHub Releases），本机侧不再需要推送脚本；相应文件不创建。
 
-### Phase 5 — 文档（⚠️ 部分完成）
+### Phase 5 — 文档（✅ 完成 2026-10-29 续）
 
-- `deploy/README.md`：已完成（10 节运维手册，命令与脚本一一对应）。
-- 顶级 `README.md` 与 `CHANGELOG.md`：**本轮未改**——这两个文件正被并发的「快照 v2」工作修改，
-  此刻追加会把他人未提交内容混入本次提交。等 v2 合并后补两处链接与条目（已记入遗留项）。
+- `deploy/README.md`：10 节运维手册，命令与脚本一一对应。
+- 顶级 `README.md`：新增「国内云服务器部署（方案 C）」章节，原 Streamlit Cloud 章节加一行交叉引用。
+- `CHANGELOG.md`：新增「2026-10-29（续 2）」条目。
+- 说明：这三处原计划在 Phase 5 一次做完，因顶级 README/CHANGELOG 当时正被并发的「快照 v2」改动占用，
+  推迟到 v2 合并进 `main`（`30c3790`）之后补齐。
 
 ### Phase 6 — 验证交付（✅ 完成本机部分）
 
@@ -260,17 +262,13 @@ tests/test_deploy_assets.py
 
 （另：`tests/reports/2026-10-29-00-26.report-1.md` 为测试报告，不属于交付物。）
 
-**修改（1）**
+**修改（4）**
 
 ```
 src/stock_plan/ui/app.py      启动副作用改由 startup_flags 两个开关控制（默认行为不变）
-```
-
-**本轮未做（2，等并发「快照 v2」改动合并后补）**
-
-```
-README.md                     新增「国内云服务器部署」章节 + 原云端章节交叉引用
-CHANGELOG.md                  2026-10-29 条目
+README.md                     新增「国内云服务器部署（方案 C）」章节 + 原云端章节交叉引用
+CHANGELOG.md                  新增「2026-10-29（续 2）」条目
+.gitattributes                *.sh / *.service / *.timer 强制 LF
 ```
 
 **删除（0）**：无。方案 A 的 `scripts/push_snapshot_to_server.ps1` 与 `docker/` 三件套按拍板不创建。
