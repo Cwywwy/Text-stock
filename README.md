@@ -80,6 +80,24 @@ stock plan/
 └── tests/                  # 测试用例
 ```
 
+## 图表规范
+
+所有图表共用一套观感（近黑画布、无背景网格、价格轴靠右、红涨绿跌、小字号紧凑行高），
+目标是「像专业看盘软件」而不是「像默认的 Plotly 示例」。
+
+- **样式单一真源**：`src/stock_plan/ui/chart_style.py` 只有 token 与样式函数（颜色、字号、
+  页边距、轴格式、hover、`uirevision`），不 import streamlit，可单独做单元测试。
+- **通用图只从工厂出**：`src/stock_plan/ui/widgets.py` 提供 `multi_line_fig()`、
+  `equity_curve_fig()`、`benchmark_equity_fig()`、`price_level_fig()`、`score_waterfall_fig()`；
+  页面里不要直接 `st.plotly_chart()`，统一走 `render_chart(fig, name=..., caption=...)`，
+  导出文件名与缓存键都跟着图名走。
+- **页面专用图可以自己组合**（如回测页的主图 / 月度柱 / 热力图），但颜色、字号、坐标轴
+  必须全部取自 `chart_style`，视图里不许出现硬编码颜色。
+  这三条由 `tests/test_chart_views.py` 守护，跑测试就能拦住回退。
+- **改观感先看样张**：`scripts/preview_charts.py`（回测页）、`scripts/preview_report_section.py`
+  （信号解释区块）、`scripts/preview_compare_portfolio.py`（策略对比 / 持仓诊断）用合成数据
+  生成静态 HTML，不必启动 Streamlit 或等待全 A 股数据（40 秒以上）就能出图对比。
+
 ## 数据自动更新
 
 数据需在**股票交易日**收盘后刷新。调度由 `scripts/daily_job.ps1` 承担（幂等，重复执行不会重复写入），
@@ -286,3 +304,23 @@ LLM_API_KEY=你的key
 ```
 
 未配置时自动降级为离线规则模式，所有功能仍可正常使用。
+
+### 信号解读与 LLM 调用约束
+
+今日信号页的「🔍 为什么是这几只」区块分成两层：
+
+- **数据层**（默认展开即见）：入选者与紧随 3 名的分数对比、分差瀑布图、逐条扣分明细、被硬过滤挡掉的样本，
+  全部由代码计算，不调模型、不额外耗时（与信号表共用同一次全市场打分）。
+- **叙事层**（点按钮才调）：模型把事实清单组织成一段解读。校验不通过（编造数字、引用了不存在的代码、
+  字段缺失）就自动回退到确定性模板，页面会写明原因——**模型只负责措辞，数字一律来自表格**。
+
+相关的三个可选环境变量（写进 `.env` 或云端 Secrets）：
+
+```ini
+LLM_MAX_CONCURRENCY=2        # 同时在跑的 LLM 请求上限，默认 2
+LLM_CACHE_DISABLE=1          # 设 1 关闭解读缓存（默认开启）
+LLM_CACHE_TTL_HOURS=168      # 缓存有效期，默认 7 天
+```
+
+解读结果缓存在 `data/cache/llm/`（已被 `.gitignore` 忽略，不会进 Git）：同一份输入 7 天内重复点击直接秒开，
+页面会标注「缓存于 x 分钟前」。清空缓存直接删这个目录即可。

@@ -8,8 +8,13 @@
 - 目标卖出价 = 买入价 + atr_m_exit × ATR（止盈）
 - 止损价     = 买入价 - atr_n_stop × ATR（止损）
 - 期望持仓天数 = 由参数 hold_days 决定
+
+修订记录：
+2026-10-28  (phase 1) 抽出 score_with_penalties 记录逐条扣分明细，score() 数值不变
 """
 from __future__ import annotations
+
+from typing import Any
 
 import pandas as pd
 
@@ -18,6 +23,16 @@ from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.factors.technical import compute_technical
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.scorer import composite_score, fundamental_composite
+
+#: 扣分规则：键 → 文案 + 分值。报告层与页面直接引用，避免"分数改了、文案没改"。
+#: 每条规则只在这里定义一次，score_with_penalties() 是唯一实现处。
+PENALTY_RULES: dict[str, dict[str, Any]] = {
+    "trend_down": {"label": "中期趋势向下（ma20 低于 ma60）", "points": -100.0},
+    "chase_high": {"label": "偏离 ma20 超过 +10%（追高排除）", "points": -100.0},
+    "dev_high": {"label": "偏离 ma20 超过 +5%（偏高，宜等回调）", "points": -30.0},
+    "dev_low": {"label": "偏离 ma20 低于 -5%（趋势转弱）", "points": -50.0},
+    "rsi_hot": {"label": "RSI14 超过 75（严重超买）", "points": -20.0},
+}
 
 
 class TrendFollowingStrategy(Strategy):
@@ -60,20 +75,24 @@ class TrendFollowingStrategy(Strategy):
         """硬过滤：复用通用过滤规则（ST/停牌/流动性/次新）。"""
         return filter_universe(stock_list, bars_map)
 
-    def score(self, df_factors: pd.DataFrame) -> pd.Series:
-        """打分：技术分 × 0.6 + 基本面分 × 0.4，并惩罚超买与追高。
-
-        参数：
-            df_factors: 每只股票一行，含 trend_score/fund_score/close/ma20/ma60/rsi14 列。
+    def score_with_penalties(
+        self, df_factors: pd.DataFrame
+    ) -> tuple[pd.Series, pd.DataFrame]:
+        """打分，并把每一笔扣分记录成可解释的明细。
 
         回调买入逻辑（避免追高被套）：
-        - 中期趋势向上（ma20 > ma60）：不满足则排除
+        - 中期趋势向上（ma20 > ma60）：不满足则扣 100（排除）
         - 偏离 ma20 在 -5%~+5%（回调到位）：最佳，不扣分
-        - 偏离 ma20 在 5%~10%：扣 30 分
-        - 偏离 ma20 超过 10%（追高）：排除
+        - 偏离 ma20 在 +5%~+10%：扣 30 分
+        - 偏离 ma20 超过 +10%（追高）：扣 100 分（排除）
         - 偏离 ma20 低于 -5%（趋势转弱）：扣 50 分
         - RSI 超过 75（严重超买）：扣 20 分
         - 注：经回测隔离测试，vol_ratio 与 RSI<40 惩罚会拖累收益，故不启用
+
+        返回：
+            (score, penalties)。penalties 为长表，列 code/rule/label/points/basis，
+            每只股票每触发一条规则一行；`score()` 取第一个返回值，
+            两条路径共用同一份计算，数值不会漂移。
         """
         w_tech = self.params["w_tech"]
         w_fund = self.params["w_fund"]
@@ -83,19 +102,53 @@ class TrendFollowingStrategy(Strategy):
             weights=(w_tech, w_fund, 0.0),
         )
 
+        rows: list[dict[str, Any]] = []
+        codes = df_factors["code"].astype(str) if "code" in df_factors.columns else None
+
+        def _log(mask: pd.Series, rule: str, basis: pd.Series) -> None:
+            """把命中的行记成扣分明细（basis = 触发该规则时的原始数值）。"""
+            for idx in df_factors.index[mask.to_numpy()]:
+                raw = basis.loc[idx]
+                rows.append(
+                    {
+                        "code": str(codes.loc[idx]) if codes is not None else str(idx),
+                        "rule": rule,
+                        "label": PENALTY_RULES[rule]["label"],
+                        "points": float(PENALTY_RULES[rule]["points"]),
+                        "basis": float(raw) if pd.notna(raw) else None,
+                    }
+                )
+
         # 回调买入：只买趋势向上且回调到 ma20 附近的股票
         if "ma20" in df_factors.columns and "ma60" in df_factors.columns:
             trend_up = df_factors["ma20"] > df_factors["ma60"]
-            score -= (~trend_up) * 100
+            mask = ~trend_up
+            score = score - mask * 100
+            _log(mask, "trend_down", df_factors["ma20"] / df_factors["ma60"] - 1)
         if "ma20" in df_factors.columns and "close" in df_factors.columns:
             dev = df_factors["close"] / df_factors["ma20"] - 1
-            score -= (dev > 0.10) * 100   # 追高，排除
-            score -= (dev > 0.05) * 30    # 偏高，扣分
-            score -= (dev < -0.05) * 50   # 趋势转弱，扣分
+            mask = dev > 0.10
+            score = score - mask * 100  # 追高，排除
+            _log(mask, "chase_high", dev)
+            mask = dev > 0.05
+            score = score - mask * 30  # 偏高，扣分
+            _log(mask, "dev_high", dev)
+            mask = dev < -0.05
+            score = score - mask * 50  # 趋势转弱，扣分
+            _log(mask, "dev_low", dev)
         if "rsi14" in df_factors.columns:
-            score -= (df_factors["rsi14"] > 75) * 20   # 严重超买
+            mask = df_factors["rsi14"] > 75
+            score = score - mask * 20  # 严重超买
+            _log(mask, "rsi_hot", df_factors["rsi14"])
 
-        return score
+        penalties = pd.DataFrame(
+            rows, columns=["code", "rule", "label", "points", "basis"]
+        )
+        return score, penalties
+
+    def score(self, df_factors: pd.DataFrame) -> pd.Series:
+        """打分（旧签名保持不变）：返回综合分，扣分逻辑见 score_with_penalties()。"""
+        return self.score_with_penalties(df_factors)[0]
 
     def entry_price(self, row: pd.Series, atr: float) -> float:
         """目标买入价 = 最新收盘价 + k×ATR（突破买入）。"""

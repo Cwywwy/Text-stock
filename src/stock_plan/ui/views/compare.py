@@ -7,6 +7,8 @@
 Revision History:
     2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
     2026-09-04  show cloud sample-universe disclosure
+    2026-10-28  (phase 2) charts go through chart_style factories with benchmark line
+    2026-10-28  (branch4 phase 1) excess column, best-per-column tint and one-line verdict
 """
 from __future__ import annotations
 
@@ -23,7 +25,15 @@ from stock_plan.backtest.walkforward import walk_forward
 from stock_plan.data.storage import Storage
 from stock_plan.strategy import store
 from stock_plan.strategy.registry import STRATEGIES
-from stock_plan.ui.widgets import apply_time_axis, PLOTLY_CONFIG, board_filter_ui, page_glossary
+from stock_plan.ui import chart_style as cs
+from stock_plan.ui.widgets import (
+    BENCHMARK_LABEL,
+    benchmark_equity_fig,
+    board_filter_ui,
+    multi_line_fig,
+    page_glossary,
+    render_chart,
+)
 
 # 本页名词速览（R2 亲民化）
 COMPARE_GLOSSARY = {
@@ -32,6 +42,26 @@ COMPARE_GLOSSARY = {
     "样本外": "考试用的「没见过的数据」。样本外表现好，才说明策略是真有本事而不是运气。",
     "资金曲线": "账户总资产随时间变化的折线，一路向上是好策略的基本长相。",
 }
+
+def _equity_fig(results: dict, *, initial_cash: float = 100_000.0) -> go.Figure | None:
+    """多策略资金曲线 + 等权基准（基准是归一化指数，乘初始资金换到同一量纲）。"""
+    series: dict[str, pd.Series] = {}
+    benchmark: pd.Series | None = None
+    for name, data in results.items():
+        equity = data.get("equity")
+        if equity is None or equity.empty:
+            continue
+        series[name] = equity
+        if benchmark is None:
+            candidate = data.get("benchmark")
+            if candidate is not None and len(candidate) > 0:
+                benchmark = candidate
+    return benchmark_equity_fig(series, benchmark=benchmark, initial_cash=initial_cash)
+
+
+def _oos_fig(oos_equity: pd.Series) -> go.Figure | None:
+    """Walk-Forward 样本外资金曲线（单序列，副图高度）。"""
+    return multi_line_fig({"样本外资产": oos_equity}, y_title="总资产（元）", money=True)
 
 
 def _load_and_filter(start: str, end: str, boards: list[str] | None, exclude_st: bool):
@@ -83,7 +113,11 @@ def _cached_compare(
         )
         result = run_backtest(strat, config, bars_map, fund_map, stock_list)
         metrics = calc_metrics(result.equity_curve, result.trades)
-        results[name] = {"metrics": metrics, "equity": result.equity_curve}
+        results[name] = {
+            "metrics": metrics,
+            "equity": result.equity_curve,
+            "benchmark": result.benchmark,
+        }
     return results
 
 
@@ -110,6 +144,81 @@ def _cached_walkforward(
         train_days=train_days, test_days=test_days,
     )
     return result
+
+
+_BEST_COLUMNS = ("总收益%", "年化%", "夏普", "胜率%", "盈亏比", "超额%")
+
+
+def _benchmark_return(results: dict) -> float | None:
+    """从任一策略结果里取等权基准序列，换算成同期总收益（%）。"""
+    for data in results.values():
+        bench = data.get("benchmark")
+        if bench is None or len(bench) < 2:
+            continue
+        series = pd.Series(bench, dtype="float64").dropna()
+        if len(series) < 2 or float(series.iloc[0]) <= 0:
+            continue
+        return (float(series.iloc[-1]) / float(series.iloc[0]) - 1.0) * 100.0
+    return None
+
+
+def _excess_rows(rows: list[dict], bench_ret: float | None) -> list[dict]:
+    """加「超额%」列 = 策略总收益 − 同期等权基准总收益；没有基准就留 None。"""
+    for row in rows:
+        row["超额%"] = None if bench_ret is None else round(float(row["总收益%"]) - bench_ret, 2)
+    return rows
+
+
+def _summary_line(rows: list[dict], bench_ret: float | None) -> str:
+    """一句话结论：谁跑赢基准、赢多少；全跑输时也说清楚，不能糊弄成「表现良好」。"""
+    if not rows:
+        return ""
+    scored = [r for r in rows if r.get("超额%") is not None]
+    if bench_ret is None or not scored:
+        return "本次没有可用的等权基准数据，无法计算超额收益。"
+    winner = max(scored, key=lambda r: r["超额%"])
+    if winner["超额%"] >= 0:
+        return (
+            f"同期等权基准 {bench_ret:+.2f}%；「{winner['策略']}」跑赢基准 "
+            f"{winner['超额%']:.2f} 个百分点。"
+        )
+    return (
+        f"同期等权基准 {bench_ret:+.2f}%；本次全部策略跑输基准，"
+        f"最接近的是「{winner['策略']}」（落后 {abs(winner['超额%']):.2f} 个百分点）。"
+    )
+
+
+def _tint_best(column: pd.Series, colour: str) -> list[str]:
+    """按列上底色：只给该列最优值中的最大值上色（NaN 不参与）。
+
+    不用 ``Styler.highlight_max``：pandas 3.0 把它改成按子集整体/行方向选最大值，
+    表现与 2.x 的「每列一个」不同，容易被静默改坏；这里的逐列写法与版本无关。
+    """
+    if column.dropna().empty:
+        return ["" for _ in column]
+    top = column.max()
+    return [f"background-color: {colour}" if value == top else "" for value in column]
+
+
+def _tint_lowest(column: pd.Series, colour: str) -> list[str]:
+    """回撤列专用：最小（跌得最少）的那个上色。"""
+    if column.dropna().empty:
+        return ["" for _ in column]
+    low = column.min()
+    return [f"background-color: {colour}" if value == low else "" for value in column]
+
+
+def _styled_table(frame: pd.DataFrame, *, has_benchmark: bool) -> object:
+    """只给每列最优值上底色；不改字体色，深色主题下保持可读。"""
+    keep = [c for c in _BEST_COLUMNS if c in frame.columns]
+    if not has_benchmark and "超额%" in keep:
+        keep.remove("超额%")
+    styler = frame.style.format(precision=2, na_rep="—")
+    if keep:
+        styler = styler.apply(_tint_best, subset=keep, axis=0, colour=cs.BEST_UP)
+    if "最大回撤%" in frame.columns:
+        styler = styler.apply(_tint_lowest, subset=["最大回撤%"], axis=0, colour=cs.BEST_DOWN)
+    return styler
 
 
 def render():
@@ -163,42 +272,39 @@ def render():
                 json.dumps(boards, ensure_ascii=False), exclude_st,
             )
 
-            # 指标对比表
-            st.subheader("指标对比")
+            # 指标对比表 + 一句话结论
+            bench_ret = _benchmark_return(results)
             rows = []
             for name, data in results.items():
                 m = data["metrics"]
                 rows.append({
                     "策略": name,
-                    "总收益%": m.get("total_return", 0),
-                    "年化%": m.get("annual_return", 0),
-                    "最大回撤%": m.get("max_drawdown", 0),
-                    "夏普": m.get("sharpe", 0),
-                    "胜率%": m.get("win_rate", 0),
-                    "盈亏比": m.get("profit_loss", 0) or 0,
-                    "交易次数": m.get("trade_count", 0),
+                    "总收益%": round(float(m.get("total_return", 0) or 0), 2),
+                    "年化%": round(float(m.get("annual_return", 0) or 0), 2),
+                    "超额%": None,
+                    "最大回撤%": round(float(m.get("max_drawdown", 0) or 0), 2),
+                    "夏普": round(float(m.get("sharpe", 0) or 0), 2),
+                    "胜率%": round(float(m.get("win_rate", 0) or 0), 2),
+                    "盈亏比": round(float(m.get("profit_loss", 0) or 0), 2),
+                    "交易次数": int(m.get("trade_count", 0) or 0),
                 })
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+            _excess_rows(rows, bench_ret)
+            st.subheader("指标对比")
+            st.caption(_summary_line(rows, bench_ret))
+            st.dataframe(
+                _styled_table(pd.DataFrame(rows), has_benchmark=bench_ret is not None),
+                width="stretch",
+                hide_index=True,
+            )
 
             # 资金曲线对比
             st.subheader("资金曲线对比")
-            fig = go.Figure()
-            colors = {"趋势跟随策略": "#1f77b4", "动量策略": "#d62728"}
-            for name, data in results.items():
-                eq = data["equity"]
-                if eq.empty:
-                    continue
-                fig.add_trace(go.Scatter(
-                    x=pd.to_datetime(eq.index),
-                    y=eq.values,
-                    mode="lines",
-                    name=name,
-                    line=dict(color=colors.get(name, "#333"), width=2),
-                ))
-            fig.update_layout(height=400, margin=dict(l=40, r=20, t=30, b=30),
-                              yaxis_title="资产（元）", xaxis_title="日期")
-            apply_time_axis(fig)
-            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+            render_chart(
+                _equity_fig(results, initial_cash=float(initial_cash)),
+                name="compare-equity",
+                caption="每条线是一套策略在同一段历史里的账户资产；灰虚线是「等权持有全部候选股」"
+                        "的基准，用来判断策略本身有没有超额，而不是靠大盘上涨。",
+            )
 
     # ============ Tab 2: Walk-Forward ============
     with tab2:
@@ -238,7 +344,7 @@ def render():
                     "样本外胜率%": round(w["oos_win_rate"], 2),
                     "样本外笔数": w["oos_trades"],
                 })
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+            st.dataframe(rows, width="stretch", hide_index=True)
 
             st.subheader("样本外汇总")
             m = wf.oos_metrics
@@ -250,15 +356,9 @@ def render():
 
             if not wf.oos_equity.empty:
                 st.subheader("样本外资金曲线")
-                fig2 = go.Figure()
-                fig2.add_trace(go.Scatter(
-                    x=pd.to_datetime(wf.oos_equity.index),
-                    y=wf.oos_equity.values,
-                    mode="lines",
-                    name="样本外资产",
-                    line=dict(color="#2ca02c", width=2),
-                ))
-                fig2.update_layout(height=350, margin=dict(l=40, r=20, t=30, b=30),
-                                   yaxis_title="资产（元）", xaxis_title="日期")
-                apply_time_axis(fig2)
-                st.plotly_chart(fig2, use_container_width=True, config=PLOTLY_CONFIG)
+                render_chart(
+                    _oos_fig(wf.oos_equity),
+                    name="compare-walkforward",
+                    caption="样本外资产曲线：只包含「训练段之后就再没见过」的那段历史，"
+                            "它比训练段好看才有意义。",
+                )

@@ -11,6 +11,9 @@
 - 手续费：买入万三，卖出万三 + 印花税千一
 - 滑点：成交价按千一偏移（买入加价、卖出减价）
 - 涨跌停：涨停无法买入、跌停无法卖出（简化判断）
+
+Revision History:
+    2026-10-28  (phase 1) expose equal-weight benchmark on BacktestResult
 """
 from __future__ import annotations
 
@@ -65,6 +68,44 @@ class BacktestResult:
     equity_curve: pd.Series   # 资金曲线（日期索引）
     trades: pd.DataFrame      # 每笔交易明细
     metrics: dict = field(default_factory=dict)  # 绩效指标
+    # 基准净值（同期等权持有全部候选股，首日归一为 1.0）。旧缓存/旧调用方没有这个
+    # 字段时为 None，展示层需判空降级（见 .github/plans/2026-10-28-1 第 7 节）。
+    benchmark: pd.Series | None = None
+
+
+def equal_weight_benchmark(
+    codes: list[str],
+    bars_map: dict[str, pd.DataFrame],
+    start,
+    end,
+) -> pd.Series | None:
+    """构造回测基准：同期等权持有**全部候选股**、不再选股也不择时。
+
+    用途是回答「策略到底有没有超额收益」——策略曲线与这条基准的差就是 alpha。
+    复用 factors.regime.equal_weight_index（等权收益累乘，不受高价股与成分变动影响），
+    无新增数据源。无可用数据时返回 None。
+
+    参数：
+        codes: 候选股票代码列表（策略硬过滤后的池子）。
+        bars_map: {code: 日线 DataFrame}。
+        start/end: 回测区间。
+    """
+    if not codes:
+        return None
+    from stock_plan.factors.regime import MIN_CONTRIBUTORS, equal_weight_index
+
+    window = {c: bars_map[c] for c in codes if c in bars_map and bars_map[c] is not None}
+    if not window:
+        return None
+    index = equal_weight_index(
+        window,
+        start=start,
+        end=end,
+        min_contributors=max(1, min(MIN_CONTRIBUTORS, len(window))),
+    )
+    if index is None or len(index) < 2:
+        return None
+    return index
 
 
 def _price_limit(code: str, bars: pd.DataFrame, idx: int) -> tuple[float, float]:
@@ -133,6 +174,9 @@ def run_backtest(
     trading_days = sorted(all_dates)
     if not trading_days:
         return BacktestResult(pd.Series(dtype=float), pd.DataFrame())
+
+    # 基准：同期等权持有全部候选股，用于区分「策略能力」与「大盘/池子本身涨跌」。
+    benchmark = equal_weight_benchmark(codes, bars_map, config.start, config.end)
 
     # 为每只股票建立 日期→行号 索引，便于按日取数据
     date_index = {code: bars_map[code].set_index("date") for code in codes}
@@ -475,7 +519,7 @@ def run_backtest(
     # 统一为 DatetimeIndex，便于后续 resample
     equity.index = pd.to_datetime(equity.index)
     trades_df = pd.DataFrame(trades)
-    return BacktestResult(equity_curve=equity, trades=trades_df)
+    return BacktestResult(equity_curve=equity, trades=trades_df, benchmark=benchmark)
 
 
 if __name__ == "__main__":

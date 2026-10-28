@@ -123,7 +123,7 @@ def _render_result(
         }
         for cat, key, cn, default, sug in rows
     ]
-    st.dataframe(table, use_container_width=True, hide_index=True)
+    st.dataframe(table, width="stretch", hide_index=True)
 
     unsupported = result.get("unsupported") or []
     unknown = result.get("unknown") or []

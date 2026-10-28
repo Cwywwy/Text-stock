@@ -14,6 +14,7 @@ Revision History:
     2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
     2026-09-04  require public acknowledgement before shared strategy submission
     2026-10-28  AI 一句话生成从「LLM 智能分析」页搬到本页，并支持一键套用到表单
+2026-10-28  (branch4 phase 0) 资金曲线改调共享主图工厂
 """
 from __future__ import annotations
 
@@ -27,7 +28,7 @@ from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.data.storage import Storage
 from stock_plan.strategy.custom import CustomStrategy
 from stock_plan.ui.strategy_ai import render_ai_strategy_section
-from stock_plan.ui.widgets import PLOTLY_CONFIG, board_filter_ui, equity_curve_fig, page_glossary
+from stock_plan.ui.widgets import backtest_hero_fig, board_filter_ui, page_glossary, render_chart
 
 # 本页名词速览（R2 亲民化）
 BUILDER_GLOSSARY = {
@@ -312,13 +313,14 @@ def render():
 
             # 收益曲线（R3 需求：累计收益率 % + 回撤区域标注）
             st.subheader("📈 收益曲线")
-            st.caption("蓝线 = 累计收益率（从第一天算起赚/亏百分之几）；红色阴影 = 中途回撤的深度。")
-            fig_ret = equity_curve_fig(result.equity_curve)
-            if fig_ret is not None:
-                st.plotly_chart(fig_ret, use_container_width=True, config=PLOTLY_CONFIG)
+            render_chart(
+                backtest_hero_fig(result),
+                name="visual-builder-equity",
+                caption="实线是累计收益率（从第一天算起赚/亏百分之几），红色阴影是中途回撤的深度。",
+            )
 
             if result.trades is not None and not result.trades.empty:
-                st.dataframe(result.trades.tail(20), use_container_width=True, hide_index=True)
+                st.dataframe(result.trades.tail(20), width="stretch", hide_index=True)
 
     with col16:
         st.warning(

@@ -2,6 +2,135 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-28（续 10）：分支4 收尾打磨（删冗余 / 补买卖点 / 对比页结论化）
+
+`分支3` 上线后回头通读图表代码，揪出四处「能用但不干净」的地方，在 `分支4` 一次改完；
+用户外出前授权「分支4 的改动你可以全权决定」。计划书：`.github/plans/done/2026-10-28-3-new-branch4-polish.md`。
+
+- **主图只剩一个工厂**：`widgets.equity_curve_fig()`（收益率口径）与回测页私有的 `_hero_fig()`
+  （收益率 + 金额双口径）逻辑重复，回撤带、基准换算各写一遍。合并为
+  `widgets.backtest_hero_fig(result, *, mode, trades, height)`，回测页、可视化构建页、
+  样张脚本都调它；删掉 `equity_curve_fig()` 并加测试守护，防止「改一处忘另一处」复发。
+- **补上已批准但漏做的功能**：Phase 1 曾定「买卖点标注默认关、可开关」，代码里没有。
+  现在回测页主图右侧有「标注买卖点」开关（默认关），打开后 ▲ 买（红）/ ▼ 卖（绿），
+  hover 显示代码与成交价；140 笔交易时密度仍可读，因此默认不打扰。
+- **策略对比页能说结论了**：指标对比表新增「超额%」（策略总收益 − 同期等权基准），
+  每列最优值上底色（收益类红、回撤类绿），表格上方一句话说清谁跑赢基准多少；
+  全部跑输时明确写「本次全部策略跑输基准」，不糊弄成「表现良好」。
+- **清理重复文案**：持仓诊断页「单股回测样本单一」原来在图注和 caption 各打一遍，删掉后者。
+- **`chart_style`**：新增 `BEST_UP` / `BEST_DOWN`（表格最优值底色，只染背景不改字体色）、
+  `add_level_line(..., value_text=...)`（金额类参考线不再被迫显示两位小数）。
+- 修一个静默错误：pandas 3.0 的 `Styler.highlight_max` 语义与 2.x 不同，会让「每列最优值」上错格子；
+  改为逐列 `Styler.apply()`，并加测试锁死着色格子数。
+- 结果：全量 `pytest` 由 309 增至 **324 passed**；测试报告见
+  `tests/reports/2026-10-28-18-12.report-1.md`；样张 `.dsh-tmp/charts/shot-branch4-markers.png`。
+
+## 2026-10-28（续 9）：图表观感重做（Phase 0/1）+ 信号可解释与 LLM 解读（Phase 0–3）
+
+两件事同时在 `分支3` 上推进，各自一个计划书、分阶段提交。
+
+### A. 图表可视化升级（`.github/plans/2026-10-28-1-new-chart-visual-refresh.md`）
+
+- **新增 `src/stock_plan/ui/chart_style.py`**：把配色、字号、间距、轴格式收进一个纯函数模块
+  （近黑画布 / 面板色 / 红涨绿跌 / 右侧纵轴 / 无网格 / 统一 hover 与 `uirevision`），
+  之后所有图都从这里取样式；换技术栈时只改这一处。
+- **`src/stock_plan/ui/widgets.py`**：新增 `chart_config()`（导出文件名带图名）、
+  `render_chart()`、`multi_line_fig()`；`equity_curve_fig()` 改为走 `chart_style`。
+- **回测结果页重排**（`src/stock_plan/ui/views/backtest.py`）：策略曲线 + **等权基准曲线**叠加、
+  回撤阴影、四指标卡、`st.tabs` 收纳「总览 / 月度 / 交易 / 归因」，不再把 5 图 3 表一路铺开；
+  月度收益改真日期轴、柱顶只标出 |值| ≥ 2% 的月份；热力图去标题、只留刻度与 `%` 后缀。
+- **`src/stock_plan/backtest/engine.py`**：`BacktestResult` 新增 `benchmark`，新增
+  `equal_weight_benchmark()` 复用 `factors.regime.equal_weight_index()`，旧调用不受影响。
+- **`scripts/preview_charts.py`**：不启动 Streamlit、不连数据库就能生成「改造前 / 改造后」样张 HTML，
+  用固定种子合成数据；改观感时先看样张，不反复跑全 A 股回测。
+- 结果：全量 `pytest` 从 210 增至 **229 passed**（`tests/test_chart_style.py` 15 项 +
+  `tests/test_backtest_benchmark.py` 4 项）。
+- **Phase 2 其他页面统一**：`src/stock_plan/ui/views/compare.py` 的资金曲线改用
+  `widgets.benchmark_equity_fig()`（等权基准乘初始资金，与资产曲线同量纲，不再画成贴底直线）；
+  `src/stock_plan/ui/views/portfolio.py` 的价位线图下沉为 `widgets.price_level_fig()`——
+  买入价 / 止损 / 止盈 / 做T低吸 / 做T高抛五条线统一由 `chart_style.add_level_line()` 出；
+  可视化构建器的收益曲线也改走 `render_chart()`。全 `ui/` 去掉 Streamlit 1.63 已弃用的
+  `use_container_width`（表格统一 `width="stretch"`），`multi_line_fig()` 的基准不再占用系列色板
+  （第一条策略回到品牌绿）。新增 `scripts/preview_compare_portfolio.py` 出对比页 / 持仓页样张。
+- **修一个真 bug**：`apply_base_layout()` 原先整体赋值 `annotations`，会把 `add_level_line()`
+  加上的价位标签整批冲掉；改成先保留图上已有注释。
+- **新增 `tests/test_chart_views.py`**（9 项守护）：视图层不许硬编码颜色、不许再用
+  `use_container_width`、`st.plotly_chart` 只能出现在 `widgets.py`，并断言基准换算与五条价位线齐全。
+- **Phase 3 回归与收尾**：README 新增「图表规范」一节（样式单一真源、通用图只从工厂出、
+  页面专用图也不许硬编码颜色、改观感先看样张）；全量 `pytest` **309 passed**；
+  测试报告归档到 `tests/reports/2026-10-28-18-03.report-1.md`；计划书移入 `.github/plans/done/`。
+  至此图表升级 Phase 0–3 全部完成。
+
+### B. 信号可解释 + LLM 并发加固（`.github/plans/2026-10-28-2-signal-explain-report.md`）
+
+问「为什么是这 5 只」以前只能看每只股票的一句理由。现在有四层回答，且**不新增首屏耗时**。
+
+- **Phase 0 LLM 基础设施**（`6183fae`）：`llm/budget.py` 按 token 预算裁剪 prompt 并记录丢掉了什么；
+  `llm/cache.py` 把 `(任务, 输入哈希)` 写进 `data/cache/llm/`（TTL 7 天，`LLM_CACHE_DISABLE=1` 可关）；
+  `llm/client.py` 加 `Semaphore(2)` 并发闸门、429/超时退避一次、`ChatResult(text, error, cached, usage)`，
+  并把共享的 `last_error` 改成 `threading.local`（多人同时用不会串错误提示）。
+- **Phase 1 事实层**（`222d4fb`）：`factors/filter.py` 新增 `filter_universe_explained()`，
+  把「被硬过滤挡掉的理由」保留下来（ST / 无日线 / 次新 / 停牌 / 流动性不足，各带触发数值）；
+  `strategy/builtin.py` 新增 `score_with_penalties()`，逐条记录扣分（追高 −100、趋势向下 −100、
+  偏离过大 −30/−50、RSI 过热 −20），`score()` 数值逐位不变；`signal/report.py` 是新的事实层数据类；
+  `signal/generator.py` 新增 `generate_signal_report()`。
+- **Phase 2 页面即时对比**（`6734816`、`34ed5a8`）：今日页新增默认折叠的「🔍 为什么是这几只」区块——
+  入选者与紧随 3 名的对比表、分差瀑布图、扣分逐条清单、被硬过滤挡掉的样本表；
+  `generate_signals_with_report()` 让信号表与报告**共用一次打分**（不再算两遍 47 秒）。
+- **Phase 3 LLM 深度解读**（`0870b7b`）：新增 `llm/signal_narrative.py`，把事实清单压成
+  ≤1400 token 的 prompt，要求模型只输出 JSON；**数字闸门**——模型只能原样引用事实清单里的数字，
+  编造的数字会被拦下并回退确定性模板；`risks` 写成对象也兼容。缓存命中会在页面上写「缓存于 x 分钟前」。
+  真实调用（GLM-4-Flash，免费档）一次约 21 秒、1311+269 token。
+- 结果：全量 `pytest` 从 229 增至 **300 passed**。**Phase 4（回归报告、README、归档）本次完成。**
+
+### 踩坑记录（两件值得留的）
+
+- 以 `#` 开头的柱子标签会被 plotly.js 当数字（`"#6 300908"` → `6300908`），整条 x 轴退化成
+  `6M/7M` 数值轴——分类标签别以 `#` 开头，并显式 `update_xaxes(type="category")`。
+- `LLMClient(api_key="", ...)` **不会**降级成 mock：构造函数会用 `.env` 的 key 兜底，
+  测试里想造 mock 必须显式 `client.mock = True`，否则真的会打到线上、烧掉免费额度。
+
+## 2026-10-28（续 8）：归档旧副本，并拔掉脚本里写死的旧路径
+
+用户认可「清理现场」后执行五件事。
+
+- **改名而不是删除**：`D:\Vscode\stock plan` → `D:\Vscode\stock plan-已停用-20260905`
+  （该副本最后一次改动是 2026-09-05）。副本原样保留，随时能翻回去查历史，
+  但它已经不可能再被误用：其 `.venv\Lib\site-packages\stock_plan.pth` 写的是旧路径，
+  改名后 `import stock_plan` 直接 `ModuleNotFoundError`——**用错解释器会当场露馅**，
+  而不是再产生「app 在这边、报错在那边」的误导性 ImportError。
+- **`.cmd` 包装脚本改用相对锚点**：`scripts/run_update.cmd`、`scripts/publish_snapshot.cmd`
+  原本硬编码 `cd /d "D:\Vscode\stock plan\Text"`，旧副本一改名就彻底失效；
+  改为 `cd /d "%~dp0.."`（脚本所在 `scripts\` 的上一级＝项目根），换副本、换盘符都不用再改。
+  附带说明：现役计划任务**并不**调用这两个 `.cmd`——实测 `\StockPlan\Daily_Update` 与
+  `\StockPlan\Daily_Publish` 的 XML 动作是
+  `powershell -File "D:\DeepSeekHarness\案例区\stock plan\scripts\daily_job.ps1"`，
+  `WorkingDirectory` 也指向案例区副本；这两个 `.cmd` 属历史包装，留着供手工复现。
+- **清残留进程**：结束 06:10 起挂着的孤儿探测进程（`data\logs\_probe_fin.py`）。
+- **摘掉 3 个指向旧副本的 git worktree**：`D:\Vscode\stock plan.worktrees` 下的
+  `branch2`、`branch2-updates-and-improvements`、`fix-cloud-oom`，其 `.git` 文件仍指向
+  已归档副本的 `.git/worktrees\...`，`git -C` 进去直接报
+  `gitfile does not point to a valid repository`，`git worktree remove` 也拒绝
+  （`is not a .git file`）。做法是删目录 + `git worktree prune -v`：三个分支
+  （`branch2`、`agents/branch2-updates-and-improvements`、`分支1`）及其提交全部保留，
+  现在 `git worktree list` 只剩主工作区；空目录 `branch1-data-update`、
+  `error-handling-in-chatbot` 与空的 `stock plan.worktrees` 一并删除。
+- **把 490 MB 的嵌套旧副本挪出项目目录**：`案例区\stock plan\Text`（19,687 个文件、
+  最后改动 2026-09-04、未入版本控制）整体移到
+  `D:\DeepSeekHarness\_archive\stock-plan-Text-20260904`；项目目录里不再有第二份
+  `src\`/`.venv`/`data\`，也就没有"从项目内部再捡到半旧副本"的可能。
+
+### 验证
+
+- 负向复验（改名前）：用旧副本 venv 跑本副本 `app.py` → 退出码 2、只输出中文说明、
+  **无 traceback、无 ImportError**，即上一节的自检按预期拦住。
+- 改名后：旧副本 venv 连 `stock_plan` 都 import 不到（`.pth` 指向已不存在的路径），
+  误用同样会立刻报错，不会静默跑起一个半旧版本。
+- `pytest tests -q`：**210 passed / 7.27 s**（报告见 `tests/reports/2026-10-28-15-34.report-1.md`）。
+- 8501 页面 `_stcore/health` = `200 ok`；`import stock_plan` 指向案例区副本。
+- 清理后：`git worktree list` 只剩主工作区、`git status` 干净、`import stock_plan` 正常。
+- 应用重启后 headless 渲染（`AppTest`）：`exceptions=[]`、`errors=[]`、退出码 0。
+
 ## 2026-10-28（续 7）：启动环境自检——用错 venv 不再报「半个路径」的 ImportError
 
 用户贴来一段报错：`ImportError: cannot import name 'market' from 'stock_plan.ui.views'`，

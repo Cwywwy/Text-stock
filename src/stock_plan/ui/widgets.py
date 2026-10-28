@@ -4,6 +4,12 @@
 
 图表交互（暂时需求 1）：所有 Plotly 图表统一走 PLOTLY_CONFIG，并通过
 apply_time_axis 使用**真正的日期轴**，使刻度密度随缩放连续重算。
+
+Revision History:
+    2026-10-28  (phase 0) add chart_style tokens, chart_config/render_chart
+    2026-10-28  (phase 2) add score_waterfall_fig for signal explainability
+    2026-10-28  (phase 3) waterfall: drop axis title, pad x range so edge bars fit
+2026-10-28  (branch4 phase 0) one shared backtest_hero_fig with optional trade markers
 """
 from __future__ import annotations
 
@@ -12,6 +18,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from stock_plan.factors.board import BOARDS, BOARD_DESC, filter_universe_ui
+from stock_plan.ui import chart_style as cs
 
 # ---------------------------------------------------------------------------
 # 统一的 Plotly 交互配置（暂时需求 1：操作更便捷、缩放更连续）
@@ -28,6 +35,7 @@ PLOTLY_CONFIG: dict = {
     "displaylogo": False,
     "doubleClick": "reset",
     "showTips": True,
+    "responsive": True,
     "modeBarButtonsToRemove": ["select2d", "lasso2d", "autoScale2d"],
     "toImageButtonOptions": {
         "format": "png",
@@ -35,6 +43,96 @@ PLOTLY_CONFIG: dict = {
         "scale": 2,
     },
 }
+# 注意：dragmode=pan 是 layout 属性、不是 config 属性，由 chart_style.apply_base_layout
+# 统一设置（原注释声称 config 里设了 dragmode，实际没有 —— 2026-10-28 修正）。
+
+
+def chart_config(name: str = "chart") -> dict:
+    """按图名生成 Plotly 配置：导出的 PNG 文件名带图名，不再所有图都叫 stock_plan_chart。"""
+    cfg = dict(PLOTLY_CONFIG)
+    cfg["toImageButtonOptions"] = dict(PLOTLY_CONFIG["toImageButtonOptions"])
+    cfg["toImageButtonOptions"]["filename"] = f"stock_plan_{name}"
+    return cfg
+
+
+def render_chart(
+    fig: go.Figure,
+    *,
+    name: str = "chart",
+    caption: str | None = None,
+    height: int | None = None,
+) -> None:
+    """统一渲染一张图。
+
+    - 宽度用 1.63 起的新写法 `width="stretch"`（`use_container_width` 已弃用）
+    - 导出名按图名区分
+    - caption 是「一句话解读」，按图表规范第 1 条，图下面必须说明它在讲什么
+    """
+    if fig is None:
+        st.info("暂无数据，无法绘图。")
+        return
+    if height:
+        fig.update_layout(height=int(height))
+    st.plotly_chart(fig, width="stretch", config=chart_config(name))
+    if caption:
+        st.caption(caption)
+
+
+def multi_line_fig(
+    series_map: dict[str, pd.Series],
+    *,
+    height: int = cs.H_PRIMARY,
+    y_title: str | None = None,
+    money: bool = False,
+    pct_points: bool = False,
+    benchmark: str | None = None,
+    rangeslider: bool = False,
+) -> go.Figure | None:
+    """多序列折线图（真日期轴 + 统一 hover + 调色板）。
+
+    参数：
+        series_map: {系列名: 以日期为索引的 Series}。
+        money: y 轴按金额千分位格式化。
+        pct_points: y 轴数值已是百分点，直接加 %。
+        benchmark: 基准系列名，画成灰色虚线并排在图例最后。
+        rangeslider: 是否在图下方加区间选择条（会额外占高，默认关）。
+    """
+    if not series_map:
+        return None
+    fig = go.Figure()
+    items = [(n, s) for n, s in series_map.items() if s is not None and len(s) > 0]
+    if not items:
+        return None
+    # 基准先画，让它压在主线下面；但基准不占用系列色板，
+    # 否则第一条策略会拿到第二种颜色，品牌主色白白浪费在灰虚线上。
+    items.sort(key=lambda kv: 0 if kv[0] == benchmark else 1)
+    colour_index = 0
+    for name, ser in items:
+        is_bench = name == benchmark
+        colour = cs.BENCHMARK if is_bench else cs.series_colour(colour_index)
+        if not is_bench:
+            colour_index += 1
+        fig.add_trace(
+            go.Scatter(
+                x=pd.to_datetime(ser.index),
+                y=ser.to_numpy(),
+                mode="lines",
+                name=name,
+                line=dict(
+                    color=colour,
+                    width=1.5 if is_bench else 2,
+                    dash="dash" if is_bench else None,
+                ),
+            )
+        )
+    cs.apply_base_layout(fig, height=height, y_title=y_title, zero_line=pct_points)
+    if money:
+        fig.update_yaxes(**cs.axis_money())
+    elif pct_points:
+        fig.update_yaxes(**cs.axis_pct_points())
+    apply_time_axis(fig, rangeslider=rangeslider)
+    return fig
+
 
 # 按缩放跨度自动切换日期格式（dtickrange 单位是毫秒 / "M1" 这类区间字符串）
 _DATE_TICKFORMATSTOPS = [
@@ -45,13 +143,15 @@ _DATE_TICKFORMATSTOPS = [
 ]
 
 
-def apply_time_axis(fig: go.Figure, title: str = "日期", rangeslider: bool = False) -> go.Figure:
+def apply_time_axis(fig: go.Figure, title: str = "", rangeslider: bool = False) -> go.Figure:
     """把 x 轴设为真正的日期轴。
 
     原先不少图表把日期转成 `str(d)[:10]` 再画，Plotly 会当成**分类轴**：分类轴的
     刻度位置是固定的，缩放时既不重算密度也不换格式，所以出现"放大后标签仍挤在一起
     或仍很稀疏"。改用 DatetimeIndex 后，Plotly 会随缩放连续重算刻度间隔与格式
     （见 _DATE_TICKFORMATSTOPS），配合 PLOTLY_CONFIG 的 scrollZoom 即为连续缩放。
+
+    标题默认留空：日期轴自解释，写上「日期」反而会和刻度标签抢位置（2026-10-28）。
 
     rangeslider=True 时在图下方加一条可拖拽的区间选择条（另一种连续缩放方式），
     会额外占用高度，默认关闭。
@@ -65,7 +165,7 @@ def apply_time_axis(fig: go.Figure, title: str = "日期", rangeslider: bool = F
         spikemode="across",
         spikethickness=1,
         spikedash="dot",
-        spikecolor="#888888",
+        spikecolor=cs.AXIS_TEXT,
     )
     return fig
 
@@ -225,64 +325,339 @@ def market_regime_panel(expanded: bool = False) -> None:
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=table.index, y=table["close"], mode="lines", name="等权指数",
-                line=dict(color="#1f77b4", width=2),
+                line=dict(color=cs.PRIMARY, width=2),
             ))
             fig.add_trace(go.Scatter(
                 x=table.index, y=table["ma20"], mode="lines", name="MA20",
-                line=dict(color="#ff7f0e", width=1),
+                line=dict(color=cs.series_colour(1), width=1),
             ))
             fig.add_trace(go.Scatter(
                 x=table.index, y=table["ma60"], mode="lines", name="MA60",
-                line=dict(color="#2ca02c", width=1),
+                line=dict(color=cs.series_colour(2), width=1),
             ))
-            fig.update_layout(
-                height=280, margin=dict(l=40, r=20, t=20, b=30),
-                yaxis_title="等权指数（起点 = 1）", hovermode="x unified",
-            )
+            cs.apply_base_layout(fig, height=cs.H_SECONDARY, y_title="等权指数（起点 = 1）")
             apply_time_axis(fig)
-            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+            render_chart(fig, name="market-regime")
         st.caption(
             "等权指数 = 每只股票的日收益率等权平均后累乘 —— 与个股价位无关，"
             "也不会因为成分股增减而跳空。"
         )
 
 
-def equity_curve_fig(equity: pd.Series) -> go.Figure | None:
-    """累计收益率曲线（%）+ 回撤区域标注（R3 需求）。
+BENCHMARK_LABEL = "等权基准（持有全部候选股）"
+
+
+def _trade_markers(fig: go.Figure, trades: pd.DataFrame | None, curve: pd.Series) -> None:
+    """在资金曲线上标出买卖点：▲ 买（红）/ ▼ 卖（绿），与红涨绿跌一致。
+
+    成交日不是每根 K 线都有，落在曲线上时取「当日或之前最近一个点」的曲线值，
+    避免标记悬空。默认不画，由调用方按需传入 trades。
+    """
+    if trades is None or len(trades) == 0 or "entry_date" not in trades.columns:
+        return
+    values = pd.Series(curve, dtype="float64").dropna()
+    if values.empty:
+        return
+    values.index = pd.to_datetime(values.index)
+
+    for column, price_column, symbol, colour, name in (
+        ("entry_date", "entry_price", "triangle-up", cs.UP, "买入"),
+        ("exit_date", "exit_price", "triangle-down", cs.DOWN, "卖出"),
+    ):
+        if column not in trades.columns:
+            continue
+        xs: list[pd.Timestamp] = []
+        ys: list[float] = []
+        texts: list[str] = []
+        for _, row in trades.iterrows():
+            day = row.get(column)
+            if pd.isna(day):
+                continue
+            stamp = pd.Timestamp(day)
+            pos = values.index.searchsorted(stamp, side="right") - 1
+            if pos < 0:
+                continue
+            price = row.get(price_column) if price_column in trades.columns else None
+            label = f"{name} {row.get('code', '')}"
+            if price is not None and pd.notna(price):
+                label += f" · {float(price):.2f} 元"
+            xs.append(stamp)
+            ys.append(float(values.iloc[pos]))
+            texts.append(label)
+        if not xs:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="markers",
+                name=name,
+                marker=dict(symbol=symbol, size=9, color=colour, line=dict(width=0)),
+                text=texts,
+                hovertemplate="%{text}<br>%{x|%Y-%m-%d}<extra></extra>",
+            )
+        )
+
+
+def backtest_hero_fig(
+    result,
+    *,
+    mode: str = "收益率",
+    trades: pd.DataFrame | None = None,
+    height: int | None = None,
+) -> go.Figure | None:
+    """回测主图：策略资金曲线 + 等权基准（灰色虚线）+ 回撤带，金额/收益率双口径。
 
     参数：
-        equity: 以日期为索引、总资产为值的 Series。
+        result: ``BacktestResult``，需要 ``equity_curve``，``benchmark`` 可选。
+        mode: 「收益率」（累计收益率 %）或「金额」（总资产，元）。
+        trades: 传入则标出买卖点；默认不传，因为百笔交易糊在图上会看不清。
+        height: 图高，默认 ``chart_style.H_PRIMARY``。
 
-    返回：
-        plotly Figure；数据为空时返回 None。
+    这是全站唯一的主图工厂：回测页、可视化构建页、样张脚本都调它，
+    避免「两处各写一遍、改一处忘另一处」。
     """
+    equity = getattr(result, "equity_curve", None)
     if equity is None or len(equity) < 2:
+        return None
+    equity = pd.Series(equity, dtype="float64").dropna()
+    if len(equity) < 2:
         return None
     base = float(equity.iloc[0])
     if base <= 0:
         return None
-    pct = (equity / base - 1) * 100
-    peak = pct.cummax()
-    # 用真正的日期类型（不是 'YYYY-MM-DD' 字符串）：字符串会被 Plotly 当成分类轴，
-    # 缩放下刻度密度与格式不会重算。
-    x = pd.to_datetime(pct.index)
+    x = pd.to_datetime(equity.index)
+    benchmark = getattr(result, "benchmark", None)
+    money = mode == "金额"
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=x, y=peak, mode="lines", name="历史最高点",
-        line=dict(width=0), hoverinfo="skip", showlegend=False,
-    ))
-    fig.add_trace(go.Scatter(
-        x=x, y=pct, mode="lines", name="累计收益率",
-        fill="tonexty", fillcolor="rgba(214,39,40,0.18)",
-        line=dict(color="#1f77b4", width=2),
-        hovertemplate="%{x|%Y-%m-%d}<br>累计收益率 %{y:.2f}%<extra></extra>",
-    ))
-    fig.update_layout(
-        height=400,
-        margin=dict(l=40, r=20, t=30, b=30),
-        yaxis_title="累计收益率（%）",
-        hovermode="x unified",
-        dragmode="pan",
+    if money:
+        curve = equity
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=curve.to_numpy(),
+                mode="lines",
+                name="总资产",
+                line=dict(color=cs.PRIMARY, width=2),
+                hovertemplate="%{x|%Y-%m-%d}<br>总资产 %{y:,.0f} 元<extra></extra>",
+            )
+        )
+        cs.add_level_line(
+            fig,
+            base,
+            label="初始资金",
+            colour=cs.BENCHMARK,
+            value_text=cs.fmt_money(base),
+        )
+    else:
+        curve = (equity / base - 1.0) * 100.0
+        cs.add_drawdown_band(fig, x, curve, name="策略")
+        cs.add_level_line(fig, 0.0, label="零收益", colour=cs.GRID)
+
+    if benchmark is not None and len(benchmark) > 0:
+        bench = pd.Series(benchmark, dtype="float64").dropna()
+        if len(bench) > 0:
+            bench_base = float(bench.iloc[0])
+            if money:
+                bench_series = bench * base
+                hover = "%{x|%Y-%m-%d}<br>基准 %{y:,.0f} 元<extra></extra>"
+            else:
+                bench_series = (bench / bench_base - 1.0) * 100.0 if bench_base > 0 else bench * 0.0
+                hover = "%{x|%Y-%m-%d}<br>基准 %{y:.2f}%<extra></extra>"
+            fig.add_trace(
+                go.Scatter(
+                    x=pd.to_datetime(bench.index),
+                    y=bench_series.to_numpy(),
+                    mode="lines",
+                    name=BENCHMARK_LABEL,
+                    line=dict(color=cs.BENCHMARK, width=1.4, dash="dot"),
+                    hovertemplate=hover,
+                )
+            )
+
+    _trade_markers(fig, trades, curve)
+
+    cs.apply_base_layout(
+        fig,
+        height=height or cs.H_PRIMARY,
+        y_title="总资产（元）" if money else "累计收益率（%）",
+        zero_line=not money,
+        legend="h",
     )
-    apply_time_axis(fig, title="日期", rangeslider=True)
+    if money:
+        fig.update_yaxes(**cs.axis_money())
+    else:
+        fig.update_yaxes(**cs.axis_pct_points())
+    apply_time_axis(fig)
+    return fig
+
+
+def benchmark_equity_fig(
+    series_map: dict[str, pd.Series],
+    *,
+    benchmark: pd.Series | None = None,
+    initial_cash: float = 100_000.0,
+    height: int | None = None,
+    y_title: str | None = "总资产（元）",
+) -> go.Figure | None:
+    """多条资金曲线 + 等权基准（策略对比页）。
+
+    基准序列是「归一化到 1.0」的指数，必须乘初始资金才能和资产曲线同量纲——
+    直接把 1.0~1.2 的指数画到 10 万的轴上会变成一条贴底的直线。
+    """
+    series: dict[str, pd.Series] = {
+        name: value
+        for name, value in (series_map or {}).items()
+        if value is not None and len(value) > 0
+    }
+    bench_label: str | None = None
+    if benchmark is not None and len(benchmark) > 0:
+        series[BENCHMARK_LABEL] = benchmark.astype(float) * float(initial_cash)
+        bench_label = BENCHMARK_LABEL
+    if not series:
+        return None
+    return multi_line_fig(
+        series,
+        height=height or cs.H_PRIMARY,
+        y_title=y_title,
+        money=True,
+        benchmark=bench_label,
+    )
+
+
+def price_level_fig(
+    bars: pd.DataFrame,
+    *,
+    buy_price: float | None = None,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+    t_buy: float | None = None,
+    t_sell: float | None = None,
+    tail: int = 120,
+    height: int | None = None,
+) -> go.Figure | None:
+    """个股收盘价 + 买入 / 止损 / 止盈 / 做T 价位参考线（持仓诊断页）。"""
+    if bars is None or bars.empty or "close" not in bars.columns:
+        return None
+    window = bars.tail(int(tail)) if tail else bars
+    fig = go.Figure(
+        go.Scatter(
+            x=pd.to_datetime(window["date"]),
+            y=window["close"],
+            mode="lines",
+            name="收盘价",
+            line=dict(color=cs.PRIMARY, width=2),
+            hovertemplate="%{x|%Y-%m-%d}<br>收盘 %{y:.2f} 元<extra></extra>",
+        )
+    )
+    for value, label, colour, dash in (
+        (buy_price, "买入价", cs.LEVEL_BUY, "dot"),
+        (stop_loss, "止损", cs.LEVEL_STOP, "dash"),
+        (take_profit, "止盈", cs.LEVEL_TARGET, "dash"),
+        (t_buy, "做T低吸", cs.LEVEL_T_BUY, "dot"),
+        (t_sell, "做T高抛", cs.LEVEL_T_SELL, "dot"),
+    ):
+        if value:
+            cs.add_level_line(fig, value, label=label, colour=colour, dash=dash)
+    cs.apply_base_layout(fig, height=height or cs.H_PRIMARY, y_title="价格（元）", right_axis=True)
+    apply_time_axis(fig)
+    return fig
+
+
+def score_waterfall_fig(report) -> go.Figure | None:
+    """「入选门槛 vs 紧随其后」的分差瀑布图（信号解释报告用）。
+
+    画法：每只落选股一根柱子，柱底落在**入选门槛**（第 N 名的综合分），柱高 = 它与
+    门槛的分数差。这样所有柱子共用一条基准线，肉眼立刻看出「差 0.1 分」和「差 6 分」
+    的区别；比把 87.6 / 87.1 / 86.2 三个数字画成从 0 开始的柱状图清楚得多。
+
+    颜色沿用红涨绿跌：高于门槛（几乎不会出现）为红、低于门槛为绿、持平为灰。
+
+    参数：
+        report: SignalReport（只要有 `picked` / `runners_up` / `entry_gap` 即可）。
+
+    返回：
+        plotly Figure；没有入选者或没有落选者时返回 None（页面据此不渲染图）。
+    """
+    if report is None:
+        return None
+    picked = list(getattr(report, "picked", ()) or ())
+    runners = list(getattr(report, "runners_up", ()) or ())
+    if not picked or not runners:
+        return None
+
+    gate_item = picked[-1]
+    gate = float(gate_item.score)
+    labels: list[str] = []
+    deltas: list[float] = []
+    scores: list[float] = []
+    names: list[str] = []
+    for item in runners:
+        score = float(item.score)
+        # 不要用 "#6 300908" 这类标签：以 # 加数字开头的字符串会被 plotly.js 当成
+        # 数值（"#6 300908" → 6300908），x 轴退化成 6M/7M 的数值轴。
+        labels.append(f"第{item.rank}名 {item.code}")
+        deltas.append(score - gate)
+        scores.append(score)
+        names.append(str(item.name))
+
+    colours = [
+        cs.DOWN if delta < 0 else (cs.NEUTRAL if delta == 0 else cs.UP)
+        for delta in deltas
+    ]
+    score_labels = [f"{score:.1f}" for score in scores]
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=labels,
+            y=deltas,
+            base=[gate] * len(deltas),
+            # 只有两三只落选股，柱子按容器宽度铺开就变成"大色块"、看着很肥；
+            # width 是分类轴单位（一格 = 1），固定成 0.36 格让柱子窄下来、留白变多。
+            width=0.36,
+            marker=dict(color=colours, line=dict(width=0)),
+            customdata=[[name, score, delta] for name, score, delta in zip(names, scores, deltas)],
+            hovertemplate=(
+                "%{x} %{customdata[0]}<br>综合分 %{customdata[1]:.1f}"
+                "<br>与门槛 %{customdata[2]:+.1f} 分<extra></extra>"
+            ),
+            name="紧随其后",
+            showlegend=False,
+        )
+    )
+    # 分差为 0 时柱子高度是 0、什么都看不见，所以额外画一个分数圆点：圆点落在门槛
+    # 虚线上就说明「并列」，落在下方就是落后多少，比只有柱子稳。
+    fig.add_trace(
+        go.Scatter(
+            x=labels,
+            y=scores,
+            mode="markers+text",
+            text=score_labels,
+            textposition="top center",
+            textfont=dict(size=cs.FONT_AXIS, color=cs.TEXT),
+            marker=dict(size=6, color=colours, line=dict(width=0)),
+            hoverinfo="skip",
+            showlegend=False,
+            cliponaxis=False,
+        )
+    )
+    fig.add_hline(
+        y=gate,
+        line=dict(color=cs.BENCHMARK, width=1, dash="dot"),
+    )
+    fig.update_xaxes(type="category")
+    span = max(scores + [gate]) - min(scores + [gate])
+    pad = max(0.3, span * 0.25)
+    cs.apply_base_layout(
+        fig,
+        height=cs.H_SECONDARY,
+        y_title=None,
+        right_axis=False,
+        legend=None,
+        margin=dict(l=44, r=14, t=24, b=26),
+    )
+    # 两边各留半格，避免首尾柱子贴着画布边缘被裁掉
+    fig.update_xaxes(range=[-0.55, len(labels) - 0.45])
+    fig.update_yaxes(range=[min(scores + [gate]) - pad, max(scores + [gate]) + pad])
     return fig
