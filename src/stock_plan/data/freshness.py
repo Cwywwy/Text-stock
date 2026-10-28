@@ -23,11 +23,11 @@ import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
+from stock_plan.data.clock import now_cn
 from stock_plan.data.storage import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ def scan_bars(bars_dir: Path | None = None, workers: int = 32) -> dict:
             "stale_7": 0,
             "stale_30": 0,
             "stale_codes": [],
-            "scanned_at": datetime.now().isoformat(timespec="seconds"),
+            "scanned_at": now_cn().isoformat(timespec="seconds"),
         }
 
     def one(path: Path) -> tuple[str, pd.Timestamp | None]:
@@ -98,7 +98,7 @@ def scan_bars(bars_dir: Path | None = None, workers: int = 32) -> dict:
         "stale_7": stale7,
         "stale_30": stale30,
         "stale_codes": stale_codes,
-        "scanned_at": datetime.now().isoformat(timespec="seconds"),
+        "scanned_at": now_cn().isoformat(timespec="seconds"),
         "scan_seconds": round(time.time() - t0, 1),
     }
     logger.info(

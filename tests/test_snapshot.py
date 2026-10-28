@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from datetime import datetime
 
 import pandas as pd
 import pytest
@@ -324,7 +325,7 @@ def test_restore_with_fallback_tries_bases_in_order(monkeypatch, tmp_path) -> No
     """回退顺序：首选地址失败后应继续尝试下一个，并返回第一个成功的结果。"""
     tried: list[str] = []
 
-    def fake_restore(base, bars_dir, tmp_dir, progress=None, part_workers=4):
+    def fake_restore(base, bars_dir, tmp_dir, progress=None, part_workers=4, max_age_days=None):
         tried.append(base)
         if "release" in base:
             raise RuntimeError("404 Not Found")
@@ -346,3 +347,103 @@ def test_restore_with_fallback_reports_all_failures(monkeypatch, tmp_path) -> No
     monkeypatch.setattr(snapshot, "restore_from_url", always_fail)
     with pytest.raises(RuntimeError, match="所有快照地址均恢复失败"):
         snapshot.restore_with_fallback(["u1", "u2"], tmp_path, tmp_path / "tmp")
+
+
+# ---------- 恢复地址同源 + 旧快照安全阀（2026-10-28） ----------
+# 事故复盘：发布早已改到 GitHub Releases，但「从云端快照恢复」按钮写死 raw_base_url()，
+# 读的是 2026-09-04 冻结的孤儿分支；恢复"成功"却把云端行情退回 2026-09-03，
+# 且启动恢复因 bars>=100 直接跳过，于是云端数据永久停在旧快照。
+
+def test_snapshot_restore_bases_release_first_and_deduped(monkeypatch) -> None:
+    """恢复地址表：当前发布后端（Release）优先，旧分支兜底，且不重复。"""
+    monkeypatch.delenv("STOCK_PLAN_SNAPSHOT_BACKEND", raising=False)
+    monkeypatch.setenv("DATA_SNAPSHOT_REPO", "Cwywwy/Text-stock")
+    bases = snapshot.snapshot_restore_bases()
+    assert bases[0] == "https://github.com/Cwywwy/Text-stock/releases/download/data-snapshot"
+    assert any("raw.githubusercontent.com/Cwywwy/Text-stock/data-snapshot" in b for b in bases)
+    assert len(bases) == len(set(bases))
+
+
+def test_update_center_restore_plan_uses_shared_bases(monkeypatch) -> None:
+    """手动恢复必须与启动恢复共用同一份地址表（本次事故的直接回归点）。"""
+    monkeypatch.delenv("STOCK_PLAN_SNAPSHOT_BACKEND", raising=False)
+    monkeypatch.setenv("DATA_SNAPSHOT_REPO", "Cwywwy/Text-stock")
+    from stock_plan.ui.views import update_center
+
+    bases, max_age_days = update_center._snapshot_restore_plan()
+    assert bases == snapshot.snapshot_restore_bases()
+    assert bases[0].startswith("https://github.com/")
+    assert max_age_days == snapshot.SNAPSHOT_MAX_AGE_DAYS > 0
+
+
+def test_bootstrap_uses_shared_bases(monkeypatch, tmp_path) -> None:
+    """启动恢复也用同一份地址表，不能再各自写死一串地址。"""
+    monkeypatch.setattr(snapshot, "BARS_DIR", tmp_path / "bars")
+    monkeypatch.setattr(snapshot, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(snapshot, "cloud_secrets_env", lambda: None)
+    seen: dict = {}
+
+    def fake_restore(bases, bars_dir, tmp_dir, progress=None, part_workers=4, max_age_days=None):
+        seen["bases"] = bases
+        seen["max_age_days"] = max_age_days
+        return {"bars_count": 1234}
+
+    monkeypatch.setattr(snapshot, "restore_with_fallback", fake_restore)
+    stats = snapshot.bootstrap_if_needed()
+    assert stats["bars_count"] == 1234
+    assert seen["bases"] == snapshot.snapshot_restore_bases()
+    # 空数据时不必卡年龄：有旧快照也胜过没有
+    assert seen["max_age_days"] is None
+
+
+def _manifest(created_at: str) -> dict:
+    return {
+        "bars_count": 1,
+        "zip_sha256": "x",
+        "zip_bytes": 1,
+        "created_at": created_at,
+        "parts": [{"file": part_filename(0), "bytes": 1, "sha256": "y"}],
+    }
+
+
+def test_manifest_age_days_handles_missing_and_bad_values() -> None:
+    now = datetime(2026, 10, 28, 12, 0, 0)
+    assert snapshot.manifest_age_days(_manifest("2026-10-27 16:37:00"), now=now) == 0
+    assert snapshot.manifest_age_days(_manifest("2026-09-04 02:50:51"), now=now) == 54
+    assert snapshot.manifest_age_days({}, now=now) is None
+    assert snapshot.manifest_age_days({"created_at": "not-a-date"}, now=now) is None
+
+
+def test_ensure_manifest_fresh_rejects_stale_snapshot() -> None:
+    """55 天前的旧快照必须被拒绝，而不是静默覆盖本地行情。"""
+    stale = _manifest("2026-09-04 02:50:51")
+    with pytest.raises(ValueError, match="快照过旧"):
+        snapshot._ensure_manifest_fresh(stale, snapshot.SNAPSHOT_MAX_AGE_DAYS, "https://x/releases")
+    snapshot._ensure_manifest_fresh(_manifest("2026-10-27 16:37:00"),
+                                    snapshot.SNAPSHOT_MAX_AGE_DAYS, "https://x/releases")
+    # 不设阈值时保持原行为（启动恢复空数据场景）
+    snapshot._ensure_manifest_fresh(stale, None, "https://x/releases")
+    # created_at 无法解析时不误伤
+    snapshot._ensure_manifest_fresh({"created_at": "bad"}, 7, "https://x/releases")
+
+
+def test_restore_with_fallback_forwards_max_age_and_skips_stale(monkeypatch, tmp_path) -> None:
+    """旧快照所在地址失败后应继续尝试下一个，并把阈值透传下去。"""
+    tried: list[tuple[str, int | None]] = []
+
+    def fake(base, bars_dir, tmp_dir, progress=None, part_workers=4, max_age_days=None):
+        tried.append((base, max_age_days))
+        if "releases/download" in base:
+            raise ValueError("快照过旧：生成于 2026-09-04，已 54 天（阈值 7 天）")
+        return {"bars_count": 7}
+
+    monkeypatch.setattr(snapshot, "restore_from_url", fake)
+    stats = snapshot.restore_with_fallback(
+        ["https://github.com/x/releases/download/t",
+         "https://raw.githubusercontent.com/x/t"],
+        tmp_path, tmp_path / "tmp", max_age_days=7,
+    )
+    assert stats["bars_count"] == 7
+    assert tried == [("https://github.com/x/releases/download/t", 7),
+                     ("https://raw.githubusercontent.com/x/t", 7)]
+

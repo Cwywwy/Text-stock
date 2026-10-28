@@ -21,11 +21,12 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
 
+from stock_plan.data.clock import now_cn, to_cn, today_cn
 from stock_plan.data.fetcher import DataFetcher
 from stock_plan.data.http_pool import keepalive_requests
 from stock_plan.data.storage import PROJECT_ROOT, Storage
@@ -50,7 +51,7 @@ def get_trade_calendar(refresh: bool = False) -> pd.DatetimeIndex:
     优先读本地缓存（当天有效），缓存不存在/过期/刷新时从 akshare 拉取；
     拉取失败则回退用"周一到周五"近似，保证定时任务不至于中断。
     """
-    today_str = date.today().isoformat()
+    today_str = today_cn().isoformat()
     if not refresh and CALENDAR_PATH.exists():
         try:
             head = CALENDAR_PATH.read_text(encoding="utf-8").splitlines()[0]
@@ -71,7 +72,7 @@ def get_trade_calendar(refresh: bool = False) -> pd.DatetimeIndex:
 
     if dates is None or dates.empty:
         # 回退：近 2 年的周一到周五（仅用于兜底判断，误差只有法定节假日）
-        rng = pd.bdate_range(end=date.today() + timedelta(days=365), periods=730)
+        rng = pd.bdate_range(end=today_cn() + timedelta(days=365), periods=730)
         dates = pd.DatetimeIndex(rng)
 
     try:
@@ -91,7 +92,7 @@ def latest_expected_trade_date(now: datetime | None = None) -> pd.Timestamp:
     规则：当天是交易日且已过 16:00 → 当天；否则 → 上一个交易日。
     （16:00 前当天收盘数据尚未生成，0:00/8:00 的定时任务对应的是前一交易日数据）
     """
-    now = now or datetime.now()
+    now = to_cn(now)
     trades = get_trade_calendar()
     today = pd.Timestamp(now.date())
     past = trades[trades <= today]
@@ -138,7 +139,7 @@ def _refresh_stock_list(fetcher: DataFetcher, storage: Storage) -> pd.DataFrame:
     的净抓取时间才 5~9 分钟，这 20 秒白花得可惜；更糟的是列表接口失败会让整轮
     更新直接退回本地并打印告警。所以「当天刷过就跳过」。
     """
-    today = date.today().isoformat()
+    today = today_cn().isoformat()
     marker = _list_marker(storage)
     try:
         if marker.exists() and marker.read_text(encoding="utf-8").strip() == today:
@@ -181,8 +182,8 @@ def update_incremental(
     t0 = time.time()
 
     expected = latest_expected_trade_date()
-    start = date.today() - timedelta(days=days)
-    end = date.today()
+    start = today_cn() - timedelta(days=days)
+    end = today_cn()
 
     # 缺口保护（2026-10-28）：`days=30` 的固定窗口只适用于「一直有在用」的机器。
     # 如果本机上次更新在 30 天以前，从今天往回只抓 30 天，旧数据和新抓取之间就会
@@ -309,8 +310,8 @@ def fetch_uncached(
     storage = storage or Storage()
     fetcher = fetcher or DataFetcher()
     t0 = time.time()
-    start = date.today() - timedelta(days=365 * years)
-    end = date.today()
+    start = today_cn() - timedelta(days=365 * years)
+    end = today_cn()
 
     stats = {"total": len(codes), "updated": 0, "failed": 0, "errors": [], "elapsed": 0.0}
     _notify(progress, done=0, total=len(codes), ok=0, failed=0, current="")
@@ -386,8 +387,8 @@ def rebuild_history(
     fetcher = fetcher or DataFetcher()
     t0 = time.time()
 
-    start = date.today() - timedelta(days=365 * years)
-    end = date.today()
+    start = today_cn() - timedelta(days=365 * years)
+    end = today_cn()
     codes = sorted(p.stem for p in storage.bars_dir.glob("*.parquet"))
 
     stats = {
@@ -485,7 +486,7 @@ def _log_run(kind: str, stats: dict) -> None:
     try:
         LOG_DIR.mkdir(parents=True, exist_ok=True)
         line = (
-            f"{datetime.now().isoformat(timespec='seconds')} [{kind}] "
+            f"{now_cn().isoformat(timespec='seconds')} [{kind}] "
             f"updated={stats.get('updated', 0)} failed={stats.get('failed', 0)} "
             f"uncached={len(stats.get('uncached', []))} elapsed={stats.get('elapsed', 0)}s"
             + (f" errors={stats['errors'][:3]}" if stats.get("errors") else "")
