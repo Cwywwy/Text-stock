@@ -8,6 +8,7 @@ Revision History:
     2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
     2026-09-04  show cloud sample-universe disclosure
     2026-10-28  (phase 2) charts go through chart_style factories with benchmark line
+    2026-10-28  (branch4 phase 1) excess column, best-per-column tint and one-line verdict
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ from stock_plan.backtest.walkforward import walk_forward
 from stock_plan.data.storage import Storage
 from stock_plan.strategy import store
 from stock_plan.strategy.registry import STRATEGIES
+from stock_plan.ui import chart_style as cs
 from stock_plan.ui.widgets import (
     BENCHMARK_LABEL,
     benchmark_equity_fig,
@@ -144,6 +146,63 @@ def _cached_walkforward(
     return result
 
 
+_BEST_COLUMNS = ("总收益%", "年化%", "夏普", "胜率%", "盈亏比", "超额%")
+
+
+def _benchmark_return(results: dict) -> float | None:
+    """从任一策略结果里取等权基准序列，换算成同期总收益（%）。"""
+    for data in results.values():
+        bench = data.get("benchmark")
+        if bench is None or len(bench) < 2:
+            continue
+        series = pd.Series(bench, dtype="float64").dropna()
+        if len(series) < 2 or float(series.iloc[0]) <= 0:
+            continue
+        return (float(series.iloc[-1]) / float(series.iloc[0]) - 1.0) * 100.0
+    return None
+
+
+def _excess_rows(rows: list[dict], bench_ret: float | None) -> list[dict]:
+    """加「超额%」列 = 策略总收益 − 同期等权基准总收益；没有基准就留 None。"""
+    for row in rows:
+        row["超额%"] = None if bench_ret is None else round(float(row["总收益%"]) - bench_ret, 2)
+    return rows
+
+
+def _summary_line(rows: list[dict], bench_ret: float | None) -> str:
+    """一句话结论：谁跑赢基准、赢多少；全跑输时也说清楚，不能糊弄成「表现良好」。"""
+    if not rows:
+        return ""
+    scored = [r for r in rows if r.get("超额%") is not None]
+    if bench_ret is None or not scored:
+        return "本次没有可用的等权基准数据，无法计算超额收益。"
+    winner = max(scored, key=lambda r: r["超额%"])
+    if winner["超额%"] >= 0:
+        return (
+            f"同期等权基准 {bench_ret:+.2f}%；「{winner['策略']}」跑赢基准 "
+            f"{winner['超额%']:.2f} 个百分点。"
+        )
+    return (
+        f"同期等权基准 {bench_ret:+.2f}%；本次全部策略跑输基准，"
+        f"最接近的是「{winner['策略']}」（落后 {abs(winner['超额%']):.2f} 个百分点）。"
+    )
+
+
+def _styled_table(frame: pd.DataFrame, *, has_benchmark: bool) -> object:
+    """只给每列最优值上底色；不改字体色，深色主题下保持可读。"""
+    keep = [c for c in _BEST_COLUMNS if c in frame.columns]
+    if not has_benchmark and "超额%" in keep:
+        keep.remove("超额%")
+    styler = frame.style.format(precision=2, na_rep="—")
+    if keep:
+        styler = styler.highlight_max(subset=keep, axis=0, props=f"background-color: {cs.BEST_UP}")
+    if "最大回撤%" in frame.columns:
+        styler = styler.highlight_min(
+            subset=["最大回撤%"], axis=0, props=f"background-color: {cs.BEST_DOWN}"
+        )
+    return styler
+
+
 def render():
     st.header("⚖️ 策略对比")
     from stock_plan.data.snapshot import is_cloud
@@ -195,22 +254,30 @@ def render():
                 json.dumps(boards, ensure_ascii=False), exclude_st,
             )
 
-            # 指标对比表
-            st.subheader("指标对比")
+            # 指标对比表 + 一句话结论
+            bench_ret = _benchmark_return(results)
             rows = []
             for name, data in results.items():
                 m = data["metrics"]
                 rows.append({
                     "策略": name,
-                    "总收益%": m.get("total_return", 0),
-                    "年化%": m.get("annual_return", 0),
-                    "最大回撤%": m.get("max_drawdown", 0),
-                    "夏普": m.get("sharpe", 0),
-                    "胜率%": m.get("win_rate", 0),
-                    "盈亏比": m.get("profit_loss", 0) or 0,
-                    "交易次数": m.get("trade_count", 0),
+                    "总收益%": round(float(m.get("total_return", 0) or 0), 2),
+                    "年化%": round(float(m.get("annual_return", 0) or 0), 2),
+                    "超额%": None,
+                    "最大回撤%": round(float(m.get("max_drawdown", 0) or 0), 2),
+                    "夏普": round(float(m.get("sharpe", 0) or 0), 2),
+                    "胜率%": round(float(m.get("win_rate", 0) or 0), 2),
+                    "盈亏比": round(float(m.get("profit_loss", 0) or 0), 2),
+                    "交易次数": int(m.get("trade_count", 0) or 0),
                 })
-            st.dataframe(rows, width="stretch", hide_index=True)
+            _excess_rows(rows, bench_ret)
+            st.subheader("指标对比")
+            st.caption(_summary_line(rows, bench_ret))
+            st.dataframe(
+                _styled_table(pd.DataFrame(rows), has_benchmark=bench_ret is not None),
+                width="stretch",
+                hide_index=True,
+            )
 
             # 资金曲线对比
             st.subheader("资金曲线对比")
