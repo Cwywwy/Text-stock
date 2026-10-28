@@ -2,7 +2,7 @@
 
 - 日期：2026-10-28
 - 分支：`分支3`（基线 `agents/merge-envcheck-into-branch1`，main + 19 提交）
-- 状态：**待用户审阅**
+- 状态：**执行中** —— Phase 0 ✅（`c2f1f0c`）、Phase 1 ✅（`d421d5f`，样张已交用户）；Phase 2（对比页 / 持仓页 / 今日页套同一规范）与 Phase 3（全站回归 + 归档）**待做**
 - 环境：Python **3.13.15**（`.venv`）；plotly **7.0.0**、streamlit **1.63.0**、pandas **3.0.5**、numpy 2.5.2；pytest 9.1.1
 - 硬约束：**不新增依赖**（INSTRUCTION.md:35、README.md:176/214）
 

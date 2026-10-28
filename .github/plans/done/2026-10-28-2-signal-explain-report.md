@@ -2,7 +2,7 @@
 
 - 日期：2026-10-28
 - 分支：`分支3`（图表升级 Phase 0/1 已提交：`c2f1f0c`、`d421d5f`）
-- 状态：**执行中** —— Phase 0 ✅（`6183fae`）、Phase 1 ✅（`222d4fb`）、Phase 2 ✅（`6734816`、`34ed5a8`）、Phase 3 ✅（本次提交）；下一步 Phase 4（回归、文档与归档）
+- 状态：**已完成** —— Phase 0 ✅（`6183fae`）、Phase 1 ✅（`222d4fb`）、Phase 2 ✅（`6734816`、`34ed5a8`）、Phase 3 ✅（`0870b7b`）、Phase 4 ✅（测试报告 + CHANGELOG + README + 归档）；全量 **300 passed**
 - 环境：Python **3.13.15**（`.venv`）；streamlit **1.63.0**、plotly **7.0.0**、pandas **3.0.5**、numpy 2.5.2；pytest 9.1.1
 - 硬约束：**不新增依赖**（INSTRUCTION.md:35、README.md:176/214）；LLM 走现有 OpenAI 兼容客户端（`src/stock_plan/llm/client.py`）
 

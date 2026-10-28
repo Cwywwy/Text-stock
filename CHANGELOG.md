@@ -2,6 +2,56 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-28（续 9）：图表观感重做（Phase 0/1）+ 信号可解释与 LLM 解读（Phase 0–3）
+
+两件事同时在 `分支3` 上推进，各自一个计划书、分阶段提交。
+
+### A. 图表可视化升级（`.github/plans/2026-10-28-1-new-chart-visual-refresh.md`）
+
+- **新增 `src/stock_plan/ui/chart_style.py`**：把配色、字号、间距、轴格式收进一个纯函数模块
+  （近黑画布 / 面板色 / 红涨绿跌 / 右侧纵轴 / 无网格 / 统一 hover 与 `uirevision`），
+  之后所有图都从这里取样式；换技术栈时只改这一处。
+- **`src/stock_plan/ui/widgets.py`**：新增 `chart_config()`（导出文件名带图名）、
+  `render_chart()`、`multi_line_fig()`；`equity_curve_fig()` 改为走 `chart_style`。
+- **回测结果页重排**（`src/stock_plan/ui/views/backtest.py`）：策略曲线 + **等权基准曲线**叠加、
+  回撤阴影、四指标卡、`st.tabs` 收纳「总览 / 月度 / 交易 / 归因」，不再把 5 图 3 表一路铺开；
+  月度收益改真日期轴、柱顶只标出 |值| ≥ 2% 的月份；热力图去标题、只留刻度与 `%` 后缀。
+- **`src/stock_plan/backtest/engine.py`**：`BacktestResult` 新增 `benchmark`，新增
+  `equal_weight_benchmark()` 复用 `factors.regime.equal_weight_index()`，旧调用不受影响。
+- **`scripts/preview_charts.py`**：不启动 Streamlit、不连数据库就能生成「改造前 / 改造后」样张 HTML，
+  用固定种子合成数据；改观感时先看样张，不反复跑全 A 股回测。
+- 结果：全量 `pytest` 从 210 增至 **229 passed**（`tests/test_chart_style.py` 15 项 +
+  `tests/test_backtest_benchmark.py` 4 项）。**Phase 2/3（对比页 / 持仓页套同一规范、回归归档）待做。**
+
+### B. 信号可解释 + LLM 并发加固（`.github/plans/2026-10-28-2-signal-explain-report.md`）
+
+问「为什么是这 5 只」以前只能看每只股票的一句理由。现在有四层回答，且**不新增首屏耗时**。
+
+- **Phase 0 LLM 基础设施**（`6183fae`）：`llm/budget.py` 按 token 预算裁剪 prompt 并记录丢掉了什么；
+  `llm/cache.py` 把 `(任务, 输入哈希)` 写进 `data/cache/llm/`（TTL 7 天，`LLM_CACHE_DISABLE=1` 可关）；
+  `llm/client.py` 加 `Semaphore(2)` 并发闸门、429/超时退避一次、`ChatResult(text, error, cached, usage)`，
+  并把共享的 `last_error` 改成 `threading.local`（多人同时用不会串错误提示）。
+- **Phase 1 事实层**（`222d4fb`）：`factors/filter.py` 新增 `filter_universe_explained()`，
+  把「被硬过滤挡掉的理由」保留下来（ST / 无日线 / 次新 / 停牌 / 流动性不足，各带触发数值）；
+  `strategy/builtin.py` 新增 `score_with_penalties()`，逐条记录扣分（追高 −100、趋势向下 −100、
+  偏离过大 −30/−50、RSI 过热 −20），`score()` 数值逐位不变；`signal/report.py` 是新的事实层数据类；
+  `signal/generator.py` 新增 `generate_signal_report()`。
+- **Phase 2 页面即时对比**（`6734816`、`34ed5a8`）：今日页新增默认折叠的「🔍 为什么是这几只」区块——
+  入选者与紧随 3 名的对比表、分差瀑布图、扣分逐条清单、被硬过滤挡掉的样本表；
+  `generate_signals_with_report()` 让信号表与报告**共用一次打分**（不再算两遍 47 秒）。
+- **Phase 3 LLM 深度解读**（`0870b7b`）：新增 `llm/signal_narrative.py`，把事实清单压成
+  ≤1400 token 的 prompt，要求模型只输出 JSON；**数字闸门**——模型只能原样引用事实清单里的数字，
+  编造的数字会被拦下并回退确定性模板；`risks` 写成对象也兼容。缓存命中会在页面上写「缓存于 x 分钟前」。
+  真实调用（GLM-4-Flash，免费档）一次约 21 秒、1311+269 token。
+- 结果：全量 `pytest` 从 229 增至 **300 passed**。**Phase 4（回归报告、README、归档）本次完成。**
+
+### 踩坑记录（两件值得留的）
+
+- 以 `#` 开头的柱子标签会被 plotly.js 当数字（`"#6 300908"` → `6300908`），整条 x 轴退化成
+  `6M/7M` 数值轴——分类标签别以 `#` 开头，并显式 `update_xaxes(type="category")`。
+- `LLMClient(api_key="", ...)` **不会**降级成 mock：构造函数会用 `.env` 的 key 兜底，
+  测试里想造 mock 必须显式 `client.mock = True`，否则真的会打到线上、烧掉免费额度。
+
 ## 2026-10-28（续 8）：归档旧副本，并拔掉脚本里写死的旧路径
 
 用户认可「清理现场」后执行五件事。
