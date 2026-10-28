@@ -9,8 +9,14 @@
 - 进度与结果通过 data/logs/update_progress.json 传递，fragment 每 3 秒轮询
 - 展示最近几次自动/手动更新的日志
 
+访问者分层（为什么一个页面要有两套排版）：
+    本机部署者 = 维护者，增量更新是日常操作；云端访问者 = 普通用户，他们只需要
+    「同步最新快照」这一个动作。因此增量更新在云端视图收进折叠的「维护者功能」里，
+    避免普通用户误点后干等几十分钟。判定见 maintainer_mode()（环境变量可覆盖）。
+
 Revision History:
     2026-10-28  snapshot restore uses Release-first base list and rejects stale manifests
+    2026-10-28  maintainer view: snapshot first for visitors, increment update tucked away
 """
 
 from __future__ import annotations
@@ -30,6 +36,29 @@ from stock_plan.data.updater import (
 )
 
 _UPDATE_LOG = LOG_DIR / "update.log"
+
+# 访问者身份判定：显式环境变量 > 是否云端部署。
+MAINTAINER_ENV = "STOCK_PLAN_MAINTAINER"
+_TRUTHY = {"1", "true", "yes", "on"}
+_FALSY = {"0", "false", "no", "off"}
+
+
+def maintainer_mode() -> bool:
+    """当前访问者是否按「维护者（本机管理者）」视图展示。
+
+    为什么需要这个概念：非本机用户只该看到「同步快照」一个动作。增量更新要逐只抓
+    5000+ 只股票、耗时几十分钟并占用带宽，普通访问者误点既等不到结果、也容易误以为
+    程序卡死或更新失败。默认判定：本机部署 = 维护者，云端部署 = 普通用户；确有需要
+    时用 `STOCK_PLAN_MAINTAINER=1/0` 显式覆盖（例如把云端实例临时改成维护者视图）。
+    """
+    explicit = os.getenv(MAINTAINER_ENV, "").strip().lower()
+    if explicit in _TRUTHY:
+        return True
+    if explicit in _FALSY:
+        return False
+    from stock_plan.data.snapshot import is_cloud
+
+    return not is_cloud()
 
 
 def _progress_state() -> dict:
@@ -174,10 +203,11 @@ def _data_status() -> None:
 
     latest = info.get("bars_latest")
     lag = info.get("lag_days")
+    next_step = "建议立即增量更新。" if maintainer_mode() else "建议点上方「同步到最新快照」更新。"
     if latest and lag is not None and lag <= 0:
         st.success(f"✅ **当前行情数据日期：{latest}**（已是最新交易日）")
     elif latest:
-        st.warning(f"⚠️ **当前行情数据日期：{latest}**，落后期望交易日 {lag} 天，建议立即增量更新。")
+        st.warning(f"⚠️ **当前行情数据日期：{latest}**，落后期望交易日 {lag} 天，{next_step}")
     else:
         st.error("❌ 还没有任何行情数据，请先执行一次全量更新。")
 
@@ -228,10 +258,14 @@ def _cloud_badge() -> None:
     from stock_plan.data.snapshot import CLOUD_WORKERS, is_cloud
 
     if is_cloud():
-        st.info(f"☁️ **云端轻量模式**：增量更新并发 {CLOUD_WORKERS} 线程；"
-                "数据快照在首次启动时自动恢复，数据丢失可点下方「从快照恢复」。")
+        st.info(
+            f"☁️ **云端轻量模式**：数据由维护者每交易日发布快照，首次启动自动恢复；"
+            f"需要手动刷新时点下方「同步到最新快照」。增量更新并发 {CLOUD_WORKERS} 线程，仅维护者使用。"
+        )
     else:
-        st.success("🖥️ **本机完整模式**：本机为数据权威源，可发布快照供云端恢复。")
+        st.success(
+            "🖥️ **本机完整模式**：本机为数据权威源，可直接增量更新并发布快照供云端恢复。"
+        )
 
 
 def _run_extra_source(label: str, args: list[str], timeout: int) -> None:
@@ -359,35 +393,8 @@ def _restore_from_snapshot() -> None:
             st.error(f"恢复失败：{e}")
 
 
-def render() -> None:
-    """数据更新页主入口。"""
-    st.title("🔄 数据更新")
-    if os.name == "nt":
-        st.caption(
-            "系统已配置每日自动更新：交易日 16:00 / 20:00 / 次日 0:00 / 8:00 由 Windows 计划任务"
-            "后台执行（幂等设计，重复运行无副作用，数据已是最新时秒级跳过）。"
-            "此页面用于手动补充更新。"
-        )
-    else:
-        st.caption(
-            "云端部署模式：定时计划任务仅在本机 Windows 部署时生效，请在此页面手动更新数据"
-            "（幂等设计，重复运行无副作用，数据已是最新时秒级跳过）。"
-        )
-
-    _data_status()
-    _cloud_badge()
-
-    with st.expander("☁️ 从云端快照恢复数据", expanded=False):
-        st.caption(
-            "从云端最新快照（GitHub Release 资产，旧的 data-snapshot 分支仅作兜底）"
-            "下载行情数据并覆盖本地（本机数据为权威源，云端数据丢失时使用）；"
-            "超过 7 天的旧快照会被拒绝，避免用过期数据覆盖。"
-        )
-        if st.button("⬇️ 立即从快照恢复", key="btn_restore_snapshot"):
-            _restore_from_snapshot()
-
-    st.divider()
-
+def _increment_update_button() -> None:
+    """「立即增量更新」按钮（本机主操作与云端维护者区共用同一套逻辑）。"""
     prog = _progress_state()
     if st.button(
         "🔄 立即增量更新",
@@ -402,11 +409,88 @@ def render() -> None:
             _start_task("incremental")
             st.rerun(scope="app")
 
-    # 运行中：实时进度条；刚完成：结果 + 未缓存补拉入口（均在 fragment 内自动刷新）
-    _update_panel()
 
+def _snapshot_panel(*, primary: bool) -> None:
+    """快照入口：云端普通用户看到的是主操作，本机看到的是灾备恢复。
+
+    同一个后端动作（_restore_from_snapshot）在两处语气完全不同：对普通访问者它是
+    「更新数据」的唯一正确做法；对本机维护者它只是「云端数据丢了/换机时把权威数据取回来」。
+    """
+    if primary:
+        st.subheader("📦 更新行情数据：同步最新快照")
+        st.caption(
+            "数据由维护者每交易日收盘后发布快照。点下面的按钮即可把行情同步到最新，"
+            "**不需要执行「增量更新」** —— 那是维护者在本机补数据用的功能。"
+        )
+        if st.button("⬇️ 同步到最新快照", key="btn_restore_snapshot", type="primary", width="stretch"):
+            _restore_from_snapshot()
+        st.caption("一般 1–3 分钟；超过 7 天的旧快照会被拒绝，不会用过期数据覆盖。")
+        with st.expander("为什么普通用户用快照就够？"):
+            st.markdown(
+                "- 行情每天收盘后由维护者在**本机**增量更新，再打包成快照发布；\n"
+                "- 云端实例只要把这份快照同步下来，数据就已经是最新的；\n"
+                "- 「增量更新」要逐只抓取 5000+ 只股票，在云端容器里既慢又容易超时，普通用户无需点击。"
+            )
+        return
+
+    with st.expander("☁️ 从云端快照恢复数据（灾备）", expanded=False):
+        st.caption(
+            "从云端最新快照（GitHub Release 资产，旧的 data-snapshot 分支仅作兜底）"
+            "下载行情数据并覆盖本地（本机数据为权威源，只有云端数据丢失/换机时才用）；"
+            "超过 7 天的旧快照会被拒绝，避免用过期数据覆盖。"
+        )
+        if st.button("⬇️ 立即从快照恢复", key="btn_restore_snapshot"):
+            _restore_from_snapshot()
+
+
+def _maintainer_panel() -> None:
+    """维护者功能折叠区：云端普通访问者默认收起，避免误点增量更新。"""
+    with st.expander("🔧 维护者功能：增量更新（普通用户无需操作）", expanded=False):
+        st.warning(
+            "⚠️ **非管理者无需点击**：增量更新会逐只抓取 5000+ 只股票，耗时数十分钟并占用带宽。"
+            "普通用户请用上方「同步到最新快照」，一步就能把数据更新到最新。"
+        )
+        _increment_update_button()
+
+
+def render() -> None:
+    """数据更新页主入口。"""
+    st.title("🔄 数据更新")
+    maintainer = maintainer_mode()
+    if not maintainer:
+        st.caption(
+            "云端部署模式：数据由维护者每交易日发布快照，点下方「同步到最新快照」即可使用最新数据。"
+        )
+    elif os.name == "nt":
+        st.caption(
+            "系统已配置每日自动更新：交易日 16:00 / 20:00 / 次日 0:00 / 8:00 由 Windows 计划任务"
+            "后台执行（幂等设计，重复运行无副作用，数据已是最新时秒级跳过）。"
+            "此页面用于手动补充更新。"
+        )
+    else:
+        st.caption(
+            "云端部署模式（维护者视图）：定时计划任务仅在本机 Windows 部署时生效，"
+            "可在此页面手动更新数据（幂等设计，重复运行无副作用）。"
+        )
+
+    _data_status()
+    _cloud_badge()
     st.divider()
-    _extra_sources_panel()
+
+    if maintainer:
+        _increment_update_button()
+        # 运行中：实时进度条；刚完成：结果 + 未缓存补拉入口（均在 fragment 内自动刷新）
+        _update_panel()
+        st.divider()
+        _snapshot_panel(primary=False)
+        st.divider()
+        _extra_sources_panel()
+    else:
+        _snapshot_panel(primary=True)
+        _update_panel()
+        st.divider()
+        _maintainer_panel()
+        st.caption("分类 / 情绪 / 公告等补充数据同样由维护者统一维护，普通用户无需操作。")
 
     st.divider()
     _render_log_tail()
