@@ -235,7 +235,11 @@ uv run python -m stock_plan.data.delisted --all                   # 两者都补
   ∈ {`ret20`, `ma_ratio`, `ma_ratio_blend`}，默认 `ret20` 不变）——
   **结论：两种新口径均显著变差，保留原口径**，理由见
   [A/B 报告](tests/reports/2026-10-29-05-11.phase8-ab.md)；
-- 🔄 Phase 9–13 进行中（RRG 行业轮动 / 两段式 LLM / 字段补齐）。
+- ✅ Phase 9 RRG 行业轮动 C1（新增 `factors/rrg.py` + `backtest/rotation.py` + `scripts/measure_rrg_industry.py`；
+  31 个申万一级等权指数、`top_n=6`、20 日调仓）——
+  **结论：行业层年化超额 −0.53pp（门槛 +2.0pp），C1 证伪、C2 不做**，理由见
+  [C1 回测报告](tests/reports/2026-10-29-05-20.rrg-c1.md)；
+- 🔄 Phase 11–13 进行中（两段式 LLM / 字段补齐 / 集成与文档）。
 
 ## 云端部署（Streamlit Community Cloud）
 
