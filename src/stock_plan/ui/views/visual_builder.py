@@ -15,6 +15,7 @@ Revision History:
     2026-09-04  require public acknowledgement before shared strategy submission
     2026-10-28  AI 一句话生成从「LLM 智能分析」页搬到本页，并支持一键套用到表单
 2026-10-28  (branch4 phase 0) 资金曲线改调共享主图工厂
+2026-10-29  (phase 11) 新增「先选类型」下拉：切类型即套用该类型默认值，事件驱动仅占位
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ import streamlit as st
 from stock_plan.backtest.engine import BacktestConfig, run_backtest
 from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.data.storage import Storage
+from stock_plan.strategy.archetypes import ARCHETYPES
 from stock_plan.strategy.custom import CustomStrategy
 from stock_plan.ui.strategy_ai import render_ai_strategy_section
 from stock_plan.ui.widgets import backtest_hero_fig, board_filter_ui, page_glossary, render_chart
@@ -99,6 +101,54 @@ def _nearest(value, allowed):
     return min(allowed[1:], key=lambda x: abs(x - num))
 
 
+def _write_archetype_values(archetype) -> None:
+    """把某类型的默认值写进控件 session_state（切类型 / 套用 AI 建议时先打底）。
+
+    为什么必须写 session_state 而不是控件默认值：控件一旦实例化就带 key 记忆，
+    改 `value=` 参数不会生效；只有先改 session_state、再渲染，控件才会显示新默认值。
+    """
+    ss = st.session_state
+    weights = archetype.defaults.get("weights", {})
+    rules = archetype.defaults.get("rules", {})
+    params = archetype.defaults.get("params", {})
+
+    if str(ss.get("vb_name") or "") in ("", "我的自定义策略"):
+        ss["vb_name"] = f"{archetype.label}策略"
+    ss["vb_w_tech"] = _clamp(float(weights.get("trend_score", 0.6)), 0.0, 1.0)
+    ss["vb_w_fund"] = _clamp(float(weights.get("fund_score", 0.4)), 0.0, 1.0)
+    ss["vb_w_mom"] = _clamp(float(weights.get("mom_ret", 0.0)), 0.0, 1.0)
+
+    ss["vb_tf"] = _nearest(rules.get("trend_ma_fast", 0), _MA_OPTIONS)
+    ss["vb_ts"] = _nearest(rules.get("trend_ma_slow", 0), _MA_OPTIONS)
+    dev = int(rules.get("dev_ma", 20) or 20)
+    ss["vb_dev_ma"] = min([5, 7, 10, 20, 30, 60], key=lambda item: abs(item - dev))
+    ss["vb_dev_min"] = int(_clamp(int(rules.get("dev_min", -5)), -20, 0))
+    ss["vb_dev_max"] = int(_clamp(int(rules.get("dev_max", 5)), 0, 20))
+    ss["vb_vr"] = float(_clamp(float(rules.get("vol_ratio_max", 3.0)), 1.0, 5.0))
+    ss["vb_liq"] = float(_clamp(float(rules.get("liquidity_min", 0.5)), 0.5, 50.0))
+    surge_min = float(rules.get("vol_surge_min", 0.0) or 0.0)
+    ss["vb_surge"] = surge_min > 0
+    ss["vb_surge_min"] = float(_clamp(surge_min if surge_min > 0 else 1.5, 1.0, 5.0))
+    ss["vb_surge_bonus"] = float(_clamp(float(rules.get("vol_surge_bonus", 10.0)), 5.0, 30.0))
+    ss["vb_rsi_min"] = int(_clamp(int(rules.get("rsi_min", 0)), 0, 50))
+    ss["vb_rsi_max"] = int(_clamp(int(rules.get("rsi_max", 75)), 50, 95))
+    ss["vb_ma2060"] = bool(rules.get("ma20_gt_ma60", False))
+    ss["vb_mom_min"] = int(_clamp(int(rules.get("mom_min", -30)), -30, 30))
+    ss["vb_breakout"] = bool(rules.get("require_breakout", False))
+
+    ss["vb_k"] = float(_clamp(float(params.get("atr_k_entry", 0.0)), 0.0, 3.0))
+    ss["vb_m"] = float(_clamp(float(params.get("atr_m_exit", 3.5)), 1.0, 10.0))
+    ss["vb_n"] = float(_clamp(float(params.get("atr_n_stop", 3.5)), 1.0, 10.0))
+    ss["vb_hold"] = int(_clamp(int(params.get("hold_days", 30)), 5, 120))
+
+
+def _apply_archetype_defaults() -> None:
+    """类型下拉的 on_change 回调：切类型时用该类型的默认值重置表单。"""
+    archetype = ARCHETYPES.get(str(st.session_state.get("vb_archetype") or ""))
+    if archetype is not None:
+        _write_archetype_values(archetype)
+
+
 def _apply_ai_config(config: dict) -> None:
     """把 AI 建议值写进各控件的 session_state。
 
@@ -109,6 +159,12 @@ def _apply_ai_config(config: dict) -> None:
     rules = config.get("rules") or {}
     params = config.get("params") or {}
     ss = st.session_state
+
+    # AI 若带了类型，先把类型切换过去并用该类型默认值打底，再用 AI 的具体值覆盖
+    archetype = ARCHETYPES.get(str(config.get("archetype") or ""))
+    if archetype is not None:
+        ss["vb_archetype"] = archetype.key
+        _write_archetype_values(archetype)
 
     ss["vb_name"] = str(config.get("name") or "我的自定义策略")[:30]
     ss["vb_w_tech"] = _clamp(float(weights.get("trend_score", 0.6)), 0.0, 1.0)
@@ -155,6 +211,20 @@ def render():
 
     # ============ 策略配置 ============
     st.subheader("1. 策略配置")
+    # 两段式第一段：先选类型（决定可用字段白名单 + 类型默认值）
+    archetype_key = st.selectbox(
+        "策略类型（先选类型：表单默认值与该类型的可用字段随之切换）",
+        options=list(ARCHETYPES),
+        format_func=lambda key: ARCHETYPES[key].label,
+        key="vb_archetype",
+        on_change=_apply_archetype_defaults,
+        help="类型由调研结论预置骨架；「事件驱动」本轮数据不足，仅占位、不可回测。",
+    )
+    archetype = ARCHETYPES[archetype_key]
+    st.caption(f"「{archetype.label}」：{archetype.tagline}｜骨架：{archetype.skeleton}")
+    type_ready = archetype.is_ready
+    if not type_ready:
+        st.warning(f"该类型本轮数据不足，仅占位、不可回测：{archetype.note}")
     name = st.text_input("策略名称", "我的自定义策略", key="vb_name")
 
     col1, col2 = st.columns(2)
@@ -245,6 +315,7 @@ def render():
 
     config = {
         "name": name,
+        "archetype": archetype_key,
         "weights": {"trend_score": w_tech, "fund_score": w_fund, "mom_ret": w_mom},
         "rules": {
             "ma20_gt_ma60": bool(ma20_gt_ma60),
@@ -285,7 +356,9 @@ def render():
 
     col15, col16 = st.columns(2)
     with col15:
-        if st.button("▶️ 运行回测", type="primary"):
+        if not type_ready:
+            st.caption("该类型本轮不可回测（数据不足，仅占位骨架）。")
+        if st.button("▶️ 运行回测", type="primary", disabled=not type_ready):
             if start >= end:
                 st.error("开始日期必须早于结束日期")
                 return

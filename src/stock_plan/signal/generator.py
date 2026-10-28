@@ -19,6 +19,7 @@ Revision History:
     2026-09-04  load only 180-day window to avoid cloud OOM
     2026-10-28  (phase 1) add generate_signal_report for explainability
     2026-10-28  (phase 2) share one scoring pass between signals and report
+    2026-10-29  (phase 11) report carries degraded rules (missing columns no longer silent)
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ import pandas as pd
 
 from stock_plan.data.storage import Storage
 from stock_plan.factors.filter import FilterOutcome, filter_universe_explained
+from stock_plan.strategy.archetypes import strategy_degraded
 from stock_plan.signal.report import (
     CandidateFacts,
     EntryGap,
@@ -384,14 +386,17 @@ def _build_report(
     top_n: int,
     runners_up: int,
     rejected_per_reason: int,
+    strategy: Strategy | None = None,
 ) -> SignalReport:
     """把共用中间结果装配成 SignalReport。"""
     warnings = list(facts.warnings)
+    degraded = strategy_degraded(strategy) if strategy is not None else ()
     if facts.aborted:
         return SignalReport(
             generated_at=datetime.now(),
             universe=facts.universe,
             warnings=tuple(warnings),
+            degraded=degraded,
         )
 
     # 入选者 + 紧随者（按名次连续切片，不重复计算）
@@ -440,6 +445,7 @@ def _build_report(
         rejected_samples=samples,
         entry_gap=entry_gap,
         warnings=tuple(warnings),
+        degraded=degraded,
     )
 
 
@@ -489,6 +495,7 @@ def generate_signal_report(
         top_n=top_n,
         runners_up=runners_up,
         rejected_per_reason=rejected_per_reason,
+        strategy=strategy,
     )
 
 
@@ -563,6 +570,7 @@ def generate_signals_with_report(
         top_n=top_n,
         runners_up=runners_up,
         rejected_per_reason=rejected_per_reason,
+        strategy=strategy,
     )
     return signals, report
 

@@ -10,6 +10,7 @@
 Revision History:
     2026-10-28  (phase 2) new module: render signal explainability section
     2026-10-28  (phase 3) add optional llm narrative block with cached result
+    2026-10-29  (phase 11) render degraded rules (missing columns are no longer silent)
 """
 from __future__ import annotations
 
@@ -120,6 +121,16 @@ def _universe_caption(report: SignalReport, period_label: str) -> str:
     )
 
 
+def _render_degraded(report: SignalReport) -> None:
+    """缺字段降级：显式告诉用户「今天少算了哪几条规则」。"""
+    if not report.degraded:
+        return
+    st.warning(
+        "以下规则因缺字段今天没有参与打分（不是静默跳过）：\n"
+        + "\n".join(f"· {item}" for item in report.degraded)
+    )
+
+
 def render_report_section(report: SignalReport | None, period_label: str = "") -> None:
     """渲染「为什么是这几只」区块（调用方负责放进 expander）。
 
@@ -137,6 +148,7 @@ def render_report_section(report: SignalReport | None, period_label: str = "") -
         return
 
     st.caption(_universe_caption(report, period_label))
+    _render_degraded(report)
 
     st.markdown("**候选对比（入选者 + 紧随其后）**")
     st.dataframe(

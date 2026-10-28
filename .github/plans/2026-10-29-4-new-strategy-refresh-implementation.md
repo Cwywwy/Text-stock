@@ -2,7 +2,7 @@
 
 > 计划书编号：2026-10-29-4
 > 上游依据：`.github/plans/2026-10-29-2-new-strategy-research-and-selection.md`（调研计划，§10 为拍板记录）+ `docs/策略选型调研-2026-10-29.md`（候选评估正文，本次口径以它为准）
-> 状态：**执行中**（用户 2026-10-29 02:12 拍板 + 审阅确认；Q1–Q6 按推荐执行）。Phase 6 已完成并提交（`02db412`）；Phase 7 已完成并提交（`b2f4c8a`），G2 结论「本数据上不成立、默认关闭」已获用户确认（「按结论默认关闭」）；Phase 8 已完成并提交（`fce3f7c`），G3 结论「两种 ma_ratio 口径均显著变差、保留 ret20 默认」已获用户确认（「继续 Phase 9」）；Phase 9 已完成，**G4 结论「C1 行业层无超额（年化 −0.53pp）→ 按预注册规则停止 C2」待用户拍板**。
+> 状态：**执行中**（用户 2026-10-29 02:12 拍板 + 审阅确认；Q1–Q6 按推荐执行）。Phase 6 已完成并提交（`02db412`）；Phase 7 已完成并提交（`b2f4c8a`），G2 结论「本数据上不成立、默认关闭」已获用户确认（「按结论默认关闭」）；Phase 8 已完成并提交（`fce3f7c`），G3 结论「两种 ma_ratio 口径均显著变差、保留 ret20 默认」已获用户确认（「继续 Phase 9」）；Phase 9 已完成并提交（`0e2f691`），G4 结论「C1 行业层无超额（年化 −0.53pp）→ 按预注册规则停止 C2」已获用户确认（「继续 Phase 11」）；Phase 11 已完成，**G5 结论「两段式 + 规则级降级链路已贯通，事件驱动占位」待用户拍板**；Phase 12–13 待做。
 
 ---
 
@@ -451,11 +451,20 @@ Phase 6 基线+脚手架
 - 单测 + 旧配置逐值回归测试
 
 **完成标准**
-- [ ] 6 类型下拉可用；事件驱动明确提示不可用
-- [ ] LLM 越界字段被拒且给中文原因，不静默丢弃
-- [ ] 缺字段 → degraded，报告与 UI 可见
-- [ ] 旧配置（无 archetype）行为逐值不变
-- [ ] commit `(phase 11) add strategy archetypes and typed two-stage LLM config`
+- [x] 6 类型下拉可用；事件驱动明确提示不可用
+- [x] LLM 越界字段被拒且给中文原因，不静默丢弃
+- [x] 缺字段 → degraded，报告与 UI 可见
+- [x] 旧配置（无 archetype）行为逐值不变
+- [x] commit `(phase 11) add strategy archetypes and typed two-stage LLM config`
+
+**执行记录（2026-10-29 05:34）**
+
+- 实际落地与计划书 §1–§7 逐条对应：`strategy/archetypes.py`（六类型画像 + `resolve_config` 三层兜底 + `rule_columns` 动态均线列 + `degraded_record` / `strategy_degraded`）、`codegen.normalize_config_typed()`（`normalize_config` 签名保持，内部转调类型化清洗）、`custom.CustomStrategy`（`archetype` / `disabled_rules` / 运行期缺列禁用 + `degraded_messages()`）、`SignalReport.degraded`（带默认值，向后兼容）→ `signal/generator.py` 汇总 → 今日信号页 warning、AI 结果区 degraded 清单。
+- 新增 `mv_pct`（小市值分位）规则：需要 `total_mv` 列（Phase 12 才补），当前一律走降级——正好用来验证「缺字段不静默」的真实路径。
+- 两处 UI：可视化拼装页顶部类型下拉（`on_change` 用类型默认值重写控件 `session_state`，含名称、权重、均线对、偏离/RSI/量比/流动性/放量/ATR/持仓天数），切换事件驱动类型时回测按钮禁用且不给套用/保存；AI 分析页先选类型 → 生成 → 结果表按白名单过滤，越界字段与降级逐条列中文原因。
+- 测试：`tests/test_archetypes.py`（10）+ `tests/test_custom_degraded.py`（6）；全量 `pytest -q` **503 passed / 14.22s**（上一阶段 487，+16 无下降），报告 `tests/reports/2026-10-29-05-34.report-1.md`。
+- 首跑的 2 处失败均为用例期望写错（趋势类型默认 ma10 缺列本就该降级；合成样本偏离 +11% 会触发 dev_max 扣分），已修正用例，产品代码无缺陷。
+- 未做回测 A/B：本阶段不改任何打分公式（`conv_weight=0`、`momentum_mode="ret20"` 默认不变），旧行为由「旧配置逐值不变」用例锁定。
 
 ### Phase 12 — 任务 E：B 档字段补齐（总股本 / 财报披露日）
 

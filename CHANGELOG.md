@@ -2,6 +2,26 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 8）：策略刷新 Phase 11 — 两段式「先选类型 → LLM 发挥」
+
+落地调研报告 §6 的两段式改造，并把「缺字段静默跳过」改成「禁用规则 + 降级留痕」。**未改动任何现有策略的打分公式与默认值。**
+
+- 新增 `src/stock_plan/strategy/archetypes.py`：六种策略类型画像（趋势跟随 / 动量轮动 / 均值回归 / 多因子 / 小市值 / 事件驱动），
+  每类带「骨架 + 可用字段白名单 + 类型默认参数」；`resolve_config()` 做三层兜底（类型默认值 → 全局默认值 → 缺字段禁用规则 + `degraded`），
+  `rule_columns()` 按配置动态推断依赖的均线列（如 `dev_ma=10 → ma10`）。事件驱动类型 `status="pending_data"`：白名单为空、`is_ready=False`，
+  只占位不产出可回测配置。
+- `src/stock_plan/strategy/codegen.py`：新增 `normalize_config_typed(raw, archetype_key, *, available_columns)`，返回
+  `(config, issues, degraded)`；`normalize_config` 签名不变、内部转调，旧调用方无需改动。新增 `mv_pct`（小市值分位）规则。
+- `src/stock_plan/strategy/custom.py`：`CustomStrategy` 接受 `archetype` / `disabled_rules` / `degraded`；`score()` 中每条规则先过
+  `_rule_enabled()`——缺依赖列时**禁用该规则并记录 `degraded`**，不再静默跳过；`degraded_messages()` 供报告读取。
+  旧配置（不含新键）打分逐值不变。
+- `src/stock_plan/signal/report.py`：`SignalReport` 增加 `degraded: tuple[str, ...] = ()`（带默认值，向后兼容），并写入
+  `to_dict()` 与 `to_facts_text()`；`signal/generator.py` 从策略实例汇总降级说明；今日信号页以 warning 展示「今天少算了哪几条」。
+- UI 两处：可视化拼装页顶部新增「策略类型」下拉（切类型即用该类型默认值重置表单；事件驱动类型回测按钮禁用且不给套用/保存）；
+  AI 分析页改为「先选类型 → 生成」，prompt 只注入该类型的字段白名单，结果表按白名单过滤，越界字段与降级逐条列中文原因。
+- 测试：新增 `tests/test_archetypes.py`（10 例）与 `tests/test_custom_degraded.py`（6 例），全量 **503 passed / 14.22s**，
+  报告见 `tests/reports/2026-10-29-05-34.report-1.md`。
+
 ## 2026-10-29（续 7）：策略刷新 Phase 9 — RRG 行业轮动 C1（结论：无超额，C2 不做）
 
 实现调研 Top 3 的第③项的第一段（C1：行业层可证伪验证）。**未改动任何现有策略/引擎行为。**

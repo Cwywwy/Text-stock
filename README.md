@@ -239,7 +239,10 @@ uv run python -m stock_plan.data.delisted --all                   # 两者都补
   31 个申万一级等权指数、`top_n=6`、20 日调仓）——
   **结论：行业层年化超额 −0.53pp（门槛 +2.0pp），C1 证伪、C2 不做**，理由见
   [C1 回测报告](tests/reports/2026-10-29-05-20.rrg-c1.md)；
-- 🔄 Phase 11–13 进行中（两段式 LLM / 字段补齐 / 集成与文档）。
+- ✅ Phase 11 两段式「先选类型 → LLM 发挥」+ 规则级降级链路（新增 `strategy/archetypes.py`、
+  `codegen.normalize_config_typed()`、`SignalReport.degraded`；六类型下拉，事件驱动类型仅占位不可回测；
+  缺字段的规则会被禁用并在报告/UI 里标明「今天少算了哪几条」）；
+- 🔄 Phase 12–13 进行中（B 档字段补齐：总股本 / 财报披露日；集成与文档收尾）。
 
 ## 云端部署（Streamlit Community Cloud）
 
