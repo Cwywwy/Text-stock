@@ -1,0 +1,27 @@
+# 文件：stock-plan-snapshot.timer
+# 作者：Cwywwy
+# 用途：每个交易日 17:10（北京时间）触发一次快照拉取；开机 5 分钟后补跑一次。
+#      本机发布任务在 16:30 跑（Windows 计划任务 \StockPlan\Daily_Publish），17:10 拉能错开上传时间。
+# 所属模块：deploy（服务器部署物料）
+#
+# 安装：sudo install -m 644 deploy/stock-plan-snapshot.timer /etc/systemd/system/
+#       sudo systemctl daemon-reload && sudo systemctl enable --now stock-plan-snapshot.timer
+# 查看：systemctl list-timers stock-plan-snapshot.timer
+#
+# Revision History:
+#   2026-10-29  add snapshot pull timer for china cloud deployment (phase 3)
+[Unit]
+Description=Stock Plan snapshot pull timer
+
+[Timer]
+# OnCalendar 用系统本地时间；部署脚本已执行 timedatectl set-timezone Asia/Shanghai
+OnCalendar=*-*-* 17:10:00
+# 错过（关机/重启）后的下一次启动补跑一次，避免整天没数据
+Persistent=true
+# 抖动 5 分钟，避免每天固定时刻打卡
+RandomizedDelaySec=300
+# 开机 5 分钟后先拉一次，服务器重装/重启后尽快有当天数据
+OnBootSec=5min
+
+[Install]
+WantedBy=timers.target

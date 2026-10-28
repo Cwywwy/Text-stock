@@ -96,6 +96,25 @@ def test_validate_manifest_not_dict() -> None:
     assert validate_manifest(["not", "a", "dict"])  # type: ignore[arg-type]
 
 
+def test_validate_manifest_accepts_release_part_names() -> None:
+    """Release 资产不能以 .zip 结尾，发布时改名成 bars-<时间戳>.partNN。"""
+    m = _make_manifest(["bars-20261028230605.part00", "bars-20261028230605.part01"])
+    assert validate_manifest(m) == []
+
+
+def test_validate_manifest_rejects_path_traversal_and_duplicates() -> None:
+    """分卷名必须是纯文件名，且不能重复。"""
+    assert validate_manifest(_make_manifest(["../bars.zip.part00"]))
+    assert validate_manifest(_make_manifest(["bars.zip.part00", "bars.zip.part00"]))
+
+
+def test_part_name_regex_matches_both_layouts() -> None:
+    assert snapshot.PART_NAME_RE.match("bars.zip.part00")
+    assert snapshot.PART_NAME_RE.match("bars-20261028230605.part12")
+    assert not snapshot.PART_NAME_RE.match("bars.part00")
+    assert not snapshot.PART_NAME_RE.match("other.zip.part00")
+
+
 # ---------- build_snapshot ----------
 
 def test_build_snapshot_roundtrip(tmp_path) -> None:
@@ -123,7 +142,7 @@ def test_build_snapshot_roundtrip(tmp_path) -> None:
 
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
-        assert names == ["000001.parquet", "300750.parquet", "600000.parquet"]
+        assert names == ["bars/000001.parquet", "bars/300750.parquet", "bars/600000.parquet"]
 
     # 校验函数应通过自己的清单
     assert validate_manifest(m) == []
@@ -131,6 +150,124 @@ def test_build_snapshot_roundtrip(tmp_path) -> None:
     # 分卷拼回应等于整包字节
     blob = b"".join((out_dir / p["file"]).read_bytes() for p in m["parts"])
     assert blob == zip_path.read_bytes()
+
+
+# ---------- 快照 v2：行情之外带上分类/情绪/公告，整体覆盖恢复 ----------
+
+def _write_fake_processed(root, n_bars: int = 3):
+    """造一个像 data/processed 的目录（行情 + 各类非行情数据）。"""
+    from pathlib import Path
+
+    root = Path(root)
+    bars = root / "bars"
+    bars.mkdir(parents=True, exist_ok=True)
+    for i in range(n_bars):
+        pd.DataFrame({"date": [1, 2], "close": [10.0, 11.0]}).to_parquet(bars / f"{600000 + i}.parquet")
+    (root / "classify" / "2026-10" / "sw_l1").mkdir(parents=True)
+    (root / "classify" / "2026-10" / "sw_l1" / "map.json").write_text("{}", encoding="utf-8")
+    (root / "market" / "2026-10-28").mkdir(parents=True)
+    (root / "market" / "2026-10-28" / "sentiment.json").write_text("{}", encoding="utf-8")
+    (root / "universe").mkdir(parents=True, exist_ok=True)
+    (root / "universe" / "2026-10.parquet").write_bytes(b"x")
+    (root / "stock_basic.parquet").write_bytes(b"x")
+    (root / "trade_calendar.csv").write_text("date,is_open\n", encoding="utf-8")
+    (root / "announcements.db").write_bytes(b"x")
+    return bars
+
+
+def test_build_snapshot_includes_extras(tmp_path) -> None:
+    """快照 v2 的 zip 里既有 bars/ 子目录，也有分类/情绪/公告等数据。"""
+    import zipfile
+
+    from stock_plan.data.snapshot import build_snapshot
+
+    bars = _write_fake_processed(tmp_path / "processed")
+    m = build_snapshot(bars, tmp_path / "build")
+
+    assert m["format"] == snapshot.SNAPSHOT_FORMAT == 2
+    assert m["extras"] == {
+        "classify": 1,
+        "market": 1,
+        "universe": 1,
+        "stock_basic.parquet": 1,
+        "trade_calendar.csv": 1,
+        "announcements.db": 1,
+    }
+    with zipfile.ZipFile(tmp_path / "build" / "bars.zip") as zf:
+        names = set(zf.namelist())
+    assert "bars/600000.parquet" in names
+    assert "classify/2026-10/sw_l1/map.json" in names
+    assert "market/2026-10-28/sentiment.json" in names
+    assert "announcements.db" in names
+    assert validate_manifest(m) == []
+
+
+def test_extract_snapshot_v2_replaces_everything(tmp_path) -> None:
+    """展开快照 v2 后行情与分类/公告都被覆盖，旧分类目录不残留。"""
+    from stock_plan.data.snapshot import build_snapshot
+
+    bars = _write_fake_processed(tmp_path / "processed")
+    m = build_snapshot(bars, tmp_path / "build")
+    target = tmp_path / "target"
+    bars_t = _write_fake_processed(target, n_bars=1)
+    (target / "classify" / "2026-09").mkdir(parents=True)
+    (target / "classify" / "2026-09" / "old.json").write_text("{}", encoding="utf-8")
+
+    counts = snapshot._extract_snapshot(
+        tmp_path / "build" / "bars.zip", bars_dir=bars_t, processed_dir=target,
+        expect={"bars_count": m["bars_count"], **m["extras"]},
+    )
+
+    assert counts["bars_count"] == 3
+    assert len(list(bars_t.glob("*.parquet"))) == 3
+    assert not (target / "classify" / "2026-09").exists()
+    assert (target / "classify" / "2026-10" / "sw_l1" / "map.json").is_file()
+    assert (target / "announcements.db").is_file()
+    assert not (target / snapshot.STAGING_DIRNAME).exists()
+    assert not list(target.glob("*.snapshot-old"))
+
+
+def test_extract_snapshot_legacy_flat_zip_still_works(tmp_path) -> None:
+    """旧快照（parquet 平铺在根、没有 extras）仍能恢复。"""
+    import zipfile
+
+    legacy = tmp_path / "legacy.zip"
+    with zipfile.ZipFile(legacy, "w") as zf:
+        zf.writestr("600000.parquet", b"x")
+        zf.writestr("600001.parquet", b"y")
+    bars = tmp_path / "processed" / "bars"
+
+    counts = snapshot._extract_snapshot(legacy, bars_dir=bars, processed_dir=tmp_path / "processed")
+
+    assert counts["bars_count"] == 2
+    assert sorted(p.name for p in bars.glob("*.parquet")) == ["600000.parquet", "600001.parquet"]
+
+
+def test_extract_snapshot_rolls_back_on_count_mismatch(tmp_path) -> None:
+    """清单说 99 只但只有 3 只时必须在替换后回滚，旧数据保持原样。"""
+    from stock_plan.data.snapshot import build_snapshot
+
+    build_snapshot(_write_fake_processed(tmp_path / "processed"), tmp_path / "build")
+    target = tmp_path / "target"
+    bars_t = _write_fake_processed(target, n_bars=1)
+    before = sorted(p.name for p in bars_t.glob("*.parquet"))
+
+    with pytest.raises(ValueError):
+        snapshot._extract_snapshot(
+            tmp_path / "build" / "bars.zip", bars_dir=bars_t, processed_dir=target,
+            expect={"bars_count": 99},
+        )
+
+    assert sorted(p.name for p in bars_t.glob("*.parquet")) == before
+
+
+def test_missing_extras_reports_groups(tmp_path) -> None:
+    _write_fake_processed(tmp_path)
+    assert snapshot.missing_extras(tmp_path) == []
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert "announcements.db" in snapshot.missing_extras(empty)
+    assert "classify" in snapshot.missing_extras(empty)
 
 
 # ---------- is_cloud / bootstrap 阈值 ----------
@@ -325,7 +462,7 @@ def test_restore_with_fallback_tries_bases_in_order(monkeypatch, tmp_path) -> No
     """回退顺序：首选地址失败后应继续尝试下一个，并返回第一个成功的结果。"""
     tried: list[str] = []
 
-    def fake_restore(base, bars_dir, tmp_dir, progress=None, part_workers=4, max_age_days=None):
+    def fake_restore(base, bars_dir, tmp_dir, progress=None, part_workers=4, max_age_days=None, **kwargs):
         tried.append(base)
         if "release" in base:
             raise RuntimeError("404 Not Found")
@@ -383,7 +520,7 @@ def test_bootstrap_uses_shared_bases(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(snapshot, "cloud_secrets_env", lambda: None)
     seen: dict = {}
 
-    def fake_restore(bases, bars_dir, tmp_dir, progress=None, part_workers=4, max_age_days=None):
+    def fake_restore(bases, bars_dir, tmp_dir, progress=None, part_workers=4, max_age_days=None, **kwargs):
         seen["bases"] = bases
         seen["max_age_days"] = max_age_days
         return {"bars_count": 1234}
@@ -431,7 +568,7 @@ def test_restore_with_fallback_forwards_max_age_and_skips_stale(monkeypatch, tmp
     """旧快照所在地址失败后应继续尝试下一个，并把阈值透传下去。"""
     tried: list[tuple[str, int | None]] = []
 
-    def fake(base, bars_dir, tmp_dir, progress=None, part_workers=4, max_age_days=None):
+    def fake(base, bars_dir, tmp_dir, progress=None, part_workers=4, max_age_days=None, **kwargs):
         tried.append((base, max_age_days))
         if "releases/download" in base:
             raise ValueError("快照过旧：生成于 2026-09-04，已 54 天（阈值 7 天）")
@@ -447,3 +584,51 @@ def test_restore_with_fallback_forwards_max_age_and_skips_stale(monkeypatch, tmp
     assert tried == [("https://github.com/x/releases/download/t", 7),
                      ("https://raw.githubusercontent.com/x/t", 7)]
 
+
+def _ready_bars(root, count: int = None):
+    """造一个「行情已就绪」的 bars 目录（内容不影响 bootstrap 判定）。"""
+    from pathlib import Path
+
+    from stock_plan.data.snapshot import MIN_BARS_READY
+
+    bars = Path(root) / "bars"
+    bars.mkdir(parents=True, exist_ok=True)
+    for i in range(count or (MIN_BARS_READY + 1)):
+        (bars / f"{600000 + i}.parquet").write_bytes(b"x")
+    return bars
+
+
+def test_bootstrap_skips_when_bars_ready_locally(monkeypatch, tmp_path) -> None:
+    """本机数据已就绪且不是云端时，启动不再下载 360MB 快照。"""
+    _ready_bars(tmp_path)
+    monkeypatch.setattr(snapshot, "BARS_DIR", tmp_path / "bars")
+    monkeypatch.setattr(snapshot, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(snapshot, "cloud_secrets_env", lambda: None)
+    monkeypatch.setattr(snapshot, "is_cloud", lambda: False)
+
+    def boom(*args, **kwargs):
+        raise AssertionError("数据已就绪，不该触发恢复")
+
+    monkeypatch.setattr(snapshot, "restore_with_fallback", boom)
+    assert snapshot.bootstrap_if_needed() is None
+
+
+def test_bootstrap_restores_missing_extras_on_cloud(monkeypatch, tmp_path) -> None:
+    """云端旧版快照只有行情：分类/情绪缺失时启动应自动补齐，而不是让页面空着。"""
+    _ready_bars(tmp_path)
+    monkeypatch.setattr(snapshot, "BARS_DIR", tmp_path / "bars")
+    monkeypatch.setattr(snapshot, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(snapshot, "cloud_secrets_env", lambda: None)
+    monkeypatch.setattr(snapshot, "is_cloud", lambda: True)
+    assert snapshot.missing_extras()  # 只有 bars，其余都缺
+
+    seen: dict = {}
+
+    def fake_restore(bases, bars_dir, tmp_dir, progress=None, part_workers=4, max_age_days=None, **kwargs):
+        seen["called"] = True
+        return {"bars_count": 10, "classify": 2}
+
+    monkeypatch.setattr(snapshot, "restore_with_fallback", fake_restore)
+    stats = snapshot.bootstrap_if_needed()
+    assert seen["called"] is True
+    assert stats["classify"] == 2

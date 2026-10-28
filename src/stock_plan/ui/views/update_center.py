@@ -17,6 +17,7 @@
 Revision History:
     2026-10-28  snapshot restore uses Release-first base list and rejects stale manifests
     2026-10-28  maintainer view: snapshot first for visitors, increment update tucked away
+    2026-10-29  snapshot sync also restores classify/market/universe/announcements
 """
 
 from __future__ import annotations
@@ -355,20 +356,37 @@ def _snapshot_restore_plan() -> tuple[list[str], int]:
     return snapshot_restore_bases(), SNAPSHOT_MAX_AGE_DAYS
 
 
+def _restored_summary(stats: dict) -> str:
+    """把恢复统计翻译成人话：行情 + 分类/情绪/行业/公告（快照 v2 才带后者）。"""
+    parts = [f"{stats.get('bars_count', 0)} 只股票行情"]
+    for key, label in (
+        ("classify", "行业分类"),
+        ("market", "市场情绪"),
+        ("universe", "行业归属"),
+        ("announcements.db", "公告库"),
+    ):
+        if stats.get(key):
+            parts.append(label)
+    return " + ".join(parts)
+
+
 def _restore_from_snapshot() -> None:
-    """手动从云端快照恢复行情数据（带进度显示）。
+    """手动从云端快照恢复数据（带进度显示）。
 
     地址表与启动恢复共用 snapshot_restore_bases()：Release 资产优先、旧分支兜底。
     2026-10-28：此前这里写死 raw_base_url()，发布改到 Releases 后按钮仍在读冻结的
     旧分支，点一次就等于把云端数据退回 2026-09-03，页面却提示"恢复完成"。
     另外超过 SNAPSHOT_MAX_AGE_DAYS 天的旧快照会被判失败并继续尝试下一个地址。
+
+    快照 v2（2026-10-28 起）除了行情，还把分类/情绪/行业/公告一起带下来并整体覆盖，
+    所以普通访问者点这一下就等于把全部数据更新到最新，不需要增量更新。
     """
     from stock_plan.data.freshness import refresh_marker
-    from stock_plan.data.snapshot import BARS_DIR, PROJECT_ROOT, restore_with_fallback
+    from stock_plan.data.snapshot import BARS_DIR, PROJECT_ROOT, missing_extras, restore_with_fallback
 
     bases, max_age_days = _snapshot_restore_plan()
     tmp_dir = PROJECT_ROOT / "data" / "snapshot_tmp"
-    with st.status("⬇️ 正在从云端快照恢复行情数据 …", expanded=True) as status:
+    with st.status("⬇️ 正在从云端快照恢复全部数据 …", expanded=True) as status:
         st.write(f"快照地址（按顺序回退）：{' → '.join(bases)}")
         st.caption(f"超过 {max_age_days} 天的旧快照会被拒绝，不会再静默覆盖本地数据。")
 
@@ -384,9 +402,15 @@ def _restore_from_snapshot() -> None:
             latest = marker.get("latest_date") or "未知"
             status.update(label="✅ 快照恢复完成", state="complete", expanded=False)
             st.success(
-                f"已恢复 {stats['bars_count']} 只股票的行情数据（快照生成于 {stats['created_at']}），"
+                f"已恢复 {_restored_summary(stats)}（快照生成于 {stats['created_at']}），"
                 f"行情最新交易日 {latest}"
             )
+            absent = missing_extras()
+            if absent:
+                st.warning(
+                    f"快照里缺少 {', '.join(absent)} —— 说明它还是旧版（只含行情）快照，"
+                    "等维护者发布新版后重新同步即可补齐。"
+                )
             st.rerun(scope="app")
         except Exception as e:  # noqa: BLE001
             status.update(label="❌ 快照恢复失败", state="error")
@@ -417,18 +441,18 @@ def _snapshot_panel(*, primary: bool) -> None:
     「更新数据」的唯一正确做法；对本机维护者它只是「云端数据丢了/换机时把权威数据取回来」。
     """
     if primary:
-        st.subheader("📦 更新行情数据：同步最新快照")
+        st.subheader("📦 更新数据：同步最新快照")
         st.caption(
-            "数据由维护者每交易日收盘后发布快照。点下面的按钮即可把行情同步到最新，"
-            "**不需要执行「增量更新」** —— 那是维护者在本机补数据用的功能。"
+            "数据由维护者每交易日收盘后发布快照（行情 + 行业分类 + 市场情绪 + 公告库一起打包）。"
+            "点下面的按钮即可把全部数据同步到最新，**不需要执行「增量更新」** —— 那是维护者在本机补数据用的功能。"
         )
         if st.button("⬇️ 同步到最新快照", key="btn_restore_snapshot", type="primary", width="stretch"):
             _restore_from_snapshot()
         st.caption("一般 1–3 分钟；超过 7 天的旧快照会被拒绝，不会用过期数据覆盖。")
         with st.expander("为什么普通用户用快照就够？"):
             st.markdown(
-                "- 行情每天收盘后由维护者在**本机**增量更新，再打包成快照发布；\n"
-                "- 云端实例只要把这份快照同步下来，数据就已经是最新的；\n"
+                "- 行情、行业分类、市场情绪、公告库每天收盘后由维护者在**本机**增量更新，再打包成快照发布；\n"
+                "- 云端实例只要把这份快照同步下来，全部页面看到的数据就已经是最新的；\n"
                 "- 「增量更新」要逐只抓取 5000+ 只股票，在云端容器里既慢又容易超时，普通用户无需点击。"
             )
         return
@@ -436,7 +460,7 @@ def _snapshot_panel(*, primary: bool) -> None:
     with st.expander("☁️ 从云端快照恢复数据（灾备）", expanded=False):
         st.caption(
             "从云端最新快照（GitHub Release 资产，旧的 data-snapshot 分支仅作兜底）"
-            "下载行情数据并覆盖本地（本机数据为权威源，只有云端数据丢失/换机时才用）；"
+            "下载行情 + 分类/情绪/公告并覆盖本地（本机数据为权威源，只有云端数据丢失/换机时才用）；"
             "超过 7 天的旧快照会被拒绝，避免用过期数据覆盖。"
         )
         if st.button("⬇️ 立即从快照恢复", key="btn_restore_snapshot"):

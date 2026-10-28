@@ -234,8 +234,9 @@ uv run python -m stock_plan.data.delisted --all                   # 两者都补
 
 - 依赖读取根目录 `requirements.txt`（已按本地验证版本固定）
 - 云端**数据自动恢复**：启动时检测本地无缓存数据，自动从 GitHub Releases 的 `data-snapshot`
-  标签下载快照（约 350MB，首次 1~3 分钟），无需手动全量拉取；「🔄 数据更新」页的
-  「从云端快照恢复」走同一份地址表，快照超过 7 天会拒绝覆盖并提示
+  标签下载快照（约 360MB，首次 1~3 分钟），无需手动全量拉取；快照里**同时包含行情、行业分类、
+  市场情绪、行业归属与公告库**，所以新访问者同步一次就有全部页面可看，不需要先点增量更新
+  「🔄 数据更新」页的「同步到最新快照」走同一份地址表，快照超过 7 天会拒绝覆盖并提示
 - **时区**：云端容器是 UTC，所有「今天/期望交易日」判断统一走 `stock_plan.data.clock`
   的北京时间，不依赖容器时区（否则北京时间 16:00–24:00 期望日会晚一天）
 - Windows 计划任务自动更新仅在本地部署生效，云端请在「🔄 数据更新」页手动更新（云端轻量模式自动降低并发）
@@ -258,16 +259,22 @@ STOCK_PLAN_CLOUD = "1"
 架构：
 
 ```
-本机 bars/（权威源，约 350MB）
+本机 data/processed/（权威源：bars ≈306MB + 分类/情绪/行业/公告 ≈4MB）
    │  scripts/publish_snapshot.py（每交易日 16:30 计划任务 \StockPlan\Daily_Publish）
    ▼
-GitHub Releases：tag = data-snapshot（资产：manifest.json + bars-<时间戳>.part00~03，每卷 90MB）
+GitHub Releases：tag = data-snapshot（资产：manifest.json + bars-<时间戳>.part00…，每卷 90MB）
    │  github.com/.../releases/download/data-snapshot 分发
    ▼
 云端恢复：app 启动时 bars < 100 只自动下载（st.status 进度）；
-「🔄 数据更新」页也有手动「从云端快照恢复」按钮
+「🔄 数据更新」页也有手动「同步到最新快照」按钮
 ```
 
+- **快照 v2（2026-10-28）一个动作补齐全部数据**：zip 内布局为 `bars/*.parquet` +
+  `classify/`、`market/`、`universe/`、`stock_basic.parquet`、`trade_calendar.csv`、
+  `announcements.db`；恢复时按分组原子替换（旧数据改名 → 换新 → 校验文件数 → 删旧，
+  任一步失败整体回滚）。旧版「只有行情」的快照仍能恢复（兼容平铺布局）
+- **分卷名两种都认**：本地打包叫 `bars.zip.partNN`，Release 资产不能以 `.zip` 结尾，
+  上传前改名成 `bars-<时间戳>.partNN`；校验器接受两种写法（只认前者时线上快照会被误判为损坏）
 - **为什么用 Releases 而不是分支**：原先 force push 到 `data-snapshot` 孤儿分支，每天会往
   仓库里塞一份约 300MB 的 blob（GitHub 侧何时回收不可控），且 `raw.githubusercontent.com`
   有 CDN 缓存，force push 后短期内可能仍取到旧快照。改走 Release 资产后，仓库历史不再增长，
@@ -285,8 +292,9 @@ GitHub Releases：tag = data-snapshot（资产：manifest.json + bars-<时间戳
 - **云端轻量模式**：检测到云端时增量更新并发降为 3 线程、全量拉取仅 1 年（容器 2.7GB 内存防超限）
 - **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`
   （`--build-only` 只打包不推送，用于排查）
-- **恢复快照**：云端页面 →「🔄 数据更新」→「☁️ 从云端快照恢复数据」；恢复完成后自动重扫
-  `_freshness.json` 并显示恢复后的行情最新交易日，避免"提示成功但其实还是旧数据"
+- **恢复快照**：云端页面 →「🔄 数据更新」→「⬇️ 同步到最新快照」；恢复完成后自动重扫
+  `_freshness.json`，提示里会列出恢复了哪些数据（行情 N 只 + 行业分类 + 市场情绪 + 公告库），
+  避免"提示成功但其实还是旧数据"
 - **令牌来源**：显式参数 → `DATA_SNAPSHOT_TOKEN` 环境变量 → `.streamlit/secrets.toml`
   （本机计划任务不经过 Streamlit，靠最后这一层读取）
 
