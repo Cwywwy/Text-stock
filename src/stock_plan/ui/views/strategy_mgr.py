@@ -109,7 +109,7 @@ def render():
             {"参数": k, "含义": PARAM_DESC.get(k, ""), "当前值": new_params.get(k, params[k])}
             for k in params
         ],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -186,7 +186,7 @@ def render():
                 st.caption(f"AI 取值逻辑：{rec['notes']}")
             cfg = rec["config"]
             rows = _config_rows(cfg)
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+            st.dataframe(rows, width="stretch", hide_index=True)
             unsupported = rec.get("unsupported") or []
             if unsupported:
                 with st.expander("⚠️ 保存时的 AI 反馈（未支持参数建议）"):
@@ -226,7 +226,7 @@ def render():
                         }
                         for r in all_recs.values()
                     ],
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
 

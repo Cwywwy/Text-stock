@@ -7,6 +7,7 @@
 Revision History:
     2026-09-04  switch to windowed load_market_maps to avoid cloud OOM
     2026-09-04  show cloud sample-universe disclosure
+    2026-10-28  (phase 2) charts go through chart_style factories with benchmark line
 """
 from __future__ import annotations
 
@@ -23,7 +24,14 @@ from stock_plan.backtest.walkforward import walk_forward
 from stock_plan.data.storage import Storage
 from stock_plan.strategy import store
 from stock_plan.strategy.registry import STRATEGIES
-from stock_plan.ui.widgets import apply_time_axis, PLOTLY_CONFIG, board_filter_ui, page_glossary
+from stock_plan.ui.widgets import (
+    BENCHMARK_LABEL,
+    benchmark_equity_fig,
+    board_filter_ui,
+    multi_line_fig,
+    page_glossary,
+    render_chart,
+)
 
 # 本页名词速览（R2 亲民化）
 COMPARE_GLOSSARY = {
@@ -32,6 +40,26 @@ COMPARE_GLOSSARY = {
     "样本外": "考试用的「没见过的数据」。样本外表现好，才说明策略是真有本事而不是运气。",
     "资金曲线": "账户总资产随时间变化的折线，一路向上是好策略的基本长相。",
 }
+
+def _equity_fig(results: dict, *, initial_cash: float = 100_000.0) -> go.Figure | None:
+    """多策略资金曲线 + 等权基准（基准是归一化指数，乘初始资金换到同一量纲）。"""
+    series: dict[str, pd.Series] = {}
+    benchmark: pd.Series | None = None
+    for name, data in results.items():
+        equity = data.get("equity")
+        if equity is None or equity.empty:
+            continue
+        series[name] = equity
+        if benchmark is None:
+            candidate = data.get("benchmark")
+            if candidate is not None and len(candidate) > 0:
+                benchmark = candidate
+    return benchmark_equity_fig(series, benchmark=benchmark, initial_cash=initial_cash)
+
+
+def _oos_fig(oos_equity: pd.Series) -> go.Figure | None:
+    """Walk-Forward 样本外资金曲线（单序列，副图高度）。"""
+    return multi_line_fig({"样本外资产": oos_equity}, y_title="总资产（元）", money=True)
 
 
 def _load_and_filter(start: str, end: str, boards: list[str] | None, exclude_st: bool):
@@ -83,7 +111,11 @@ def _cached_compare(
         )
         result = run_backtest(strat, config, bars_map, fund_map, stock_list)
         metrics = calc_metrics(result.equity_curve, result.trades)
-        results[name] = {"metrics": metrics, "equity": result.equity_curve}
+        results[name] = {
+            "metrics": metrics,
+            "equity": result.equity_curve,
+            "benchmark": result.benchmark,
+        }
     return results
 
 
@@ -178,27 +210,16 @@ def render():
                     "盈亏比": m.get("profit_loss", 0) or 0,
                     "交易次数": m.get("trade_count", 0),
                 })
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+            st.dataframe(rows, width="stretch", hide_index=True)
 
             # 资金曲线对比
             st.subheader("资金曲线对比")
-            fig = go.Figure()
-            colors = {"趋势跟随策略": "#1f77b4", "动量策略": "#d62728"}
-            for name, data in results.items():
-                eq = data["equity"]
-                if eq.empty:
-                    continue
-                fig.add_trace(go.Scatter(
-                    x=pd.to_datetime(eq.index),
-                    y=eq.values,
-                    mode="lines",
-                    name=name,
-                    line=dict(color=colors.get(name, "#333"), width=2),
-                ))
-            fig.update_layout(height=400, margin=dict(l=40, r=20, t=30, b=30),
-                              yaxis_title="资产（元）", xaxis_title="日期")
-            apply_time_axis(fig)
-            st.plotly_chart(fig, use_container_width=True, config=PLOTLY_CONFIG)
+            render_chart(
+                _equity_fig(results, initial_cash=float(initial_cash)),
+                name="compare-equity",
+                caption="每条线是一套策略在同一段历史里的账户资产；灰虚线是「等权持有全部候选股」"
+                        "的基准，用来判断策略本身有没有超额，而不是靠大盘上涨。",
+            )
 
     # ============ Tab 2: Walk-Forward ============
     with tab2:
@@ -238,7 +259,7 @@ def render():
                     "样本外胜率%": round(w["oos_win_rate"], 2),
                     "样本外笔数": w["oos_trades"],
                 })
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+            st.dataframe(rows, width="stretch", hide_index=True)
 
             st.subheader("样本外汇总")
             m = wf.oos_metrics
@@ -250,15 +271,9 @@ def render():
 
             if not wf.oos_equity.empty:
                 st.subheader("样本外资金曲线")
-                fig2 = go.Figure()
-                fig2.add_trace(go.Scatter(
-                    x=pd.to_datetime(wf.oos_equity.index),
-                    y=wf.oos_equity.values,
-                    mode="lines",
-                    name="样本外资产",
-                    line=dict(color="#2ca02c", width=2),
-                ))
-                fig2.update_layout(height=350, margin=dict(l=40, r=20, t=30, b=30),
-                                   yaxis_title="资产（元）", xaxis_title="日期")
-                apply_time_axis(fig2)
-                st.plotly_chart(fig2, use_container_width=True, config=PLOTLY_CONFIG)
+                render_chart(
+                    _oos_fig(wf.oos_equity),
+                    name="compare-walkforward",
+                    caption="样本外资产曲线：只包含「训练段之后就再没见过」的那段历史，"
+                            "它比训练段好看才有意义。",
+                )

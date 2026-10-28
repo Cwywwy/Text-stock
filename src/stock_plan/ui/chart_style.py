@@ -3,8 +3,11 @@
 文件：src/stock_plan/ui/chart_style.py
 作者：Cwywwy
 用途：把「观感」拆成可复用的 token 与样式函数，供 widgets.py 的图表工厂调用。
-      各 view **不直接**引用本模块（见 .github/plans/2026-10-28-1 第 4 节），
-      这样将来换渲染后端（例如小程序用 ECharts）只改工厂一处。
+      通用图（资金曲线、多折线、价位参考、分差瀑布）只在 widgets.py 的工厂里造；
+      页面专用图（如回测页的主图/月度柱/热力图）可以在视图内组合，但颜色、字号、
+      坐标轴、交互参数必须全部取自本模块，视图里不许出现硬编码颜色
+      （由 tests/test_chart_views.py 守护）。这样将来换渲染后端（例如小程序用
+      ECharts）只需替换工厂与 token 的映射。
 所属模块：ui（展示层）
 
 设计来源：观潮 TideView 的看盘界面（近黑画布、无背景网格、价格轴靠右、小字号紧凑
@@ -23,6 +26,7 @@
 修订记录：
 2026-10-28 初版：token、格式化函数与 apply_base_layout，供 Phase 0 图表工厂使用。
 2026-10-28 Phase 1 样张复查：回撤阴影降到 0.12、右轴标题改右上角横排注释、页边距重算。
+2026-10-28 Phase 2：新增 LEVEL_* 价位 token 与 add_level_line()，个股页 hline 统一从这儿出。
 """
 from __future__ import annotations
 
@@ -49,6 +53,13 @@ BENCHMARK = "#8A9099"  # 基准曲线（虚线）
 DRAWDOWN = "rgba(240, 97, 109, 0.12)"  # 回撤阴影（深色底上 0.16 偏重）
 WARN = "#F5A524"  # 警示标注
 NEUTRAL = "#5B6573"  # 次要元素
+
+# 个股页的价位参考线：语义固定，别在视图里临时挑颜色
+LEVEL_BUY = PRIMARY  # 目标买入价
+LEVEL_STOP = UP  # 止损位（跌破就认亏 → 警示红）
+LEVEL_TARGET = WARN  # 止盈区
+LEVEL_T_BUY = "#5B9BD5"  # 做T低吸（次要参考）
+LEVEL_T_SELL = "#B07FD0"  # 做T高抛（次要参考）
 
 # 多序列配色：按出场顺序取色，保证「自己的策略」不会是看不见的 #333
 SERIES: tuple[str, ...] = (
@@ -213,7 +224,10 @@ def apply_base_layout(
         if right_axis:
             # 右轴竖排标题会与刻度标签挤在一起（页边距再宽也救不回来，且观潮本来就没有
             # 竖排轴标题）。改成图右上角一行横排小字，既标了单位又不抢占刻度空间。
-            annotations = list(extra.pop("annotations", None) or [])
+            # 保留图上已有的 annotation（例如 add_level_line 加的价位标签），
+            # 否则这里整体赋值会把它整批覆盖掉。
+            annotations = list(fig.layout.annotations or ())
+            annotations.extend(extra.pop("annotations", None) or [])
             annotations.append(
                 dict(
                     text=y_title,
@@ -308,4 +322,35 @@ def zero_line_shape() -> dict:
         y1=0,
         line=dict(color=GRID, width=1),
         layer="below",
+    )
+
+
+def add_level_line(
+    fig: go.Figure,
+    y: float,
+    *,
+    label: str,
+    colour: str,
+    dash: str = "dot",
+    width: int = 1,
+) -> None:
+    """画一条价位参考线（买入价 / 止损 / 止盈 / 做T价位），并统一标注样式。
+
+    这些线的语义固定，颜色从 ``LEVEL_*`` token 取，不要在视图里临时挑颜色——
+    否则同一张图里「止损红、止盈绿」会跟红涨绿跌的语义打架。
+    """
+    fig.add_hline(
+        y=float(y),
+        line=dict(color=colour, width=width, dash=dash),
+        annotation_text=f"{label} {float(y):.2f}",
+        annotation_position="left top",
+        annotation=dict(
+            x=0.006,
+            xanchor="left",
+            yanchor="bottom",
+            font=dict(size=FONT_AXIS, color=colour),
+            bgcolor=PANEL,
+            borderpad=3,
+            showarrow=False,
+        ),
     )

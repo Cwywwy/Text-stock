@@ -288,13 +288,13 @@ def _extra_sources_panel() -> None:
         col3.metric("公告存档", "读取失败", help=str(e))
 
     b1, b2, b3 = st.columns(3)
-    if b1.button("📈 抓今日情绪/资金流", key="btn_snap_market", use_container_width=True,
+    if b1.button("📈 抓今日情绪/资金流", key="btn_snap_market", width="stretch",
                  help="涨停池、炸板池、跌停池 + 行业/概念/个股资金流，约 12 秒"):
         _run_extra_source("市场情绪快照", ["stock_plan.data.market_snapshot"], 240)
-    if b2.button("🏷️ 抓本月分类快照", key="btn_snap_classify", use_container_width=True,
+    if b2.button("🏷️ 抓本月分类快照", key="btn_snap_classify", width="stretch",
                  help="申万一级/二级成分 + 证监会行业 + 同花顺概念，约 2~3 分钟"):
         _run_extra_source("分类快照", ["stock_plan.data.classification", "--all"], 900)
-    if b3.button("📰 抓持仓/自选公告", key="btn_snap_ann", use_container_width=True,
+    if b3.button("📰 抓持仓/自选公告", key="btn_snap_ann", width="stretch",
                  help="回溯 7 天，按持仓 + 自选清单抓，去重入库"):
         _run_extra_source("公告", ["stock_plan.data.announcements", "--days", "7"], 600)
 
@@ -360,7 +360,7 @@ def render() -> None:
         "🔄 立即增量更新",
         key="btn_update_data",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         help="为全部已缓存股票补拉最近 30 天日线（未缓存股票不自动拉取）",
     ):
         if prog.get("running"):

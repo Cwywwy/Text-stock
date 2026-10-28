@@ -56,7 +56,7 @@ def render():
             }
             for pos in trader.positions.values()
         ]
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.dataframe(rows, width="stretch", hide_index=True)
     else:
         st.info("当前无持仓。可在「今日信号」页生成信号后发送到模拟交易。")
 
@@ -93,7 +93,7 @@ def render():
             }
             for t in reversed(trader.history[-50:])
         ]
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.dataframe(rows, width="stretch", hide_index=True)
     else:
         st.info("暂无交易记录。")
 

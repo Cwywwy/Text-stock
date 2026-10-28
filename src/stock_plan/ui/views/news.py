@@ -312,7 +312,7 @@ def render():
                     }
                     for it in items
                 ]
-                st.dataframe(rows, use_container_width=True, hide_index=True)
+                st.dataframe(rows, width="stretch", hide_index=True)
 
     # ============ Tab 4: 分红/停牌 ============
     with tab4:
@@ -337,7 +337,7 @@ def render():
                     }
                     for it in items
                 ]
-                st.dataframe(rows, use_container_width=True, hide_index=True)
+                st.dataframe(rows, width="stretch", hide_index=True)
 
         st.divider()
         st.subheader("停复牌")
@@ -359,4 +359,4 @@ def render():
                     }
                     for it in items
                 ]
-                st.dataframe(rows, use_container_width=True, hide_index=True)
+                st.dataframe(rows, width="stretch", hide_index=True)

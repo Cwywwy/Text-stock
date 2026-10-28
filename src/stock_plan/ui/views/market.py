@@ -89,7 +89,7 @@ def _render_emotion(day: str | None) -> None:
         show = zt[cols].sort_values("boards", ascending=False).head(20).copy()
         if "seal_fund" in show.columns:
             show["seal_fund"] = show["seal_fund"].map(_yi)
-        st.dataframe(show, use_container_width=True, hide_index=True)
+        st.dataframe(show, width="stretch", hide_index=True)
         st.caption(f"当天涨停 {len(zt)} 只（表格最多显示 20 行，按连板数排序）。")
     else:
         st.caption("当天没有涨停池快照。")
@@ -107,7 +107,7 @@ def _render_boards(day: str | None) -> None:
                 if "净流入" in show.columns:
                     show["净流入"] = show["净流入"].map(_yi)
                 st.caption(label)
-                st.dataframe(show, use_container_width=True, hide_index=True)
+                st.dataframe(show, width="stretch", hide_index=True)
             else:
                 st.caption(f"没有{label[0:2]}数据。")
 
@@ -117,7 +117,7 @@ def _render_boards(day: str | None) -> None:
         df, src = res
         if df is not None and not df.empty:
             st.dataframe(df.rename(columns={"sw_l1": "行业", "limit_up": "涨停家数"}),
-                         use_container_width=True, hide_index=True)
+                         width="stretch", hide_index=True)
         st.caption(f"口径：{src}")
 
 
@@ -199,7 +199,7 @@ def _render_announcements() -> None:
 
     df = _safe(announcements.load, None, None, 100)
     if df is not None and not df.empty:
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
     else:
         st.caption("本地还没有公告。点上面的按钮抓取一次。")
 

@@ -172,7 +172,7 @@ def _store_signals(signals, period_label: str):
 def _render_signal_block(signals, period_label: str):
     """渲染一组信号的表格 + 理由 + 发送按钮。"""
     st.subheader(f"📌 {period_label}信号（持仓 {signals[0].hold_days} 天）")
-    st.dataframe(_signals_to_rows(signals), use_container_width=True, hide_index=True)
+    st.dataframe(_signals_to_rows(signals), width="stretch", hide_index=True)
 
     st.markdown("**入选理由**")
     for s in signals:

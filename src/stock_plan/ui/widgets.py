@@ -102,10 +102,15 @@ def multi_line_fig(
     items = [(n, s) for n, s in series_map.items() if s is not None and len(s) > 0]
     if not items:
         return None
-    # 基准先画，让它压在主线下面
+    # 基准先画，让它压在主线下面；但基准不占用系列色板，
+    # 否则第一条策略会拿到第二种颜色，品牌主色白白浪费在灰虚线上。
     items.sort(key=lambda kv: 0 if kv[0] == benchmark else 1)
-    for i, (name, ser) in enumerate(items):
+    colour_index = 0
+    for name, ser in items:
         is_bench = name == benchmark
+        colour = cs.BENCHMARK if is_bench else cs.series_colour(colour_index)
+        if not is_bench:
+            colour_index += 1
         fig.add_trace(
             go.Scatter(
                 x=pd.to_datetime(ser.index),
@@ -113,7 +118,7 @@ def multi_line_fig(
                 mode="lines",
                 name=name,
                 line=dict(
-                    color=cs.BENCHMARK if is_bench else cs.series_colour(i),
+                    color=colour,
                     width=1.5 if is_bench else 2,
                     dash="dash" if is_bench else None,
                 ),
@@ -376,6 +381,81 @@ def equity_curve_fig(equity: pd.Series, benchmark: pd.Series | None = None) -> g
                 )
     cs.apply_base_layout(fig, height=cs.H_PRIMARY, y_title="累计收益率（%）", zero_line=True)
     apply_time_axis(fig, title="日期", rangeslider=True)
+    return fig
+
+
+BENCHMARK_LABEL = "等权基准（持有全部候选股）"
+
+
+def benchmark_equity_fig(
+    series_map: dict[str, pd.Series],
+    *,
+    benchmark: pd.Series | None = None,
+    initial_cash: float = 100_000.0,
+    height: int | None = None,
+    y_title: str | None = "总资产（元）",
+) -> go.Figure | None:
+    """多条资金曲线 + 等权基准（策略对比页）。
+
+    基准序列是「归一化到 1.0」的指数，必须乘初始资金才能和资产曲线同量纲——
+    直接把 1.0~1.2 的指数画到 10 万的轴上会变成一条贴底的直线。
+    """
+    series: dict[str, pd.Series] = {
+        name: value
+        for name, value in (series_map or {}).items()
+        if value is not None and len(value) > 0
+    }
+    bench_label: str | None = None
+    if benchmark is not None and len(benchmark) > 0:
+        series[BENCHMARK_LABEL] = benchmark.astype(float) * float(initial_cash)
+        bench_label = BENCHMARK_LABEL
+    if not series:
+        return None
+    return multi_line_fig(
+        series,
+        height=height or cs.H_PRIMARY,
+        y_title=y_title,
+        money=True,
+        benchmark=bench_label,
+    )
+
+
+def price_level_fig(
+    bars: pd.DataFrame,
+    *,
+    buy_price: float | None = None,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+    t_buy: float | None = None,
+    t_sell: float | None = None,
+    tail: int = 120,
+    height: int | None = None,
+) -> go.Figure | None:
+    """个股收盘价 + 买入 / 止损 / 止盈 / 做T 价位参考线（持仓诊断页）。"""
+    if bars is None or bars.empty or "close" not in bars.columns:
+        return None
+    window = bars.tail(int(tail)) if tail else bars
+    fig = go.Figure(
+        go.Scatter(
+            x=pd.to_datetime(window["date"]),
+            y=window["close"],
+            mode="lines",
+            name="收盘价",
+            line=dict(color=cs.PRIMARY, width=2),
+            hovertemplate="%{x|%Y-%m-%d}<br>收盘 %{y:.2f} 元<extra></extra>",
+        )
+    )
+    for value, label, colour, dash in (
+        (buy_price, "买入价", cs.LEVEL_BUY, "dot"),
+        (stop_loss, "止损", cs.LEVEL_STOP, "dash"),
+        (take_profit, "止盈", cs.LEVEL_TARGET, "dash"),
+        (t_buy, "做T低吸", cs.LEVEL_T_BUY, "dot"),
+        (t_sell, "做T高抛", cs.LEVEL_T_SELL, "dot"),
+    ):
+        if value:
+            cs.add_level_line(fig, value, label=label, colour=colour, dash=dash)
+    cs.apply_base_layout(fig, height=height or cs.H_PRIMARY, y_title="价格（元）", right_axis=True)
+    apply_time_axis(fig)
     return fig
 
 

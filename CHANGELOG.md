@@ -21,7 +21,19 @@
 - **`scripts/preview_charts.py`**：不启动 Streamlit、不连数据库就能生成「改造前 / 改造后」样张 HTML，
   用固定种子合成数据；改观感时先看样张，不反复跑全 A 股回测。
 - 结果：全量 `pytest` 从 210 增至 **229 passed**（`tests/test_chart_style.py` 15 项 +
-  `tests/test_backtest_benchmark.py` 4 项）。**Phase 2/3（对比页 / 持仓页套同一规范、回归归档）待做。**
+  `tests/test_backtest_benchmark.py` 4 项）。
+- **Phase 2 其他页面统一**：`src/stock_plan/ui/views/compare.py` 的资金曲线改用
+  `widgets.benchmark_equity_fig()`（等权基准乘初始资金，与资产曲线同量纲，不再画成贴底直线）；
+  `src/stock_plan/ui/views/portfolio.py` 的价位线图下沉为 `widgets.price_level_fig()`——
+  买入价 / 止损 / 止盈 / 做T低吸 / 做T高抛五条线统一由 `chart_style.add_level_line()` 出；
+  可视化构建器的收益曲线也改走 `render_chart()`。全 `ui/` 去掉 Streamlit 1.63 已弃用的
+  `use_container_width`（表格统一 `width="stretch"`），`multi_line_fig()` 的基准不再占用系列色板
+  （第一条策略回到品牌绿）。新增 `scripts/preview_compare_portfolio.py` 出对比页 / 持仓页样张。
+- **修一个真 bug**：`apply_base_layout()` 原先整体赋值 `annotations`，会把 `add_level_line()`
+  加上的价位标签整批冲掉；改成先保留图上已有注释。
+- **新增 `tests/test_chart_views.py`**（9 项守护）：视图层不许硬编码颜色、不许再用
+  `use_container_width`、`st.plotly_chart` 只能出现在 `widgets.py`，并断言基准换算与五条价位线齐全。
+- 结果：全量 `pytest` **309 passed**；**Phase 3（全站回归 + 报告 + 归档）进行中。**
 
 ### B. 信号可解释 + LLM 并发加固（`.github/plans/2026-10-28-2-signal-explain-report.md`）
 

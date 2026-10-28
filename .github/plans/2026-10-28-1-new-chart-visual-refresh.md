@@ -2,7 +2,7 @@
 
 - 日期：2026-10-28
 - 分支：`分支3`（基线 `agents/merge-envcheck-into-branch1`，main + 19 提交）
-- 状态：**执行中** —— Phase 0 ✅（`c2f1f0c`）、Phase 1 ✅（`d421d5f`，样张已交用户）；Phase 2（对比页 / 持仓页 / 今日页套同一规范）与 Phase 3（全站回归 + 归档）**待做**
+- 状态：**执行中** —— Phase 0 ✅（`c2f1f0c`）、Phase 1 ✅（`d421d5f`）、Phase 2 ✅（对比页 / 持仓页 / 可视化构建器统一规范，守护测试 `tests/test_chart_views.py`）；Phase 3（全站回归 + 报告 + 归档）进行中
 - 环境：Python **3.13.15**（`.venv`）；plotly **7.0.0**、streamlit **1.63.0**、pandas **3.0.5**、numpy 2.5.2；pytest 9.1.1
 - 硬约束：**不新增依赖**（INSTRUCTION.md:35、README.md:176/214）
 
@@ -139,11 +139,16 @@
 - 全量 pytest 通过
 - **用户对样张点头后才进入 Phase 2**
 
-### Phase 2 — 其他页面统一
+### Phase 2 — 其他页面统一 ✅
 
-产出：`compare.py`（修 `#333`、基准叠加、表格下移、进度反馈）、`portfolio.py`（hline 避让、y 轴余量）、`today.py`（regime 图移出 expander、降高）。
+产出（已完成）：
+- `compare.py`：资金曲线改用 `widgets.benchmark_equity_fig`，基准乘初始资金换算成资产；样本外曲线走 `multi_line_fig`
+- `portfolio.py`：价位线图下沉为 `widgets.price_level_fig`，五条参考线（买入/止损/止盈/做T低吸/做T高抛）统一由 `chart_style.add_level_line` 出
+- `visual_builder.py`（可视化构建器）：收益曲线改走 `render_chart`
+- 全 `ui/` 去掉 `use_container_width`（Streamlit 1.63 已弃用），表格统一 `width="stretch"`；`multi_line_fig` 的基准不再占用系列色板
+- `scripts/preview_compare_portfolio.py` 出「策略对比 / 持仓诊断」静态样张
 
-完成标准：`grep` 全项目 `ui/` 无硬编码 hex（`chart_style.py` 除外）；无 `use_container_width` 弃用告警。
+完成标准（已满足）：`ui/` 无硬编码 hex（`chart_style.py` 除外）；无 `use_container_width`；`st.plotly_chart` 只出现在 `widgets.py` —— 三条都由 `tests/test_chart_views.py` 守护。
 
 ### Phase 3 — 回归验证与收尾
 
