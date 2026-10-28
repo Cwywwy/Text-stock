@@ -272,10 +272,15 @@ GitHub Releases：tag = data-snapshot（资产：manifest.json + bars-<时间戳
 - **完整性校验**：逐卷 sha256 + 整包 zip_sha256 双重校验，原子替换，失败自动回滚不污染旧数据
 - **回退能力**：恢复端会按 Release → 旧分支 的顺序尝试多个地址，发布方式切换期间不会拿不到数据；
   发布端可用 `STOCK_PLAN_SNAPSHOT_BACKEND=branch` 回退到旧的孤儿分支方式
+- **旧快照安全阀**：启动恢复与手动「从云端快照恢复」共用同一份地址表
+  （`snapshot_restore_bases()`），且手动恢复会校验 `manifest.created_at`，超过
+  `SNAPSHOT_MAX_AGE_DAYS`（7 天）的旧快照直接判失败、继续尝试下一个地址，不再静默覆盖本地数据。
+  2026-10-28 的云端事故就是手动恢复绕开地址表、写死读旧分支，导致"恢复成功"却退回 2026-09-03
 - **云端轻量模式**：检测到云端时增量更新并发降为 3 线程、全量拉取仅 1 年（容器 2.7GB 内存防超限）
 - **手动发布**：本机运行 `scripts\publish_snapshot.cmd` 或 `python scripts/publish_snapshot.py`
   （`--build-only` 只打包不推送，用于排查）
-- **恢复快照**：云端页面 →「🔄 数据更新」→「☁️ 从云端快照恢复数据」
+- **恢复快照**：云端页面 →「🔄 数据更新」→「☁️ 从云端快照恢复数据」；恢复完成后自动重扫
+  `_freshness.json` 并显示恢复后的行情最新交易日，避免"提示成功但其实还是旧数据"
 - **令牌来源**：显式参数 → `DATA_SNAPSHOT_TOKEN` 环境变量 → `.streamlit/secrets.toml`
   （本机计划任务不经过 Streamlit，靠最后这一层读取）
 
