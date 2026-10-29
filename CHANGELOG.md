@@ -2,6 +2,29 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 13）：复筛 Phase 20 — 全市场 150 arm 矩阵与双层判定（候选层无一通过）
+
+按 [复筛计划书](.github/plans/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 20：
+全市场 150 arm（144 股票 + 6 行业轮动）、预注册双层判定、月度极值与「未能降仓」披露。全量测试 654 → **656 passed**。
+
+- **矩阵**：7 策略基线 + 收敛 5 变体 ×2 策略 + 动量 3 模式 + RRG，三窗口（W1 训练 / W2 验证 / W3 全期）×
+  三口径（off / weak / tier），全市场 5379 只不抽样、`jobs=4`，144 arm 全部成功（`tests/reports/2026-10-29-17-36.rescreen-matrix.{json,md}`）；
+  RRG 6 arm 另行跑（该 runner 无「弱择时」口径，故为计划的 9 → 实际 6，`2026-10-29-17-45.rescreen-rrg.json`）。
+- **判定结论**（`tests/reports/2026-10-29-18-45.rescreen-judgement.md`）：
+  ① 候选层 W1 各选 1 个进 W2——收敛族 `pvcf/突破`（+3.33pp、4/4 年正）、动量族 `ma_ratio_blend/动量`（+11.77pp、3/4）；
+  ② W2 判定**无一通过**：`pvcf/突破` 超额 +1.24pp（C-1 门槛 +2.0 ❌），`ma_ratio_blend/动量` 超额 +10.20pp 但 C-3 ❌（2025 下半年 -11.4%、2026 才反超，属单年主导）；
+  ③ 择时层：`weak` 对两组选中候选都「帮忙」（回撤 +3.57 / +7.98pp，年化 +9.00 / +9.78pp）；`tier` 回撤改善很大（+20.03 / +16.06pp）但 M-3 只有 1/2 年更好，按预注册规则判「无差别」；
+  ④ 全矩阵 26 组信息性汇总：`weak` 帮忙 5、帮倒忙 3；`tier` 帮忙 1（基线动量 +34.54pp），改善集中在 2026 下跌段（月度极值：2026-07 躲开 +13~+20pp，同时 2026-04/09 错过 -5~-8pp）；
+  ⑤ RRG 行业层 W1 超额 +0.46pp（C-1 ❌）→ 按预注册规则不做 C2，与 Phase 9 一致。
+- **新增脚本**：`scripts/build_rescreen_specs.py`（生成 144 arm spec）、`scripts/measure_rrg_batch.py`（RRG 6 arm）、
+  `scripts/judge_rescreen.py`（双层判定 + 月度极值 + 降仓披露 + 数据指纹）；`measure_factor_ab.py` 增加 `--dump-equity`。
+- **引擎**：`BacktestResult.timing_failures` 记录降档日「未能降仓」残差（跌停/停牌/T+1/不足一手/整手取整），
+  明细回放 12 arm 验证加记录器后六项指标与矩阵逐值一致；`convergence.py` 变体扩到 6 个（补 acf/trcf）。
+- **数据冻结**：跑批前后指纹（bars 5579 / meta.db / 200 只抽样）逐项一致，跑批期间数据未变。
+- 报告：实验 `tests/reports/2026-10-29-18-45.rescreen-judgement.md`；测试 `tests/reports/2026-10-29-18-46.report-1.md`。
+- **结论口径**：本轮没有任何候选通过预注册门槛，因此**不改任何默认值**（择时档位保持默认关闭）；
+  下一轮若要继续，应先扩大验证窗口或做真正样本外验证，而不是继续在同一 W2 上调参。
+
 ## 2026-10-29（续 12）：复筛 Phase 18–19 — 全市场基线冻结 + 双均线三档择时（默认关闭）
 
 按 [复筛计划书](.github/plans/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 18、Phase 19。

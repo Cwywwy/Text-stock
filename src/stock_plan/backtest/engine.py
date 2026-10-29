@@ -83,6 +83,9 @@ class BacktestResult:
     # 基准净值（同期等权持有全部候选股，首日归一为 1.0）。旧缓存/旧调用方没有这个
     # 字段时为 None，展示层需判空降级（见 .github/plans/2026-10-28-1 第 7 节）。
     benchmark: pd.Series | None = None
+    # 三档择时降仓未到位的记录（跌停/停牌/T+1/不足一手）；只在 timing_tier != "off"
+    # 时可能出现，其它情况为空列表。Phase 20 报告要求披露「未能降仓」清单。
+    timing_failures: list = field(default_factory=list)
 
 
 def equal_weight_benchmark(
@@ -537,6 +540,12 @@ def run_backtest(
         if sold < pos["shares"]:
             pos["shares"] -= sold
             pos["cost"] -= cost_basis
+        else:
+            # 整笔平仓：把剩余股数显式清零。旧实现依赖调用方 `del positions[code]`，
+            # 但 Phase 19 的「按比例降仓」用 `shares=..."` 卖出全部剩余股数时不会走 del 分支，
+            # 导致持仓既留在 positions 里、又每天重复卖出同一笔股数（现金指数级膨胀）。
+            pos["shares"] = 0
+            pos["cost"] = 0.0
         return cash + proceeds - fee
 
     def _market_value(ts: pd.Timestamp) -> float:
@@ -555,6 +564,8 @@ def run_backtest(
                 if end_close is not None:
                     value += pos["shares"] * end_close
         return value
+
+    timing_failures: list[dict] = []
 
     def _reduce_to_cap(day, ts: pd.Timestamp, cap: float) -> None:
         """把持仓总市值压到 ``cap`` 以内：按每只持仓「市值 × cap/总市值」的比例减仓。
@@ -592,6 +603,17 @@ def run_backtest(
             cash = _close(code, pos, day, close, "择时降仓", shares=min(lots, pos["shares"]))
             if pos["shares"] <= 0:
                 del positions[code]
+        # 披露用：跌停 / 停牌 / T+1 / 不足一手会让当日仓位高于目标，记录下来
+        realized = _market_value(ts)
+        if realized > cap * 1.02:
+            timing_failures.append(
+                {
+                    "date": str(day),
+                    "target_value": round(float(cap), 2),
+                    "realized_value": round(float(realized), 2),
+                    "gap_pct": round(float((realized / cap - 1.0) * 100.0), 2) if cap > 0 else None,
+                }
+            )
 
     for day in trading_days:
         ts = pd.Timestamp(day)
@@ -857,7 +879,12 @@ def run_backtest(
     # 统一为 DatetimeIndex，便于后续 resample
     equity.index = pd.to_datetime(equity.index)
     trades_df = pd.DataFrame(trades)
-    return BacktestResult(equity_curve=equity, trades=trades_df, benchmark=benchmark)
+    return BacktestResult(
+        equity_curve=equity,
+        trades=trades_df,
+        benchmark=benchmark,
+        timing_failures=timing_failures,
+    )
 
 
 if __name__ == "__main__":

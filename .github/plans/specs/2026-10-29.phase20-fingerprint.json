@@ -1,0 +1,28 @@
+{
+ "phase": 20,
+ "f0": {
+  "time": "2026-10-29T16:48:46",
+  "bars_count": 5579,
+  "bars_meta_sha256": "1e8cf9c7462a0c4e0e2e36931b07a26a7804de4e0028adc68b9bd43fcfd2a25a",
+  "sample200_sha256": "7b5b4d8eb4f0b0c52fdf81022a8cccad37e1c2ba5dc31e1d01671a0c730ef1e1",
+  "meta_db_sha256": "9447ffb243ea25f28090d0cc695bf142cb8b377c230c583ca51fab22409aa7fc",
+  "update_log_tail": "2026-10-29T16:34:00+08:00 [incremental] updated=5575 failed=0 uncached=0 elapsed=230.0s"
+ },
+ "f1": {
+  "time": "2026-10-29T18:38:02",
+  "bars_count": 5579,
+  "bars_meta_sha256": "1e8cf9c7462a0c4e0e2e36931b07a26a7804de4e0028adc68b9bd43fcfd2a25a",
+  "sample200_sha256": "7b5b4d8eb4f0b0c52fdf81022a8cccad37e1c2ba5dc31e1d01671a0c730ef1e1",
+  "meta_db_sha256": "9447ffb243ea25f28090d0cc695bf142cb8b377c230c583ca51fab22409aa7fc",
+  "update_log_tail": "2026-10-29T17:16:26+08:00 [uncached] updated=1 failed=0 uncached=0 elapsed=0.0s"
+ },
+ "same_keys": [
+  "bars_count",
+  "bars_meta_sha256",
+  "sample200_sha256",
+  "meta_db_sha256"
+ ],
+ "diff_keys": [],
+ "conclusion": "Phase 20 跑批前后数据指纹一致（bars/meta.db/200 只抽样），跑批期间数据未变",
+ "notes": "update_log 尾部不同只因 17:16 多写了一条 uncached 增量记录（updated=1），不涉及数据内容指纹"
+}

@@ -21,10 +21,12 @@ import pytest
 from stock_plan.factors.convergence import (
     CONV_DIAG_COLUMNS,
     CONV_RAW_COLUMNS,
+    CONV_VARIANTS,
     CONVERGENCE_WINDOWS,
     MA_WINDOWS,
     add_conv_columns,
     compose_pvcf,
+    conv_variant_series,
     convergence_columns,
     convergence_series,
     cross_section_zscore,
@@ -156,3 +158,37 @@ def test_cross_section_zscore_and_pvcf():
 def test_pvcf_missing_columns_is_nan():
     df = pd.DataFrame({"conv_pcf": [1.0]})
     assert compose_pvcf(df).isna().all()
+
+
+def test_conv_variant_series_covers_all_plan_variants():
+    """复筛矩阵的 5 个变体 + multi 都要能取到，且非法值给出中文报错。"""
+    df = pd.DataFrame(
+        {
+            "conv_pcf": [3.0, 1.0, 2.0],
+            "conv_vcf": [1.0, 2.0, 3.0],
+            "conv_pvcf": [2.0, 3.0, 1.0],
+            "conv_acf": [1.0, 3.0, 2.0],
+            "conv_trcf": [3.0, 2.0, 1.0],
+        }
+    )
+    for variant in CONV_VARIANTS:
+        series = conv_variant_series(df, variant)
+        assert len(series) == len(df)
+        assert not series.isna().any()
+        if variant != "multi":
+            column = {
+                "pcf": "conv_pcf",
+                "vcf": "conv_vcf",
+                "pvcf": "conv_pvcf",
+                "acf": "conv_acf",
+                "trcf": "conv_trcf",
+            }[variant]
+            expected = cross_section_zscore(df, column)
+            pd.testing.assert_series_equal(series, expected, check_names=False, rtol=1e-12)
+
+    # 缺列 → 全 0（中性），不抛错
+    missing = conv_variant_series(pd.DataFrame({"conv_pcf": [1.0, 2.0]}), "trcf")
+    assert (missing == 0.0).all()
+
+    with pytest.raises(ValueError, match="未知的收敛因子变体"):
+        conv_variant_series(df, "nope")

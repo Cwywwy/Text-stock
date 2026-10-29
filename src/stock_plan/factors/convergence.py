@@ -40,6 +40,7 @@ MA_120 需要 120 根 K 线；不足时结果为 NaN（不静默填 0，避免�
 修订记录：
 - 2026-10-29  (phase 7) 新建：四变体 + PVCF 截面合成 + 无量纲诊断口径。
 - 2026-10-29 (phase 19) 新增 `conv_variant_series` 与 `CONV_VARIANTS`（复筛矩阵口径维度）。
+- 2026-10-29 (phase 20) `CONV_VARIANTS` 补齐 acf / trcf，覆盖计划的 5 个收敛变体。
 """
 from __future__ import annotations
 
@@ -56,8 +57,8 @@ MA_WINDOWS: tuple[int, ...] = (1,) + CONVERGENCE_WINDOWS
 CONV_RAW_COLUMNS: tuple[str, ...] = ("conv_pcf", "conv_vcf", "conv_acf", "conv_trcf")
 CONV_COLUMNS: tuple[str, ...] = CONV_RAW_COLUMNS + ("conv_pvcf",)
 
-# 收敛因子变体（Phase 19 复筛矩阵的口径维度）：pcf 默认 / vcf / pvcf / multi(两者取小)
-CONV_VARIANTS: tuple[str, ...] = ("pcf", "vcf", "pvcf", "multi")
+# 收敛因子变体（Phase 19/20 复筛矩阵的口径维度）：pcf 默认 / vcf / pvcf / acf / trcf / multi(取小)
+CONV_VARIANTS: tuple[str, ...] = ("pcf", "vcf", "pvcf", "acf", "trcf", "multi")
 
 # 诊断列（无量纲口径，只进报告，不进因子行/打分）
 CONV_DIAG_COLUMNS: tuple[str, ...] = ("conv_pcf_cv",)
@@ -191,6 +192,8 @@ def conv_variant_series(df: pd.DataFrame, variant: str = "pcf") -> pd.Series:
         pcf   = z(conv_pcf)                     —— 默认口径，与 Phase 7 逐值一致
         vcf   = z(conv_vcf)
         pvcf  = z(conv_pvcf)                    —— 研究口径合成因子
+        acf   = z(conv_acf)                     —— 成交额口径
+        trcf  = z(conv_trcf)                    —— 换手率口径
         multi = min(z(conv_pcf), z(conv_vcf))   —— 两种口径**同时**收敛才算「真收敛」
 
     参数：
@@ -212,7 +215,13 @@ def conv_variant_series(df: pd.DataFrame, variant: str = "pcf") -> pd.Series:
             axis=1,
         )
         return z.min(axis=1)
-    column = {"pcf": "conv_pcf", "vcf": "conv_vcf", "pvcf": "conv_pvcf"}[variant]
+    column = {
+        "pcf": "conv_pcf",
+        "vcf": "conv_vcf",
+        "pvcf": "conv_pvcf",
+        "acf": "conv_acf",
+        "trcf": "conv_trcf",
+    }[variant]
     if column not in df.columns:
         return pd.Series(0.0, index=df.index)
     return cross_section_zscore(df, column)

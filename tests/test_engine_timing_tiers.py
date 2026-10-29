@@ -218,3 +218,29 @@ def test_engine_invalid_tier_raises():
     )
     with pytest.raises(ValueError, match="择时"):
         run_backtest(_AlwaysBuyStrategy(), config, bars_map, {}, stock_list)
+
+
+def test_engine_de_risk_sale_does_not_inflate_equity():
+    """回归：整笔降仓卖出后持仓必须清零。
+
+    历史 bug：`_close()` 走「卖出股数 = 全部持仓」分支时不改 `pos["shares"]`，
+    而 `_reduce_to_cap()` 只在 `shares <= 0` 时删除持仓 → 持仓留着、现金却每天按
+    同一笔股数再收一次，资金曲线指数级膨胀（实测 4.6 年复筛里出现 1.28 亿%）。
+    """
+    bars = _rising_then_crashing()
+    bars_map = {code: bars.copy() for code in ("600000", "600001", "600002")}
+    stock_list = _stock_list(list(bars_map))
+    config = BacktestConfig(
+        start=date(2025, 3, 1),
+        end=date(2025, 3, 1) + pd.Timedelta(days=300),
+        top_n=2,
+        timing_tier="dual_ma",
+        enable_price_limit=False,
+    )
+    res = run_backtest(_AlwaysBuyStrategy(), config, bars_map, {}, stock_list)
+    # 先涨后暴跌的行情里，任何「重复卖出」都会把 10 万放大成天文数字；
+    # 正常结果应在 10 万上下小幅波动（实测约 10.6 万），绝不可能翻倍。
+    assert float(res.equity_curve.max()) < 200_000.0
+    assert float(res.equity_curve.min()) > 0.0
+    reasons = res.trades["reason"].astype(str) if not res.trades.empty else pd.Series(dtype=str)
+    assert (reasons == "择时降仓").any()
