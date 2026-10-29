@@ -532,3 +532,53 @@ def test_today_cloud_path_does_not_load_prepared(monkeypatch):
     assert counts.storage == 0, "云端分支不应加载行情"
     assert counts.prepare == 0, "云端分支不应构建 prepared"
     assert seen == [], "云端分支不应调用生成器"
+
+
+# ---------------------------------------------------------------- 双均线三档择时（Phase 19）
+
+def test_compare_page_timing_tier_defaults_off(monkeypatch):
+    """对比页有「大盘择时档位」下拉，默认关闭（保证历史结果口径不变）。"""
+    _install_runtime(monkeypatch)
+    _patch_compare_chrome(monkeypatch)
+
+    at = AppTest.from_string(
+        "from stock_plan.ui.views import compare\ncompare.render()\n",
+        default_timeout=120,
+    )
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    tier = at.selectbox(key="cmp_timing_tier")
+    assert tier.value == "关闭（默认）"
+    assert tier.options == ["关闭（默认）", "双均线三档（减仓/清仓）"]
+    weak = at.checkbox(key="cmp_timing")
+    assert "弱择时" in weak.label
+
+
+def test_run_comparison_passes_timing_tier_to_config(monkeypatch):
+    """档位必须真的进 BacktestConfig（否则下拉框只是摆设）。"""
+    _install_runtime(monkeypatch)
+    _patch_compare_chrome(monkeypatch)
+    seen: list[str] = []
+    real = btc.run_strategy_cached
+
+    def spy(*args, **kwargs):
+        seen.append(args[12] if len(args) > 12 else kwargs.get("config_json", ""))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(btc, "run_strategy_cached", spy)
+    monkeypatch.setattr(
+        compare_view, "_comparison_specs", lambda: {"甲策略": ("registry", "甲策略")}
+    )
+    monkeypatch.setattr(compare_view, "_strategy_sig", lambda label: "")
+
+    script = (
+        "import streamlit as st\n"
+        "from stock_plan.ui.views.compare import _run_comparison\n"
+        '_run_comparison("2024-01-01", "2025-01-01", 100000.0, "weekly", False, 30, "[]", True, "dual_ma")\n'
+        'st.write("done")\n'
+    )
+    at = AppTest.from_string(script, default_timeout=120)
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert seen, "对比页应至少调用一次 run_strategy_cached"
+    assert all('"timing_tier": "dual_ma"' in cfg for cfg in seen), seen

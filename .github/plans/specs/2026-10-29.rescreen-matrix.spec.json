@@ -1,0 +1,2198 @@
+[
+ {
+  "label": "基线/趋势跟随策略/W1训练/off",
+  "strategy": "趋势跟随策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/趋势跟随策略/W1训练/weak",
+  "strategy": "趋势跟随策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/趋势跟随策略/W1训练/tier",
+  "strategy": "趋势跟随策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/趋势跟随策略/W2验证/off",
+  "strategy": "趋势跟随策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/趋势跟随策略/W2验证/weak",
+  "strategy": "趋势跟随策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/趋势跟随策略/W2验证/tier",
+  "strategy": "趋势跟随策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/趋势跟随策略/W3全期/off",
+  "strategy": "趋势跟随策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/趋势跟随策略/W3全期/weak",
+  "strategy": "趋势跟随策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/趋势跟随策略/W3全期/tier",
+  "strategy": "趋势跟随策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/突破策略/W1训练/off",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/突破策略/W1训练/weak",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/突破策略/W1训练/tier",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/突破策略/W2验证/off",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/突破策略/W2验证/weak",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/突破策略/W2验证/tier",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/突破策略/W3全期/off",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/突破策略/W3全期/weak",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/突破策略/W3全期/tier",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/动量策略/W1训练/off",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/动量策略/W1训练/weak",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/动量策略/W1训练/tier",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/动量策略/W2验证/off",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/动量策略/W2验证/weak",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/动量策略/W2验证/tier",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/动量策略/W3全期/off",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/动量策略/W3全期/weak",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "基线/动量策略/W3全期/tier",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/趋势跟随策略/W1训练/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/趋势跟随策略/W1训练/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/趋势跟随策略/W1训练/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/趋势跟随策略/W2验证/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/趋势跟随策略/W2验证/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/趋势跟随策略/W2验证/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/趋势跟随策略/W3全期/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/趋势跟随策略/W3全期/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/趋势跟随策略/W3全期/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/突破策略/W1训练/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/突破策略/W1训练/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/突破策略/W1训练/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/突破策略/W2验证/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/突破策略/W2验证/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/突破策略/W2验证/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/突破策略/W3全期/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/突破策略/W3全期/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pcf/突破策略/W3全期/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/趋势跟随策略/W1训练/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/趋势跟随策略/W1训练/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/趋势跟随策略/W1训练/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/趋势跟随策略/W2验证/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/趋势跟随策略/W2验证/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/趋势跟随策略/W2验证/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/趋势跟随策略/W3全期/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/趋势跟随策略/W3全期/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/趋势跟随策略/W3全期/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/突破策略/W1训练/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/突破策略/W1训练/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/突破策略/W1训练/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/突破策略/W2验证/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/突破策略/W2验证/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/突破策略/W2验证/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/突破策略/W3全期/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/突破策略/W3全期/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-vcf/突破策略/W3全期/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "vcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/趋势跟随策略/W1训练/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/趋势跟随策略/W1训练/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/趋势跟随策略/W1训练/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/趋势跟随策略/W2验证/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/趋势跟随策略/W2验证/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/趋势跟随策略/W2验证/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/趋势跟随策略/W3全期/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/趋势跟随策略/W3全期/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/趋势跟随策略/W3全期/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W1训练/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W1训练/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W1训练/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W2验证/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W2验证/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W2验证/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W3全期/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W3全期/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W3全期/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/趋势跟随策略/W1训练/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/趋势跟随策略/W1训练/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/趋势跟随策略/W1训练/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/趋势跟随策略/W2验证/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/趋势跟随策略/W2验证/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/趋势跟随策略/W2验证/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/趋势跟随策略/W3全期/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/趋势跟随策略/W3全期/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/趋势跟随策略/W3全期/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/突破策略/W1训练/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/突破策略/W1训练/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/突破策略/W1训练/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/突破策略/W2验证/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/突破策略/W2验证/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/突破策略/W2验证/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/突破策略/W3全期/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/突破策略/W3全期/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-acf/突破策略/W3全期/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "acf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/趋势跟随策略/W1训练/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/趋势跟随策略/W1训练/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/趋势跟随策略/W1训练/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/趋势跟随策略/W2验证/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/趋势跟随策略/W2验证/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/趋势跟随策略/W2验证/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/趋势跟随策略/W3全期/off",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/趋势跟随策略/W3全期/weak",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/趋势跟随策略/W3全期/tier",
+  "strategy": "趋势跟随策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/突破策略/W1训练/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/突破策略/W1训练/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/突破策略/W1训练/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/突破策略/W2验证/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/突破策略/W2验证/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/突破策略/W2验证/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/突破策略/W3全期/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/突破策略/W3全期/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "收敛-trcf/突破策略/W3全期/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "trcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ret20/动量策略/W1训练/off",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ret20"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ret20/动量策略/W1训练/weak",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ret20"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ret20/动量策略/W1训练/tier",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ret20"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ret20/动量策略/W2验证/off",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ret20"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ret20/动量策略/W2验证/weak",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ret20"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ret20/动量策略/W2验证/tier",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ret20"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ret20/动量策略/W3全期/off",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ret20"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ret20/动量策略/W3全期/weak",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ret20"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ret20/动量策略/W3全期/tier",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ret20"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio/动量策略/W1训练/off",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio/动量策略/W1训练/weak",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio/动量策略/W1训练/tier",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio/动量策略/W2验证/off",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio/动量策略/W2验证/weak",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio/动量策略/W2验证/tier",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio/动量策略/W3全期/off",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio/动量策略/W3全期/weak",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio/动量策略/W3全期/tier",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W1训练/off",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W1训练/weak",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W1训练/tier",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W2验证/off",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W2验证/weak",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W2验证/tier",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W3全期/off",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W3全期/weak",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W3全期/tier",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0
+ }
+]

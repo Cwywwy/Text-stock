@@ -1,0 +1,2653 @@
+{
+ "generated_at": "2026-10-29T18:41:56",
+ "thresholds": {
+  "c1_annual_excess_pp": 2.0,
+  "c2_dd_tolerance_pp": 3.0,
+  "m1_dd_improve_pp": 3.0,
+  "m2_annual_drop_pp": 2.0
+ },
+ "selection_w1": [
+  {
+   "family": "收敛-pcf",
+   "strategy": "突破策略",
+   "selected": false,
+   "annual_excess_pp": 1.33,
+   "dd_delta_pp": 2.2,
+   "annual_excess": {
+    "2022": 0.71,
+    "2023": 3.19,
+    "2024": 0.32,
+    "2025": 0.6
+   },
+   "years": 4,
+   "positive_years": 4,
+   "need_positive_years": 2,
+   "pass_c1": false,
+   "pass_c2": true,
+   "pass_c3": true
+  },
+  {
+   "family": "收敛-pcf",
+   "strategy": "趋势跟随策略",
+   "selected": false,
+   "annual_excess_pp": 0.8,
+   "dd_delta_pp": 0.98,
+   "annual_excess": {
+    "2022": -1.49,
+    "2023": 7.54,
+    "2024": -1.61,
+    "2025": -1.42
+   },
+   "years": 4,
+   "positive_years": 1,
+   "need_positive_years": 2,
+   "pass_c1": false,
+   "pass_c2": true,
+   "pass_c3": false
+  },
+  {
+   "family": "收敛-vcf",
+   "strategy": "突破策略",
+   "selected": false,
+   "annual_excess_pp": 0.89,
+   "dd_delta_pp": 2.22,
+   "annual_excess": {
+    "2022": 2.05,
+    "2023": 5.3,
+    "2024": -1.6,
+    "2025": -3.58
+   },
+   "years": 4,
+   "positive_years": 2,
+   "need_positive_years": 2,
+   "pass_c1": false,
+   "pass_c2": true,
+   "pass_c3": true
+  },
+  {
+   "family": "收敛-vcf",
+   "strategy": "趋势跟随策略",
+   "selected": false,
+   "annual_excess_pp": 0.1,
+   "dd_delta_pp": 0.04,
+   "annual_excess": {
+    "2022": 0.46,
+    "2023": 2.46,
+    "2024": -2.3,
+    "2025": -0.41
+   },
+   "years": 4,
+   "positive_years": 2,
+   "need_positive_years": 2,
+   "pass_c1": false,
+   "pass_c2": true,
+   "pass_c3": true
+  },
+  {
+   "family": "收敛-pvcf",
+   "strategy": "突破策略",
+   "selected": true,
+   "annual_excess_pp": 3.33,
+   "dd_delta_pp": 6.1,
+   "annual_excess": {
+    "2022": 1.31,
+    "2023": 8.96,
+    "2024": 1.48,
+    "2025": 0.27
+   },
+   "years": 4,
+   "positive_years": 4,
+   "need_positive_years": 2,
+   "pass_c1": true,
+   "pass_c2": true,
+   "pass_c3": true
+  },
+  {
+   "family": "收敛-pvcf",
+   "strategy": "趋势跟随策略",
+   "selected": false,
+   "annual_excess_pp": -0.54,
+   "dd_delta_pp": -0.93,
+   "annual_excess": {
+    "2022": -0.92,
+    "2023": 5.27,
+    "2024": -3.57,
+    "2025": -2.6
+   },
+   "years": 4,
+   "positive_years": 1,
+   "need_positive_years": 2,
+   "pass_c1": false,
+   "pass_c2": true,
+   "pass_c3": false
+  },
+  {
+   "family": "收敛-acf",
+   "strategy": "突破策略",
+   "selected": false,
+   "annual_excess_pp": 2.96,
+   "dd_delta_pp": 6.12,
+   "annual_excess": {
+    "2022": 3.03,
+    "2023": 8.15,
+    "2024": -2.34,
+    "2025": 0.49
+   },
+   "years": 4,
+   "positive_years": 3,
+   "need_positive_years": 2,
+   "pass_c1": true,
+   "pass_c2": true,
+   "pass_c3": true
+  },
+  {
+   "family": "收敛-acf",
+   "strategy": "趋势跟随策略",
+   "selected": false,
+   "annual_excess_pp": 0.57,
+   "dd_delta_pp": 1.56,
+   "annual_excess": {
+    "2022": 0.15,
+    "2023": 6.93,
+    "2024": -3.31,
+    "2025": -1.83
+   },
+   "years": 4,
+   "positive_years": 2,
+   "need_positive_years": 2,
+   "pass_c1": false,
+   "pass_c2": true,
+   "pass_c3": true
+  },
+  {
+   "family": "收敛-trcf",
+   "strategy": "突破策略",
+   "selected": false,
+   "annual_excess_pp": 2.47,
+   "dd_delta_pp": 5.14,
+   "annual_excess": {
+    "2022": 2.02,
+    "2023": 3.91,
+    "2024": 3.6,
+    "2025": -1.93
+   },
+   "years": 4,
+   "positive_years": 3,
+   "need_positive_years": 2,
+   "pass_c1": true,
+   "pass_c2": true,
+   "pass_c3": true
+  },
+  {
+   "family": "收敛-trcf",
+   "strategy": "趋势跟随策略",
+   "selected": false,
+   "annual_excess_pp": -1.08,
+   "dd_delta_pp": -2.46,
+   "annual_excess": {
+    "2022": -1.11,
+    "2023": 1.79,
+    "2024": -1.37,
+    "2025": -3.3
+   },
+   "years": 4,
+   "positive_years": 1,
+   "need_positive_years": 2,
+   "pass_c1": false,
+   "pass_c2": true,
+   "pass_c3": false
+  },
+  {
+   "family": "动量-ret20",
+   "strategy": "动量策略",
+   "selected": false,
+   "annual_excess_pp": 0.0,
+   "dd_delta_pp": 0.0,
+   "annual_excess": {
+    "2022": 0.0,
+    "2023": 0.0,
+    "2024": 0.0,
+    "2025": 0.0
+   },
+   "years": 4,
+   "positive_years": 0,
+   "need_positive_years": 2,
+   "pass_c1": false,
+   "pass_c2": true,
+   "pass_c3": false
+  },
+  {
+   "family": "动量-ma_ratio",
+   "strategy": "动量策略",
+   "selected": false,
+   "annual_excess_pp": -1.69,
+   "dd_delta_pp": -3.17,
+   "annual_excess": {
+    "2022": -17.78,
+    "2023": 1.94,
+    "2024": 5.54,
+    "2025": 5.35
+   },
+   "years": 4,
+   "positive_years": 3,
+   "need_positive_years": 2,
+   "pass_c1": false,
+   "pass_c2": false,
+   "pass_c3": true
+  },
+  {
+   "family": "动量-ma_ratio_blend",
+   "strategy": "动量策略",
+   "selected": true,
+   "annual_excess_pp": 11.77,
+   "dd_delta_pp": 20.76,
+   "annual_excess": {
+    "2022": -1.39,
+    "2023": 12.09,
+    "2024": 17.95,
+    "2025": 12.08
+   },
+   "years": 4,
+   "positive_years": 3,
+   "need_positive_years": 2,
+   "pass_c1": true,
+   "pass_c2": true,
+   "pass_c3": true
+  }
+ ],
+ "final_w2": [
+  {
+   "family": "收敛-pvcf",
+   "strategy": "突破策略",
+   "w1": {
+    "annual_excess_pp": 3.33,
+    "dd_delta_pp": 6.1,
+    "annual_excess": {
+     "2022": 1.31,
+     "2023": 8.96,
+     "2024": 1.48,
+     "2025": 0.27
+    },
+    "years": 4,
+    "positive_years": 4,
+    "need_positive_years": 2,
+    "pass_c1": true,
+    "pass_c2": true,
+    "pass_c3": true
+   },
+   "w2": {
+    "annual_excess_pp": 1.24,
+    "dd_delta_pp": 0.15,
+    "annual_excess": {
+     "2025": 2.19,
+     "2026": 0.05
+    },
+    "years": 2,
+    "positive_years": 2,
+    "need_positive_years": 2,
+    "pass_c1": false,
+    "pass_c2": true,
+    "pass_c3": true,
+    "pass": false
+   },
+   "base": {
+    "label": "基线/突破策略/W2验证/off",
+    "metrics": {
+     "total_return": -11.04,
+     "annual_return": -8.45,
+     "max_drawdown": -39.69,
+     "sharpe": -0.32,
+     "win_rate": 45.26,
+     "profit_loss": 1.12,
+     "trade_count": 802,
+     "avg_hold_days": 16.0,
+     "avg_pnl_pct": -0.1
+    }
+   },
+   "cand": {
+    "label": "收敛-pvcf/突破策略/W2验证/off",
+    "metrics": {
+     "total_return": -9.44,
+     "annual_return": -7.21,
+     "max_drawdown": -39.54,
+     "sharpe": -0.26,
+     "win_rate": 45.15,
+     "profit_loss": 1.14,
+     "trade_count": 824,
+     "avg_hold_days": 16.0,
+     "avg_pnl_pct": -0.2
+    }
+   }
+  },
+  {
+   "family": "动量-ma_ratio_blend",
+   "strategy": "动量策略",
+   "w1": {
+    "annual_excess_pp": 11.77,
+    "dd_delta_pp": 20.76,
+    "annual_excess": {
+     "2022": -1.39,
+     "2023": 12.09,
+     "2024": 17.95,
+     "2025": 12.08
+    },
+    "years": 4,
+    "positive_years": 3,
+    "need_positive_years": 2,
+    "pass_c1": true,
+    "pass_c2": true,
+    "pass_c3": true
+   },
+   "w2": {
+    "annual_excess_pp": 10.2,
+    "dd_delta_pp": 0.6,
+    "annual_excess": {
+     "2025": 19.69,
+     "2026": -1.66
+    },
+    "years": 2,
+    "positive_years": 1,
+    "need_positive_years": 2,
+    "pass_c1": true,
+    "pass_c2": true,
+    "pass_c3": false,
+    "pass": false
+   },
+   "base": {
+    "label": "基线/动量策略/W2验证/off",
+    "metrics": {
+     "total_return": -15.58,
+     "annual_return": -11.99,
+     "max_drawdown": -38.32,
+     "sharpe": -0.37,
+     "win_rate": 45.85,
+     "profit_loss": 1.06,
+     "trade_count": 639,
+     "avg_hold_days": 18.1,
+     "avg_pnl_pct": -0.33
+    }
+   },
+   "cand": {
+    "label": "动量-ma_ratio_blend/动量策略/W2验证/off",
+    "metrics": {
+     "total_return": -2.37,
+     "annual_return": -1.79,
+     "max_drawdown": -37.72,
+     "sharpe": 0.05,
+     "win_rate": 47.12,
+     "profit_loss": 1.1,
+     "trade_count": 520,
+     "avg_hold_days": 17.8,
+     "avg_pnl_pct": 0.45
+    }
+   }
+  }
+ ],
+ "timing_w2": [
+  {
+   "family": "收敛-pvcf",
+   "strategy": "突破策略",
+   "timing": "weak",
+   "verdict": "帮忙",
+   "dd_improve_pp": 3.57,
+   "annual_delta_pp": 9.0,
+   "annual_excess": {
+    "2025": 3.19,
+    "2026": 7.13
+   },
+   "years": 2,
+   "better_years": 2,
+   "need_better_years": 2,
+   "pass_m1": true,
+   "pass_m2": true,
+   "pass_m3": true
+  },
+  {
+   "family": "收敛-pvcf",
+   "strategy": "突破策略",
+   "timing": "tier",
+   "verdict": "无差别",
+   "dd_improve_pp": 20.03,
+   "annual_delta_pp": 18.13,
+   "annual_excess": {
+    "2025": -7.22,
+    "2026": 23.6
+   },
+   "years": 2,
+   "better_years": 1,
+   "need_better_years": 2,
+   "pass_m1": true,
+   "pass_m2": true,
+   "pass_m3": false
+  },
+  {
+   "family": "动量-ma_ratio_blend",
+   "strategy": "动量策略",
+   "timing": "weak",
+   "verdict": "帮忙",
+   "dd_improve_pp": 7.98,
+   "annual_delta_pp": 9.78,
+   "annual_excess": {
+    "2025": 0.47,
+    "2026": 9.1
+   },
+   "years": 2,
+   "better_years": 2,
+   "need_better_years": 2,
+   "pass_m1": true,
+   "pass_m2": true,
+   "pass_m3": true
+  },
+  {
+   "family": "动量-ma_ratio_blend",
+   "strategy": "动量策略",
+   "timing": "tier",
+   "verdict": "无差别",
+   "dd_improve_pp": 16.06,
+   "annual_delta_pp": 4.23,
+   "annual_excess": {
+    "2025": -17.21,
+    "2026": 15.17
+   },
+   "years": 2,
+   "better_years": 1,
+   "need_better_years": 2,
+   "pass_m1": true,
+   "pass_m2": true,
+   "pass_m3": false
+  }
+ ],
+ "baseline_timing": [
+  {
+   "strategy": "动量策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": -0.81,
+    "annual_delta_pp": 0.78,
+    "annual_excess": {
+     "2025": 0.51,
+     "2026": 0.32
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "帮倒忙"
+  },
+  {
+   "strategy": "动量策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 21.49,
+    "annual_delta_pp": 34.54,
+    "annual_excess": {
+     "2025": 5.41,
+     "2026": 34.6
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "帮忙"
+  },
+  {
+   "strategy": "突破策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 2.1,
+    "annual_delta_pp": 5.89,
+    "annual_excess": {
+     "2025": 3.5,
+     "2026": 3.79
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "无差别"
+  },
+  {
+   "strategy": "突破策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 18.2,
+    "annual_delta_pp": 14.84,
+    "annual_excess": {
+     "2025": -8.59,
+     "2026": 21.13
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "strategy": "趋势跟随策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 1.25,
+    "annual_delta_pp": -2.14,
+    "annual_excess": {
+     "2025": -1.54,
+     "2026": -1.04
+    },
+    "years": 2,
+    "better_years": 0,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": false,
+    "pass_m3": false
+   },
+   "verdict": "帮倒忙"
+  },
+  {
+   "strategy": "趋势跟随策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 4.27,
+    "annual_delta_pp": -4.74,
+    "annual_excess": {
+     "2025": -9.95,
+     "2026": 1.75
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": false,
+    "pass_m3": false
+   },
+   "verdict": "帮倒忙"
+  }
+ ],
+ "candidate_timing_all_w2": [
+  {
+   "family": "收敛-pcf",
+   "strategy": "突破策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 5.69,
+    "annual_delta_pp": 9.8,
+    "annual_excess": {
+     "2025": 1.02,
+     "2026": 9.22
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "帮忙"
+  },
+  {
+   "family": "收敛-pcf",
+   "strategy": "突破策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 18.93,
+    "annual_delta_pp": 17.78,
+    "annual_excess": {
+     "2025": -7.91,
+     "2026": 23.49
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-pcf",
+   "strategy": "趋势跟随策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 1.82,
+    "annual_delta_pp": -0.84,
+    "annual_excess": {
+     "2025": 0.46,
+     "2026": -1.04
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-pcf",
+   "strategy": "趋势跟随策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 8.18,
+    "annual_delta_pp": -0.82,
+    "annual_excess": {
+     "2025": -8.99,
+     "2026": 5.21
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-vcf",
+   "strategy": "突破策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 3.8,
+    "annual_delta_pp": 6.04,
+    "annual_excess": {
+     "2025": 3.36,
+     "2026": 4.08
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "帮忙"
+  },
+  {
+   "family": "收敛-vcf",
+   "strategy": "突破策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 19.35,
+    "annual_delta_pp": 20.18,
+    "annual_excess": {
+     "2025": -7.57,
+     "2026": 26.38
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-vcf",
+   "strategy": "趋势跟随策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 0.61,
+    "annual_delta_pp": -0.7,
+    "annual_excess": {
+     "2025": 0.06,
+     "2026": -0.64
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-vcf",
+   "strategy": "趋势跟随策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 8.69,
+    "annual_delta_pp": 1.74,
+    "annual_excess": {
+     "2025": -8.54,
+     "2026": 7.0
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-pvcf",
+   "strategy": "突破策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 3.57,
+    "annual_delta_pp": 9.0,
+    "annual_excess": {
+     "2025": 3.19,
+     "2026": 7.13
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "帮忙"
+  },
+  {
+   "family": "收敛-pvcf",
+   "strategy": "突破策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 20.03,
+    "annual_delta_pp": 18.13,
+    "annual_excess": {
+     "2025": -7.22,
+     "2026": 23.6
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-pvcf",
+   "strategy": "趋势跟随策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 2.0,
+    "annual_delta_pp": 0.42,
+    "annual_excess": {
+     "2025": -0.6,
+     "2026": 0.88
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-pvcf",
+   "strategy": "趋势跟随策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 10.94,
+    "annual_delta_pp": 4.69,
+    "annual_excess": {
+     "2025": -8.59,
+     "2026": 10.48
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-acf",
+   "strategy": "突破策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 1.93,
+    "annual_delta_pp": 6.43,
+    "annual_excess": {
+     "2025": 3.75,
+     "2026": 4.18
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-acf",
+   "strategy": "突破策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 19.62,
+    "annual_delta_pp": 16.08,
+    "annual_excess": {
+     "2025": -7.78,
+     "2026": 21.73
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-acf",
+   "strategy": "趋势跟随策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 2.76,
+    "annual_delta_pp": 0.42,
+    "annual_excess": {
+     "2025": -0.82,
+     "2026": 1.17
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-acf",
+   "strategy": "趋势跟随策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 9.89,
+    "annual_delta_pp": 1.65,
+    "annual_excess": {
+     "2025": -9.96,
+     "2026": 8.27
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-trcf",
+   "strategy": "突破策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 2.74,
+    "annual_delta_pp": 4.57,
+    "annual_excess": {
+     "2025": 2.44,
+     "2026": 3.19
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-trcf",
+   "strategy": "突破策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 17.76,
+    "annual_delta_pp": 16.43,
+    "annual_excess": {
+     "2025": -9.4,
+     "2026": 23.5
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "收敛-trcf",
+   "strategy": "趋势跟随策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 0.77,
+    "annual_delta_pp": -2.12,
+    "annual_excess": {
+     "2025": 1.63,
+     "2026": -2.85
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": false,
+    "pass_m3": false
+   },
+   "verdict": "帮倒忙"
+  },
+  {
+   "family": "收敛-trcf",
+   "strategy": "趋势跟随策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 6.71,
+    "annual_delta_pp": -2.73,
+    "annual_excess": {
+     "2025": -11.12,
+     "2026": 4.28
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": false,
+    "pass_m3": false
+   },
+   "verdict": "帮倒忙"
+  },
+  {
+   "family": "动量-ret20",
+   "strategy": "动量策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": -0.81,
+    "annual_delta_pp": 0.78,
+    "annual_excess": {
+     "2025": 0.51,
+     "2026": 0.32
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "帮倒忙"
+  },
+  {
+   "family": "动量-ret20",
+   "strategy": "动量策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 21.49,
+    "annual_delta_pp": 34.54,
+    "annual_excess": {
+     "2025": 5.41,
+     "2026": 34.6
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "帮忙"
+  },
+  {
+   "family": "动量-ma_ratio",
+   "strategy": "动量策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 0.16,
+    "annual_delta_pp": 2.7,
+    "annual_excess": {
+     "2025": 4.24,
+     "2026": -0.03
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": false,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "动量-ma_ratio",
+   "strategy": "动量策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 14.97,
+    "annual_delta_pp": 14.75,
+    "annual_excess": {
+     "2025": -4.72,
+     "2026": 18.13
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  },
+  {
+   "family": "动量-ma_ratio_blend",
+   "strategy": "动量策略",
+   "timing": "weak",
+   "judge": {
+    "dd_improve_pp": 7.98,
+    "annual_delta_pp": 9.78,
+    "annual_excess": {
+     "2025": 0.47,
+     "2026": 9.1
+    },
+    "years": 2,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "verdict": "帮忙"
+  },
+  {
+   "family": "动量-ma_ratio_blend",
+   "strategy": "动量策略",
+   "timing": "tier",
+   "judge": {
+    "dd_improve_pp": 16.06,
+    "annual_delta_pp": 4.23,
+    "annual_excess": {
+     "2025": -17.21,
+     "2026": 15.17
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "verdict": "无差别"
+  }
+ ],
+ "detail_replay": [
+  {
+   "family": "基线",
+   "strategy": "突破策略",
+   "pairs": [
+    {
+     "timing": "weak",
+     "monthly_diff": {
+      "2025-08": 0.0,
+      "2025-09": 1.06,
+      "2025-10": 0.71,
+      "2025-11": 0.3,
+      "2025-12": 0.8,
+      "2026-01": 1.83,
+      "2026-02": -1.61,
+      "2026-03": 1.71,
+      "2026-04": 0.16,
+      "2026-05": -0.3,
+      "2026-06": -0.81,
+      "2026-07": 3.25,
+      "2026-08": -0.76,
+      "2026-09": -0.25,
+      "2026-10": 1.69
+     },
+     "missed": [
+      [
+       "2026-02",
+       -1.61
+      ],
+      [
+       "2026-06",
+       -0.81
+      ],
+      [
+       "2026-08",
+       -0.76
+      ],
+      [
+       "2026-05",
+       -0.3
+      ],
+      [
+       "2026-09",
+       -0.25
+      ]
+     ],
+     "avoided": [
+      [
+       "2026-07",
+       3.25
+      ],
+      [
+       "2026-01",
+       1.83
+      ],
+      [
+       "2026-03",
+       1.71
+      ],
+      [
+       "2026-10",
+       1.69
+      ],
+      [
+       "2025-09",
+       1.06
+      ]
+     ],
+     "failures": 0,
+     "failures_examples": []
+    },
+    {
+     "timing": "tier",
+     "monthly_diff": {
+      "2025-08": 0.0,
+      "2025-09": -2.81,
+      "2025-10": -4.14,
+      "2025-11": 1.6,
+      "2025-12": -1.99,
+      "2026-01": 0.69,
+      "2026-02": -0.46,
+      "2026-03": 3.18,
+      "2026-04": -2.83,
+      "2026-05": 1.58,
+      "2026-06": 7.66,
+      "2026-07": 15.51,
+      "2026-08": -2.47,
+      "2026-09": -5.01,
+      "2026-10": 7.02
+     },
+     "missed": [
+      [
+       "2026-09",
+       -5.01
+      ],
+      [
+       "2025-10",
+       -4.14
+      ],
+      [
+       "2026-04",
+       -2.83
+      ],
+      [
+       "2025-09",
+       -2.81
+      ],
+      [
+       "2026-08",
+       -2.47
+      ]
+     ],
+     "avoided": [
+      [
+       "2026-07",
+       15.51
+      ],
+      [
+       "2026-06",
+       7.66
+      ],
+      [
+       "2026-10",
+       7.02
+      ],
+      [
+       "2026-03",
+       3.18
+      ],
+      [
+       "2025-11",
+       1.6
+      ]
+     ],
+     "failures": 24,
+     "failures_examples": [
+      {
+       "date": "2025-09-04",
+       "target_value": 53934.84,
+       "realized_value": 69975.0,
+       "gap_pct": 29.74
+      },
+      {
+       "date": "2025-09-05",
+       "target_value": 55170.04,
+       "realized_value": 67711.0,
+       "gap_pct": 22.73
+      },
+      {
+       "date": "2025-09-10",
+       "target_value": 55371.05,
+       "realized_value": 67782.0,
+       "gap_pct": 22.41
+      },
+      {
+       "date": "2025-09-11",
+       "target_value": 56053.55,
+       "realized_value": 57982.0,
+       "gap_pct": 3.44
+      },
+      {
+       "date": "2025-09-24",
+       "target_value": 55843.02,
+       "realized_value": 84007.0,
+       "gap_pct": 50.43
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "family": "基线",
+   "strategy": "动量策略",
+   "pairs": [
+    {
+     "timing": "weak",
+     "monthly_diff": {
+      "2025-08": 0.0,
+      "2025-09": 2.44,
+      "2025-10": -1.47,
+      "2025-11": 1.04,
+      "2025-12": -1.33,
+      "2026-01": 2.41,
+      "2026-02": 0.45,
+      "2026-03": -0.84,
+      "2026-04": -3.81,
+      "2026-05": -0.7,
+      "2026-06": -0.97,
+      "2026-07": 3.97,
+      "2026-08": -1.74,
+      "2026-09": -1.55,
+      "2026-10": 2.23
+     },
+     "missed": [
+      [
+       "2026-04",
+       -3.81
+      ],
+      [
+       "2026-08",
+       -1.74
+      ],
+      [
+       "2026-09",
+       -1.55
+      ],
+      [
+       "2025-10",
+       -1.47
+      ],
+      [
+       "2025-12",
+       -1.33
+      ]
+     ],
+     "avoided": [
+      [
+       "2026-07",
+       3.97
+      ],
+      [
+       "2025-09",
+       2.44
+      ],
+      [
+       "2026-01",
+       2.41
+      ],
+      [
+       "2026-10",
+       2.23
+      ],
+      [
+       "2025-11",
+       1.04
+      ]
+     ],
+     "failures": 0,
+     "failures_examples": []
+    },
+    {
+     "timing": "tier",
+     "monthly_diff": {
+      "2025-08": 0.0,
+      "2025-09": -0.67,
+      "2025-10": 1.12,
+      "2025-11": 2.75,
+      "2025-12": 1.41,
+      "2026-01": 7.2,
+      "2026-02": 3.2,
+      "2026-03": 8.11,
+      "2026-04": -6.65,
+      "2026-05": 3.64,
+      "2026-06": -5.02,
+      "2026-07": 19.67,
+      "2026-08": -0.49,
+      "2026-09": -4.83,
+      "2026-10": 10.77
+     },
+     "missed": [
+      [
+       "2026-04",
+       -6.65
+      ],
+      [
+       "2026-06",
+       -5.02
+      ],
+      [
+       "2026-09",
+       -4.83
+      ],
+      [
+       "2025-09",
+       -0.67
+      ],
+      [
+       "2026-08",
+       -0.49
+      ]
+     ],
+     "avoided": [
+      [
+       "2026-07",
+       19.67
+      ],
+      [
+       "2026-10",
+       10.77
+      ],
+      [
+       "2026-03",
+       8.11
+      ],
+      [
+       "2026-01",
+       7.2
+      ],
+      [
+       "2026-05",
+       3.64
+      ]
+     ],
+     "failures": 31,
+     "failures_examples": [
+      {
+       "date": "2025-09-04",
+       "target_value": 52386.29,
+       "realized_value": 76936.0,
+       "gap_pct": 46.86
+      },
+      {
+       "date": "2025-09-05",
+       "target_value": 53879.06,
+       "realized_value": 79503.0,
+       "gap_pct": 47.56
+      },
+      {
+       "date": "2025-09-10",
+       "target_value": 54328.53,
+       "realized_value": 84627.0,
+       "gap_pct": 55.77
+      },
+      {
+       "date": "2025-09-11",
+       "target_value": 55542.39,
+       "realized_value": 79346.0,
+       "gap_pct": 42.86
+      },
+      {
+       "date": "2025-09-24",
+       "target_value": 56284.24,
+       "realized_value": 86080.0,
+       "gap_pct": 52.94
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "family": "收敛-pvcf",
+   "strategy": "突破策略",
+   "pairs": [
+    {
+     "timing": "weak",
+     "monthly_diff": {
+      "2025-08": 0.0,
+      "2025-09": -0.66,
+      "2025-10": 1.33,
+      "2025-11": 1.67,
+      "2025-12": 0.13,
+      "2026-01": 0.95,
+      "2026-02": -0.78,
+      "2026-03": 3.09,
+      "2026-04": 0.81,
+      "2026-05": 0.73,
+      "2026-06": 2.55,
+      "2026-07": 1.51,
+      "2026-08": -0.69,
+      "2026-09": -0.89,
+      "2026-10": 1.95
+     },
+     "missed": [
+      [
+       "2026-09",
+       -0.89
+      ],
+      [
+       "2026-02",
+       -0.78
+      ],
+      [
+       "2026-08",
+       -0.69
+      ],
+      [
+       "2025-09",
+       -0.66
+      ],
+      [
+       "2025-08",
+       0.0
+      ]
+     ],
+     "avoided": [
+      [
+       "2026-03",
+       3.09
+      ],
+      [
+       "2026-06",
+       2.55
+      ],
+      [
+       "2026-10",
+       1.95
+      ],
+      [
+       "2025-11",
+       1.67
+      ],
+      [
+       "2026-07",
+       1.51
+      ]
+     ],
+     "failures": 0,
+     "failures_examples": []
+    },
+    {
+     "timing": "tier",
+     "monthly_diff": {
+      "2025-08": 0.0,
+      "2025-09": -5.25,
+      "2025-10": -1.88,
+      "2025-11": 3.56,
+      "2025-12": -2.55,
+      "2026-01": 0.61,
+      "2026-02": 0.08,
+      "2026-03": 1.87,
+      "2026-04": -1.94,
+      "2026-05": 3.32,
+      "2026-06": 8.98,
+      "2026-07": 13.09,
+      "2026-08": -1.07,
+      "2026-09": -3.88,
+      "2026-10": 6.64
+     },
+     "missed": [
+      [
+       "2025-09",
+       -5.25
+      ],
+      [
+       "2026-09",
+       -3.88
+      ],
+      [
+       "2025-12",
+       -2.55
+      ],
+      [
+       "2026-04",
+       -1.94
+      ],
+      [
+       "2025-10",
+       -1.88
+      ]
+     ],
+     "avoided": [
+      [
+       "2026-07",
+       13.09
+      ],
+      [
+       "2026-06",
+       8.98
+      ],
+      [
+       "2026-10",
+       6.64
+      ],
+      [
+       "2025-11",
+       3.56
+      ],
+      [
+       "2026-05",
+       3.32
+      ]
+     ],
+     "failures": 27,
+     "failures_examples": [
+      {
+       "date": "2025-09-04",
+       "target_value": 55595.78,
+       "realized_value": 70991.0,
+       "gap_pct": 27.69
+      },
+      {
+       "date": "2025-09-05",
+       "target_value": 56895.18,
+       "realized_value": 68873.0,
+       "gap_pct": 21.05
+      },
+      {
+       "date": "2025-09-10",
+       "target_value": 57095.6,
+       "realized_value": 68210.0,
+       "gap_pct": 19.47
+      },
+      {
+       "date": "2025-09-24",
+       "target_value": 56756.25,
+       "realized_value": 80063.0,
+       "gap_pct": 41.06
+      },
+      {
+       "date": "2025-10-15",
+       "target_value": 56628.09,
+       "realized_value": 75642.0,
+       "gap_pct": 33.58
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "family": "动量-ma_ratio_blend",
+   "strategy": "动量策略",
+   "pairs": [
+    {
+     "timing": "weak",
+     "monthly_diff": {
+      "2025-08": 0.0,
+      "2025-09": 0.4,
+      "2025-10": 0.91,
+      "2025-11": -2.53,
+      "2025-12": 1.71,
+      "2026-01": 0.63,
+      "2026-02": -0.19,
+      "2026-03": 0.07,
+      "2026-04": -0.32,
+      "2026-05": 0.89,
+      "2026-06": 0.89,
+      "2026-07": 3.36,
+      "2026-08": -0.22,
+      "2026-09": 1.8,
+      "2026-10": 4.02
+     },
+     "missed": [
+      [
+       "2025-11",
+       -2.53
+      ],
+      [
+       "2026-04",
+       -0.32
+      ],
+      [
+       "2026-08",
+       -0.22
+      ],
+      [
+       "2026-02",
+       -0.19
+      ],
+      [
+       "2025-08",
+       0.0
+      ]
+     ],
+     "avoided": [
+      [
+       "2026-10",
+       4.02
+      ],
+      [
+       "2026-07",
+       3.36
+      ],
+      [
+       "2026-09",
+       1.8
+      ],
+      [
+       "2025-12",
+       1.71
+      ],
+      [
+       "2025-10",
+       0.91
+      ]
+     ],
+     "failures": 0,
+     "failures_examples": []
+    },
+    {
+     "timing": "tier",
+     "monthly_diff": {
+      "2025-08": 0.0,
+      "2025-09": -5.71,
+      "2025-10": -3.43,
+      "2025-11": -2.06,
+      "2025-12": -3.14,
+      "2026-01": 1.14,
+      "2026-02": -2.73,
+      "2026-03": -2.97,
+      "2026-04": -8.24,
+      "2026-05": 3.67,
+      "2026-06": -3.11,
+      "2026-07": 18.39,
+      "2026-08": -1.85,
+      "2026-09": 1.89,
+      "2026-10": 9.74
+     },
+     "missed": [
+      [
+       "2026-04",
+       -8.24
+      ],
+      [
+       "2025-09",
+       -5.71
+      ],
+      [
+       "2025-10",
+       -3.43
+      ],
+      [
+       "2025-12",
+       -3.14
+      ],
+      [
+       "2026-06",
+       -3.11
+      ]
+     ],
+     "avoided": [
+      [
+       "2026-07",
+       18.39
+      ],
+      [
+       "2026-10",
+       9.74
+      ],
+      [
+       "2026-05",
+       3.67
+      ],
+      [
+       "2026-09",
+       1.89
+      ],
+      [
+       "2026-01",
+       1.14
+      ]
+     ],
+     "failures": 29,
+     "failures_examples": [
+      {
+       "date": "2025-09-04",
+       "target_value": 52145.38,
+       "realized_value": 72336.0,
+       "gap_pct": 38.72
+      },
+      {
+       "date": "2025-09-05",
+       "target_value": 53302.42,
+       "realized_value": 72128.0,
+       "gap_pct": 35.32
+      },
+      {
+       "date": "2025-09-10",
+       "target_value": 53538.87,
+       "realized_value": 76466.0,
+       "gap_pct": 42.82
+      },
+      {
+       "date": "2025-09-11",
+       "target_value": 54433.65,
+       "realized_value": 74614.0,
+       "gap_pct": 37.07
+      },
+      {
+       "date": "2025-09-24",
+       "target_value": 54994.97,
+       "realized_value": 73621.0,
+       "gap_pct": 33.87
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "detail_mismatch": [],
+ "fingerprint": {
+  "phase": 20,
+  "f0": {
+   "time": "2026-10-29T16:48:46",
+   "bars_count": 5579,
+   "bars_meta_sha256": "1e8cf9c7462a0c4e0e2e36931b07a26a7804de4e0028adc68b9bd43fcfd2a25a",
+   "sample200_sha256": "7b5b4d8eb4f0b0c52fdf81022a8cccad37e1c2ba5dc31e1d01671a0c730ef1e1",
+   "meta_db_sha256": "9447ffb243ea25f28090d0cc695bf142cb8b377c230c583ca51fab22409aa7fc",
+   "update_log_tail": "2026-10-29T16:34:00+08:00 [incremental] updated=5575 failed=0 uncached=0 elapsed=230.0s"
+  },
+  "f1": {
+   "time": "2026-10-29T18:38:02",
+   "bars_count": 5579,
+   "bars_meta_sha256": "1e8cf9c7462a0c4e0e2e36931b07a26a7804de4e0028adc68b9bd43fcfd2a25a",
+   "sample200_sha256": "7b5b4d8eb4f0b0c52fdf81022a8cccad37e1c2ba5dc31e1d01671a0c730ef1e1",
+   "meta_db_sha256": "9447ffb243ea25f28090d0cc695bf142cb8b377c230c583ca51fab22409aa7fc",
+   "update_log_tail": "2026-10-29T17:16:26+08:00 [uncached] updated=1 failed=0 uncached=0 elapsed=0.0s"
+  },
+  "same_keys": [
+   "bars_count",
+   "bars_meta_sha256",
+   "sample200_sha256",
+   "meta_db_sha256"
+  ],
+  "diff_keys": [],
+  "conclusion": "Phase 20 跑批前后数据指纹一致（bars/meta.db/200 只抽样），跑批期间数据未变",
+  "notes": "update_log 尾部不同只因 17:16 多写了一条 uncached 增量记录（updated=1），不涉及数据内容指纹"
+ },
+ "rrg": [
+  {
+   "window": "W1训练",
+   "off": {
+    "label": "RRG-C1/W1训练/off",
+    "family": "RRG-C1",
+    "window": "W1训练",
+    "timing_tier": "off",
+    "start": "2022-12-29 00:00:00",
+    "end": "2025-06-30 00:00:00",
+    "metrics": {
+     "total_return": 31.44,
+     "annual_return": 11.54,
+     "max_drawdown": -31.17,
+     "sharpe": 0.56,
+     "win_rate": 56.34,
+     "profit_loss": 1.65,
+     "trade_count": 71,
+     "avg_hold_days": 70.7,
+     "avg_pnl_pct": 2.95
+    },
+    "annual": {
+     "2022": {
+      "total_return": 0.0,
+      "annual_return": 0.0,
+      "max_drawdown": 0.0,
+      "sharpe": 0.0,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2023": {
+      "total_return": 6.33,
+      "annual_return": 6.42,
+      "max_drawdown": -9.93,
+      "sharpe": 0.53,
+      "win_rate": 54.55,
+      "profit_loss": 1.76,
+      "trade_count": 22,
+      "avg_hold_days": 69.6,
+      "avg_pnl_pct": 1.33
+     },
+     "2024": {
+      "total_return": 7.38,
+      "annual_return": 7.4,
+      "max_drawdown": -30.15,
+      "sharpe": 0.38,
+      "win_rate": 42.86,
+      "profit_loss": 2.1,
+      "trade_count": 28,
+      "avg_hold_days": 79.3,
+      "avg_pnl_pct": 2.92
+     },
+     "2025": {
+      "total_return": 15.85,
+      "annual_return": 34.99,
+      "max_drawdown": -13.41,
+      "sharpe": 1.39,
+      "win_rate": 76.19,
+      "profit_loss": 3.19,
+      "trade_count": 21,
+      "avg_hold_days": 60.3,
+      "avg_pnl_pct": 4.7
+     }
+    },
+    "benchmark_return": 30.1,
+    "bench_metrics": {
+     "total_return": 30.1,
+     "annual_return": 11.08,
+     "max_drawdown": -29.5,
+     "sharpe": 0.57,
+     "win_rate": 0.0,
+     "profit_loss": 0.0,
+     "trade_count": 0,
+     "avg_hold_days": 0.0,
+     "avg_pnl_pct": 0.0
+    },
+    "annual_bench": {
+     "2022": {
+      "total_return": 0.86,
+      "annual_return": 2208.64,
+      "max_drawdown": 0.0,
+      "sharpe": 0.0,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2023": {
+      "total_return": 4.0,
+      "annual_return": 4.06,
+      "max_drawdown": -11.53,
+      "sharpe": 0.37,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2024": {
+      "total_return": 6.81,
+      "annual_return": 6.83,
+      "max_drawdown": -25.59,
+      "sharpe": 0.37,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2025": {
+      "total_return": 15.59,
+      "annual_return": 34.36,
+      "max_drawdown": -14.27,
+      "sharpe": 1.45,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     }
+    },
+    "turnover_annual": 4.99,
+    "total_cost": 0.02498,
+    "rebalances": 31,
+    "holdings_stats": {
+     "avg_picks": 5.73,
+     "min_picks": 4,
+     "max_picks": 6,
+     "empty_rebalances": 0
+    }
+   },
+   "bench": {
+    "total_return": 30.1,
+    "annual_return": 11.08,
+    "max_drawdown": -29.5,
+    "sharpe": 0.57,
+    "win_rate": 0.0,
+    "profit_loss": 0.0,
+    "trade_count": 0,
+    "avg_hold_days": 0.0,
+    "avg_pnl_pct": 0.0
+   },
+   "excess_pp": 0.46,
+   "dd_vs_bench_pp": -1.67,
+   "timing": {
+    "dd_improve_pp": 17.46,
+    "annual_delta_pp": 5.47,
+    "annual_excess": {
+     "2022": 0.0,
+     "2023": -3.03,
+     "2024": 34.34,
+     "2025": -14.62
+    },
+    "years": 4,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "timing_verdict": "无差别",
+   "tier": {
+    "label": "RRG-C1/W1训练/dual_ma",
+    "family": "RRG-C1",
+    "window": "W1训练",
+    "timing_tier": "dual_ma",
+    "start": "2022-12-29 00:00:00",
+    "end": "2025-06-30 00:00:00",
+    "metrics": {
+     "total_return": 48.21,
+     "annual_return": 17.01,
+     "max_drawdown": -13.71,
+     "sharpe": 1.01,
+     "win_rate": 63.64,
+     "profit_loss": 2.61,
+     "trade_count": 55,
+     "avg_hold_days": 72.6,
+     "avg_pnl_pct": 5.63
+    },
+    "annual": {
+     "2022": {
+      "total_return": 0.0,
+      "annual_return": 0.0,
+      "max_drawdown": 0.0,
+      "sharpe": 0.0,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2023": {
+      "total_return": 3.3,
+      "annual_return": 3.35,
+      "max_drawdown": -5.23,
+      "sharpe": 0.51,
+      "win_rate": 63.64,
+      "profit_loss": 0.68,
+      "trade_count": 11,
+      "avg_hold_days": 31.6,
+      "avg_pnl_pct": 0.14
+     },
+     "2024": {
+      "total_return": 41.72,
+      "annual_return": 41.85,
+      "max_drawdown": -13.71,
+      "sharpe": 1.56,
+      "win_rate": 41.67,
+      "profit_loss": 4.06,
+      "trade_count": 24,
+      "avg_hold_days": 44.3,
+      "avg_pnl_pct": 5.76
+     },
+     "2025": {
+      "total_return": 1.23,
+      "annual_return": 2.53,
+      "max_drawdown": -9.91,
+      "sharpe": 0.26,
+      "win_rate": 90.0,
+      "profit_loss": 4.21,
+      "trade_count": 20,
+      "avg_hold_days": 129.0,
+      "avg_pnl_pct": 8.5
+     }
+    },
+    "benchmark_return": 30.1,
+    "bench_metrics": {
+     "total_return": 30.1,
+     "annual_return": 11.08,
+     "max_drawdown": -29.5,
+     "sharpe": 0.57,
+     "win_rate": 0.0,
+     "profit_loss": 0.0,
+     "trade_count": 0,
+     "avg_hold_days": 0.0,
+     "avg_pnl_pct": 0.0
+    },
+    "annual_bench": {
+     "2022": {
+      "total_return": 0.86,
+      "annual_return": 2208.64,
+      "max_drawdown": 0.0,
+      "sharpe": 0.0,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2023": {
+      "total_return": 4.0,
+      "annual_return": 4.06,
+      "max_drawdown": -11.53,
+      "sharpe": 0.37,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2024": {
+      "total_return": 6.81,
+      "annual_return": 6.83,
+      "max_drawdown": -25.59,
+      "sharpe": 0.37,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2025": {
+      "total_return": 15.59,
+      "annual_return": 34.36,
+      "max_drawdown": -14.27,
+      "sharpe": 1.45,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     }
+    },
+    "turnover_annual": 5.5,
+    "total_cost": 0.027535,
+    "rebalances": 31,
+    "holdings_stats": {
+     "avg_picks": 5.74,
+     "min_picks": 4,
+     "max_picks": 6,
+     "empty_rebalances": 0
+    }
+   }
+  },
+  {
+   "window": "W2验证",
+   "off": {
+    "label": "RRG-C1/W2验证/off",
+    "family": "RRG-C1",
+    "window": "W2验证",
+    "timing_tier": "off",
+    "start": "2025-07-01 00:00:00",
+    "end": "2026-10-28 00:00:00",
+    "metrics": {
+     "total_return": 6.35,
+     "annual_return": 4.75,
+     "max_drawdown": -22.19,
+     "sharpe": 0.35,
+     "win_rate": 55.56,
+     "profit_loss": 1.47,
+     "trade_count": 36,
+     "avg_hold_days": 68.5,
+     "avg_pnl_pct": 3.41
+    },
+    "annual": {
+     "2025": {
+      "total_return": 16.12,
+      "annual_return": 34.72,
+      "max_drawdown": -9.71,
+      "sharpe": 2.15,
+      "win_rate": 84.62,
+      "profit_loss": 2.27,
+      "trade_count": 13,
+      "avg_hold_days": 47.1,
+      "avg_pnl_pct": 7.02
+     },
+     "2026": {
+      "total_return": -8.89,
+      "annual_return": -10.85,
+      "max_drawdown": -22.19,
+      "sharpe": -0.45,
+      "win_rate": 39.13,
+      "profit_loss": 1.83,
+      "trade_count": 23,
+      "avg_hold_days": 80.6,
+      "avg_pnl_pct": 1.36
+     }
+    },
+    "benchmark_return": 7.02,
+    "bench_metrics": {
+     "total_return": 7.02,
+     "annual_return": 5.25,
+     "max_drawdown": -21.07,
+     "sharpe": 0.38,
+     "win_rate": 0.0,
+     "profit_loss": 0.0,
+     "trade_count": 0,
+     "avg_hold_days": 0.0,
+     "avg_pnl_pct": 0.0
+    },
+    "annual_bench": {
+     "2025": {
+      "total_return": 16.76,
+      "annual_return": 36.21,
+      "max_drawdown": -6.28,
+      "sharpe": 2.28,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2026": {
+      "total_return": -9.51,
+      "annual_return": -11.59,
+      "max_drawdown": -21.07,
+      "sharpe": -0.5,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     }
+    },
+    "turnover_annual": 5.62,
+    "total_cost": 0.014893,
+    "rebalances": 17,
+    "holdings_stats": {
+     "avg_picks": 5.12,
+     "min_picks": 2,
+     "max_picks": 6,
+     "empty_rebalances": 0
+    }
+   },
+   "bench": {
+    "total_return": 7.02,
+    "annual_return": 5.25,
+    "max_drawdown": -21.07,
+    "sharpe": 0.38,
+    "win_rate": 0.0,
+    "profit_loss": 0.0,
+    "trade_count": 0,
+    "avg_hold_days": 0.0,
+    "avg_pnl_pct": 0.0
+   },
+   "excess_pp": -0.5,
+   "dd_vs_bench_pp": -1.12,
+   "timing": {
+    "dd_improve_pp": 15.99,
+    "annual_delta_pp": 7.28,
+    "annual_excess": {
+     "2025": -6.57,
+     "2026": 14.45
+    },
+    "years": 2,
+    "better_years": 1,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": false
+   },
+   "timing_verdict": "无差别",
+   "tier": {
+    "label": "RRG-C1/W2验证/dual_ma",
+    "family": "RRG-C1",
+    "window": "W2验证",
+    "timing_tier": "dual_ma",
+    "start": "2025-07-01 00:00:00",
+    "end": "2026-10-28 00:00:00",
+    "metrics": {
+     "total_return": 16.25,
+     "annual_return": 12.03,
+     "max_drawdown": -6.2,
+     "sharpe": 1.16,
+     "win_rate": 48.48,
+     "profit_loss": 1.72,
+     "trade_count": 33,
+     "avg_hold_days": 71.2,
+     "avg_pnl_pct": 1.97
+    },
+    "annual": {
+     "2025": {
+      "total_return": 9.55,
+      "annual_return": 19.94,
+      "max_drawdown": -6.2,
+      "sharpe": 1.76,
+      "win_rate": 66.67,
+      "profit_loss": 4.86,
+      "trade_count": 12,
+      "avg_hold_days": 39.7,
+      "avg_pnl_pct": 6.5
+     },
+     "2026": {
+      "total_return": 5.56,
+      "annual_return": 6.9,
+      "max_drawdown": -5.93,
+      "sharpe": 0.71,
+      "win_rate": 38.1,
+      "profit_loss": 1.3,
+      "trade_count": 21,
+      "avg_hold_days": 89.3,
+      "avg_pnl_pct": -0.61
+     }
+    },
+    "benchmark_return": 7.02,
+    "bench_metrics": {
+     "total_return": 7.02,
+     "annual_return": 5.25,
+     "max_drawdown": -21.07,
+     "sharpe": 0.38,
+     "win_rate": 0.0,
+     "profit_loss": 0.0,
+     "trade_count": 0,
+     "avg_hold_days": 0.0,
+     "avg_pnl_pct": 0.0
+    },
+    "annual_bench": {
+     "2025": {
+      "total_return": 16.76,
+      "annual_return": 36.21,
+      "max_drawdown": -6.28,
+      "sharpe": 2.28,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2026": {
+      "total_return": -9.51,
+      "annual_return": -11.59,
+      "max_drawdown": -21.07,
+      "sharpe": -0.5,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     }
+    },
+    "turnover_annual": 5.98,
+    "total_cost": 0.015872,
+    "rebalances": 17,
+    "holdings_stats": {
+     "avg_picks": 5.11,
+     "min_picks": 2,
+     "max_picks": 6,
+     "empty_rebalances": 0
+    }
+   }
+  },
+  {
+   "window": "W3全期",
+   "off": {
+    "label": "RRG-C1/W3全期/off",
+    "family": "RRG-C1",
+    "window": "W3全期",
+    "timing_tier": "off",
+    "start": "2022-12-29 00:00:00",
+    "end": "2026-10-28 00:00:00",
+    "metrics": {
+     "total_return": 37.15,
+     "annual_return": 8.59,
+     "max_drawdown": -31.17,
+     "sharpe": 0.47,
+     "win_rate": 53.92,
+     "profit_loss": 1.47,
+     "trade_count": 102,
+     "avg_hold_days": 73.2,
+     "avg_pnl_pct": 2.81
+    },
+    "annual": {
+     "2022": {
+      "total_return": 0.0,
+      "annual_return": 0.0,
+      "max_drawdown": 0.0,
+      "sharpe": 0.0,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2023": {
+      "total_return": 6.33,
+      "annual_return": 6.42,
+      "max_drawdown": -9.93,
+      "sharpe": 0.53,
+      "win_rate": 54.55,
+      "profit_loss": 1.76,
+      "trade_count": 22,
+      "avg_hold_days": 69.6,
+      "avg_pnl_pct": 1.33
+     },
+     "2024": {
+      "total_return": 7.38,
+      "annual_return": 7.4,
+      "max_drawdown": -30.15,
+      "sharpe": 0.38,
+      "win_rate": 42.86,
+      "profit_loss": 2.1,
+      "trade_count": 28,
+      "avg_hold_days": 79.3,
+      "avg_pnl_pct": 2.92
+     },
+     "2025": {
+      "total_return": 39.38,
+      "annual_return": 39.64,
+      "max_drawdown": -13.41,
+      "sharpe": 1.8,
+      "win_rate": 74.07,
+      "profit_loss": 6.08,
+      "trade_count": 27,
+      "avg_hold_days": 67.1,
+      "avg_pnl_pct": 6.71
+     },
+     "2026": {
+      "total_return": -13.74,
+      "annual_return": -16.66,
+      "max_drawdown": -25.61,
+      "sharpe": -0.76,
+      "win_rate": 44.0,
+      "profit_loss": 0.99,
+      "trade_count": 25,
+      "avg_hold_days": 76.0,
+      "avg_pnl_pct": -0.23
+     }
+    },
+    "benchmark_return": 39.73,
+    "bench_metrics": {
+     "total_return": 39.73,
+     "annual_return": 9.12,
+     "max_drawdown": -29.5,
+     "sharpe": 0.52,
+     "win_rate": 0.0,
+     "profit_loss": 0.0,
+     "trade_count": 0,
+     "avg_hold_days": 0.0,
+     "avg_pnl_pct": 0.0
+    },
+    "annual_bench": {
+     "2022": {
+      "total_return": 0.86,
+      "annual_return": 2208.64,
+      "max_drawdown": 0.0,
+      "sharpe": 0.0,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2023": {
+      "total_return": 4.0,
+      "annual_return": 4.06,
+      "max_drawdown": -11.53,
+      "sharpe": 0.37,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2024": {
+      "total_return": 6.81,
+      "annual_return": 6.83,
+      "max_drawdown": -25.59,
+      "sharpe": 0.37,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2025": {
+      "total_return": 35.45,
+      "annual_return": 35.67,
+      "max_drawdown": -14.27,
+      "sharpe": 1.74,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2026": {
+      "total_return": -9.51,
+      "annual_return": -11.59,
+      "max_drawdown": -21.07,
+      "sharpe": -0.5,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     }
+    },
+    "turnover_annual": 5.16,
+    "total_cost": 0.039579,
+    "rebalances": 47,
+    "holdings_stats": {
+     "avg_picks": 5.5,
+     "min_picks": 2,
+     "max_picks": 6,
+     "empty_rebalances": 0
+    }
+   },
+   "bench": {
+    "total_return": 39.73,
+    "annual_return": 9.12,
+    "max_drawdown": -29.5,
+    "sharpe": 0.52,
+    "win_rate": 0.0,
+    "profit_loss": 0.0,
+    "trade_count": 0,
+    "avg_hold_days": 0.0,
+    "avg_pnl_pct": 0.0
+   },
+   "excess_pp": -0.53,
+   "dd_vs_bench_pp": -1.67,
+   "timing": {
+    "dd_improve_pp": 17.46,
+    "annual_delta_pp": 4.5,
+    "annual_excess": {
+     "2022": 0.0,
+     "2023": -3.03,
+     "2024": 34.34,
+     "2025": -30.67,
+     "2026": 14.42
+    },
+    "years": 5,
+    "better_years": 2,
+    "need_better_years": 2,
+    "pass_m1": true,
+    "pass_m2": true,
+    "pass_m3": true
+   },
+   "timing_verdict": "帮忙",
+   "tier": {
+    "label": "RRG-C1/W3全期/dual_ma",
+    "family": "RRG-C1",
+    "window": "W3全期",
+    "timing_tier": "dual_ma",
+    "start": "2022-12-29 00:00:00",
+    "end": "2026-10-28 00:00:00",
+    "metrics": {
+     "total_return": 60.23,
+     "annual_return": 13.09,
+     "max_drawdown": -13.71,
+     "sharpe": 0.89,
+     "win_rate": 59.49,
+     "profit_loss": 2.48,
+     "trade_count": 79,
+     "avg_hold_days": 85.0,
+     "avg_pnl_pct": 5.1
+    },
+    "annual": {
+     "2022": {
+      "total_return": 0.0,
+      "annual_return": 0.0,
+      "max_drawdown": 0.0,
+      "sharpe": 0.0,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2023": {
+      "total_return": 3.3,
+      "annual_return": 3.35,
+      "max_drawdown": -5.23,
+      "sharpe": 0.51,
+      "win_rate": 63.64,
+      "profit_loss": 0.68,
+      "trade_count": 11,
+      "avg_hold_days": 31.6,
+      "avg_pnl_pct": 0.14
+     },
+     "2024": {
+      "total_return": 41.72,
+      "annual_return": 41.85,
+      "max_drawdown": -13.71,
+      "sharpe": 1.56,
+      "win_rate": 41.67,
+      "profit_loss": 4.06,
+      "trade_count": 24,
+      "avg_hold_days": 44.3,
+      "avg_pnl_pct": 5.76
+     },
+     "2025": {
+      "total_return": 8.71,
+      "annual_return": 8.76,
+      "max_drawdown": -9.91,
+      "sharpe": 0.75,
+      "win_rate": 88.24,
+      "profit_loss": 4.49,
+      "trade_count": 17,
+      "avg_hold_days": 53.2,
+      "avg_pnl_pct": 7.74
+     },
+     "2026": {
+      "total_return": 0.68,
+      "annual_return": 0.83,
+      "max_drawdown": -9.4,
+      "sharpe": 0.13,
+      "win_rate": 55.56,
+      "profit_loss": 2.5,
+      "trade_count": 27,
+      "avg_hold_days": 163.0,
+      "avg_pnl_pct": 4.87
+     }
+    },
+    "benchmark_return": 39.73,
+    "bench_metrics": {
+     "total_return": 39.73,
+     "annual_return": 9.12,
+     "max_drawdown": -29.5,
+     "sharpe": 0.52,
+     "win_rate": 0.0,
+     "profit_loss": 0.0,
+     "trade_count": 0,
+     "avg_hold_days": 0.0,
+     "avg_pnl_pct": 0.0
+    },
+    "annual_bench": {
+     "2022": {
+      "total_return": 0.86,
+      "annual_return": 2208.64,
+      "max_drawdown": 0.0,
+      "sharpe": 0.0,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2023": {
+      "total_return": 4.0,
+      "annual_return": 4.06,
+      "max_drawdown": -11.53,
+      "sharpe": 0.37,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2024": {
+      "total_return": 6.81,
+      "annual_return": 6.83,
+      "max_drawdown": -25.59,
+      "sharpe": 0.37,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2025": {
+      "total_return": 35.45,
+      "annual_return": 35.67,
+      "max_drawdown": -14.27,
+      "sharpe": 1.74,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     },
+     "2026": {
+      "total_return": -9.51,
+      "annual_return": -11.59,
+      "max_drawdown": -21.07,
+      "sharpe": -0.5,
+      "win_rate": 0.0,
+      "profit_loss": 0.0,
+      "trade_count": 0,
+      "avg_hold_days": 0.0,
+      "avg_pnl_pct": 0.0
+     }
+    },
+    "turnover_annual": 5.61,
+    "total_cost": 0.042971,
+    "rebalances": 47,
+    "holdings_stats": {
+     "avg_picks": 5.49,
+     "min_picks": 2,
+     "max_picks": 6,
+     "empty_rebalances": 0
+    }
+   }
+  }
+ ]
+}

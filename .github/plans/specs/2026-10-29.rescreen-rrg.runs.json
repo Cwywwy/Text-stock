@@ -1,0 +1,50 @@
+[
+ {
+  "label": "RRG-C1/W1训练/off",
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "timing_tier": "off",
+  "out": "tests/reports/2026-10-29.rescreen-rrg.W1训练.off.json",
+  "command": ".\\.venv\\Scripts\\python.exe scripts/measure_rrg_industry.py --start 2022-03-07 --end 2025-06-30 --top-n 6 --rebalance-days 20 --cost-bps 10.0 --timing-tier off"
+ },
+ {
+  "label": "RRG-C1/W1训练/dual_ma",
+  "start": "2022-03-07",
+  "end": "2025-06-30",
+  "timing_tier": "dual_ma",
+  "out": "tests/reports/2026-10-29.rescreen-rrg.W1训练.dual_ma.json",
+  "command": ".\\.venv\\Scripts\\python.exe scripts/measure_rrg_industry.py --start 2022-03-07 --end 2025-06-30 --top-n 6 --rebalance-days 20 --cost-bps 10.0 --timing-tier dual_ma"
+ },
+ {
+  "label": "RRG-C1/W2验证/off",
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "timing_tier": "off",
+  "out": "tests/reports/2026-10-29.rescreen-rrg.W2验证.off.json",
+  "command": ".\\.venv\\Scripts\\python.exe scripts/measure_rrg_industry.py --start 2025-07-01 --end 2026-10-28 --top-n 6 --rebalance-days 20 --cost-bps 10.0 --timing-tier off"
+ },
+ {
+  "label": "RRG-C1/W2验证/dual_ma",
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "timing_tier": "dual_ma",
+  "out": "tests/reports/2026-10-29.rescreen-rrg.W2验证.dual_ma.json",
+  "command": ".\\.venv\\Scripts\\python.exe scripts/measure_rrg_industry.py --start 2025-07-01 --end 2026-10-28 --top-n 6 --rebalance-days 20 --cost-bps 10.0 --timing-tier dual_ma"
+ },
+ {
+  "label": "RRG-C1/W3全期/off",
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "timing_tier": "off",
+  "out": "tests/reports/2026-10-29.rescreen-rrg.W3全期.off.json",
+  "command": ".\\.venv\\Scripts\\python.exe scripts/measure_rrg_industry.py --start 2022-03-07 --end 2026-10-28 --top-n 6 --rebalance-days 20 --cost-bps 10.0 --timing-tier off"
+ },
+ {
+  "label": "RRG-C1/W3全期/dual_ma",
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "timing_tier": "dual_ma",
+  "out": "tests/reports/2026-10-29.rescreen-rrg.W3全期.dual_ma.json",
+  "command": ".\\.venv\\Scripts\\python.exe scripts/measure_rrg_industry.py --start 2022-03-07 --end 2026-10-28 --top-n 6 --rebalance-days 20 --cost-bps 10.0 --timing-tier dual_ma"
+ }
+]

@@ -53,6 +53,7 @@ _BUILDER_LEAD_DAYS = 180
 def _run_custom_backtest(
     config: dict, start: str, end: str, initial_cash: float,
     rebalance_freq: str, market_timing: bool, boards: list[str], exclude_st: bool,
+    timing_tier: str = "off",
 ) -> tuple[dict, object | None, str]:
     """自定义策略回测：复用全站 shared prepared 与结果缓存（Phase 16）。
 
@@ -75,6 +76,7 @@ def _run_custom_backtest(
         "initial_cash": initial_cash,
         "rebalance_freq": rebalance_freq,
         "market_timing": market_timing,
+        "timing_tier": timing_tier,
         "max_hold_days": hold_days,
         "boards_json": boards_json,
         "exclude_st": exclude_st,
@@ -87,6 +89,7 @@ def _run_custom_backtest(
         initial_cash=initial_cash,
         rebalance_freq=rebalance_freq,
         market_timing=market_timing,
+        timing_tier=timing_tier,
         max_hold_days=hold_days,
         # 与回测页口径一致：财务数据只有一份当前快照，快照日之前中性化，避免前视
         fundamental_as_of=Storage().fundamentals_snapshot_date(),
@@ -375,7 +378,15 @@ def render():
         initial_cash = st.number_input("初始资金", 10_000, 10_000_000, 100_000, step=10_000, key="vb_cash")
     with col14:
         rebalance_freq = st.selectbox("选股频率", ["weekly", "daily"], index=0, key="vb_freq")
-    market_timing = st.checkbox("大盘择时（低于 MA20 减半仓）", value=True, key="vb_timing")
+    market_timing = st.checkbox(
+        "弱择时（低于 MA20 只把新买入减半）", value=True, key="vb_timing"
+    )
+    _tier_labels = {"关闭（默认）": "off", "双均线三档（减仓/清仓）": "dual_ma"}
+    _tier_label = st.selectbox(
+        "大盘择时档位", list(_tier_labels), index=0, key="vb_timing_tier",
+        help="关闭 = 与以往结果一致；双均线三档会真实减仓/清仓（次日生效，只减不追）。",
+    )
+    timing_tier = _tier_labels[_tier_label]
 
     col15, col16 = st.columns(2)
     with col15:
@@ -389,7 +400,7 @@ def render():
                 config,
                 start.isoformat(), end.isoformat(), float(initial_cash),
                 rebalance_freq, bool(market_timing),
-                boards, exclude_st,
+                boards, exclude_st, timing_tier,
             )
             if not metrics:
                 st.warning("回测无数据。请先运行数据拉取脚本（fetch_all.py）确保有缓存数据。")

@@ -58,6 +58,7 @@ def _run_backtest(
     boards: list[str], exclude_st: bool,
     commission_w: float, stamp_tax_w: float, slippage_w: float,
     min_commission: float, include_delisted: bool, config_sig: str,
+    timing_tier: str = "off",
 ) -> tuple[dict, dict, object | None, str]:
     """单策略回测：复用全站 shared prepared 与结果缓存（Phase 16）。
 
@@ -82,6 +83,7 @@ def _run_backtest(
         "initial_cash": initial_cash,
         "rebalance_freq": rebalance_freq,
         "market_timing": market_timing,
+        "timing_tier": timing_tier,
         "max_hold_days": max_hold_days,
         "commission_w": commission_w,
         "stamp_tax_w": stamp_tax_w,
@@ -102,6 +104,7 @@ def _run_backtest(
         initial_cash=initial_cash,
         rebalance_freq=rebalance_freq,
         market_timing=market_timing,
+        timing_tier=timing_tier,
         max_hold_days=max_hold_days,
         # UI 用"万分之"输入，这里换算成小数比例
         commission=commission_w / 10_000,
@@ -529,7 +532,25 @@ def render():
     with col5:
         rebalance_freq = st.selectbox("选股频率", ["weekly", "daily"], index=0)
     with col6:
-        market_timing = st.checkbox("大盘择时（低于 MA20 减半仓）", value=True)
+        # 档位择时（2026-10-29 Phase 19）：默认关闭 = 与历史结果完全一致。
+        _tier_labels = {"关闭（默认）": "off", "双均线三档（减仓/清仓）": "dual_ma"}
+        _tier_label = st.selectbox(
+            "大盘择时档位",
+            list(_tier_labels),
+            index=0,
+            help=(
+                "关闭：不做档位择时（默认，与以往结果一致）。"
+                "双均线三档：收盘在 MA20 上方满仓、跌破 MA20 减到 50%、"
+                "跌破 MA60 且 MA20 下行则清仓；只减仓不追买，次日生效。"
+            ),
+        )
+        timing_tier = _tier_labels[_tier_label]
+        market_timing = st.checkbox(
+            "弱择时（低于 MA20 只把新买入减半）",
+            value=True,
+            disabled=timing_tier != "off",
+            help="这是旧口径的「半仓」近似：只影响新买入预算，不做真实减仓。选中档位时以档位为准。",
+        )
     with col7:
         max_hold_days = st.number_input(
             "最大持仓天数", 5, 120, _hold_default, step=5,
@@ -615,6 +636,7 @@ def render():
                 float(min_commission),
                 bool(include_delisted),
                 config_sig,
+                timing_tier,
             )
             if not metrics:
                 st.warning("回测无数据。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")
@@ -628,6 +650,7 @@ def render():
                     "hold": int(max_hold_days),
                     "rebalance_freq": rebalance_freq,
                     "market_timing": bool(market_timing),
+                    "timing_tier": timing_tier,
                     # 供右侧「过拟合自查」用的上下文
                     "years": (end - start).days / 365.0,
                     "round_trip_cost_pct": round_trip_cost_pct,

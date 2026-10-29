@@ -36,6 +36,11 @@
 ------
 MA_120 需要 120 根 K 线；不足时结果为 NaN（不静默填 0，避免把「没有历史」当成
 「完美收敛」）。调用方决定降级策略（策略侧统一按中性处理）。
+
+修订记录：
+- 2026-10-29  (phase 7) 新建：四变体 + PVCF 截面合成 + 无量纲诊断口径。
+- 2026-10-29 (phase 19) 新增 `conv_variant_series` 与 `CONV_VARIANTS`（复筛矩阵口径维度）。
+- 2026-10-29 (phase 20) `CONV_VARIANTS` 补齐 acf / trcf，覆盖计划的 5 个收敛变体。
 """
 from __future__ import annotations
 
@@ -51,6 +56,9 @@ MA_WINDOWS: tuple[int, ...] = (1,) + CONVERGENCE_WINDOWS
 # 四列原始收敛因子 + 一列截面合成
 CONV_RAW_COLUMNS: tuple[str, ...] = ("conv_pcf", "conv_vcf", "conv_acf", "conv_trcf")
 CONV_COLUMNS: tuple[str, ...] = CONV_RAW_COLUMNS + ("conv_pvcf",)
+
+# 收敛因子变体（Phase 19/20 复筛矩阵的口径维度）：pcf 默认 / vcf / pvcf / acf / trcf / multi(取小)
+CONV_VARIANTS: tuple[str, ...] = ("pcf", "vcf", "pvcf", "acf", "trcf", "multi")
 
 # 诊断列（无量纲口径，只进报告，不进因子行/打分）
 CONV_DIAG_COLUMNS: tuple[str, ...] = ("conv_pcf_cv",)
@@ -175,6 +183,48 @@ def compose_pvcf(df: pd.DataFrame) -> pd.Series:
         return pd.Series(dtype=float, index=df.index)
     z = cross_section_zscore(df, "conv_pcf") + cross_section_zscore(df, "conv_vcf")
     return z.fillna(0.0)
+
+
+def conv_variant_series(df: pd.DataFrame, variant: str = "pcf") -> pd.Series:
+    """按变体返回**截面可比**的收敛打分序列（z-score 后；缺失/无方差一律 0 = 中性）。
+
+    variant 取值（Phase 19 复筛矩阵用）：
+        pcf   = z(conv_pcf)                     —— 默认口径，与 Phase 7 逐值一致
+        vcf   = z(conv_vcf)
+        pvcf  = z(conv_pvcf)                    —— 研究口径合成因子
+        acf   = z(conv_acf)                     —— 成交额口径
+        trcf  = z(conv_trcf)                    —— 换手率口径
+        multi = min(z(conv_pcf), z(conv_vcf))   —— 两种口径**同时**收敛才算「真收敛」
+
+    参数：
+        df: 每只股票一行的单日截面因子表。
+        variant: 变体名（非法值抛中文 ValueError，不静默回退）。
+
+    返回：
+        float Series（与 df 同索引）；所需列缺失时返回全 0（等价于"该因子不参与"）。
+    """
+    if variant not in CONV_VARIANTS:
+        raise ValueError(f"未知的收敛因子变体：{variant!r}；可选值：{', '.join(CONV_VARIANTS)}")
+    if df.empty:
+        return pd.Series(dtype=float, index=df.index)
+    if variant == "multi":
+        if "conv_pcf" not in df.columns or "conv_vcf" not in df.columns:
+            return pd.Series(0.0, index=df.index)
+        z = pd.concat(
+            [cross_section_zscore(df, "conv_pcf"), cross_section_zscore(df, "conv_vcf")],
+            axis=1,
+        )
+        return z.min(axis=1)
+    column = {
+        "pcf": "conv_pcf",
+        "vcf": "conv_vcf",
+        "pvcf": "conv_pvcf",
+        "acf": "conv_acf",
+        "trcf": "conv_trcf",
+    }[variant]
+    if column not in df.columns:
+        return pd.Series(0.0, index=df.index)
+    return cross_section_zscore(df, column)
 
 
 def conv_series_for(symbol: str, bars: pd.DataFrame) -> dict[str, pd.Series]:

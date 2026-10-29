@@ -147,6 +147,18 @@ def worker(args: argparse.Namespace) -> int:
         "benchmark_return": benchmark_return,
         "elapsed_sec": round(time.time() - t0, 1),
     }
+    # 可选：把资金曲线与「未能降仓」记录一并带回主进程（Phase 20 报告需要
+    # 月度极值与降仓失败清单）。默认关闭，避免 153 个 arm 的 JSON 膨胀。
+    if getattr(args, "dump_equity", False):
+        payload["equity"] = [
+            {"date": str(idx.date()), "value": round(float(value), 6)}
+            for idx, value in res.equity_curve.items()
+        ]
+        failures = list(getattr(res, "timing_failures", []) or [])
+        payload["timing_failures"] = {
+            "count": len(failures),
+            "examples": failures[:200],
+        }
     print("RESULT " + json.dumps(payload, ensure_ascii=False))
     return 0
 
@@ -177,6 +189,8 @@ def _run_arm(arm: dict, defaults: dict) -> dict | None:
         cmd += ["--params", json.dumps(arm["params"], ensure_ascii=False)]
     if arm.get("config"):
         cmd += ["--config", json.dumps(arm["config"], ensure_ascii=False)]
+    if arm.get("dump_equity"):
+        cmd += ["--dump-equity"]
 
     t0 = time.time()
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
@@ -273,6 +287,11 @@ def main() -> int:
     ap.add_argument("--params", default="")
     ap.add_argument("--config", default="")
     ap.add_argument("--label", default="")
+    ap.add_argument(
+        "--dump-equity",
+        action="store_true",
+        help="子进程模式：把资金曲线与择时降仓失败记录一并写进 RESULT（默认不写）",
+    )
 
     ap.add_argument("--baseline", action="store_true", help="跑 7 策略 × 3 窗口基线")
     ap.add_argument("--spec", help="通用 spec JSON 文件路径")

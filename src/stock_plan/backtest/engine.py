@@ -32,6 +32,7 @@ from stock_plan.factors.convergence import add_conv_columns, compose_pvcf
 from stock_plan.factors.momentum import add_ma_ratio_columns
 from stock_plan.factors.technical import compute_technical
 from stock_plan.factors.fundamental import compute_fundamental_or_neutral
+from stock_plan.factors.timing import exposure_series, validate_timing_tier
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.scorer import fundamental_composite
 
@@ -49,7 +50,11 @@ class BacktestConfig:
     top_n: int = 5                 # 每天最多买入几只
     max_hold_days: int = 20        # 最大持仓天数（上限；策略自带 hold_days 更短时以策略为准）
     rebalance_freq: str = "daily"  # 选股频率："daily" 每天 / "weekly" 每周
-    market_timing: bool = False    # 大盘择时：大盘低于 MA20 时仓位减半
+    market_timing: bool = False    # 弱择时：大盘低于 MA20 时，仅把**新买入预算**减半（旧行为）
+    # 三档择时（Phase 19，默认关闭）：off | dual_ma。
+    # dual_ma = 按双均线规则真实校准总仓位（100%/50%/0%，超额部分当日卖出），
+    # 与 market_timing 同时开启时以本字段为准（弱择时逻辑不再执行）。
+    timing_tier: str = "off"
     enable_price_limit: bool = True  # 是否启用涨跌停限制
     # —— 仓位约束（默认全关＝与历史行为一致；打开才生效，见 run_backtest 内注释）——
     # 单票占总资产上限。默认 None = 只用 budget=cash/top_n 的等分逻辑（首日实际投入会
@@ -78,6 +83,9 @@ class BacktestResult:
     # 基准净值（同期等权持有全部候选股，首日归一为 1.0）。旧缓存/旧调用方没有这个
     # 字段时为 None，展示层需判空降级（见 .github/plans/2026-10-28-1 第 7 节）。
     benchmark: pd.Series | None = None
+    # 三档择时降仓未到位的记录（跌停/停牌/T+1/不足一手）；只在 timing_tier != "off"
+    # 时可能出现，其它情况为空列表。Phase 20 报告要求披露「未能降仓」清单。
+    timing_failures: list = field(default_factory=list)
 
 
 def equal_weight_benchmark(
@@ -448,7 +456,14 @@ def run_backtest(
     # 改为先算每只股票的日收益率、等权平均后累乘，与价格水平和成分变动都无关。
     market_close: pd.Series | None = None
     market_ma20: pd.Series | None = None
-    if config.market_timing:
+    # 三档择时（Phase 19）：默认 off —— 不构造任何额外数据、不改任何分支，
+    # 因此 21 arm 逐值对比与 HEAD 必须 0 差异（见 Phase 19 完成标准）。
+    validate_timing_tier(config.timing_tier)
+    use_tier_timing = config.timing_tier != "off"
+    # 弱择时与三档互斥：同时开启时以三档为准，避免两种仓位逻辑叠加出难以解释的结果。
+    use_weak_timing = bool(config.market_timing) and not use_tier_timing
+    timing_exposure: dict[pd.Timestamp, float] | None = None
+    if use_weak_timing or use_tier_timing:
         from stock_plan.factors.regime import MIN_CONTRIBUTORS, equal_weight_index
 
         # 候选池小于阈值时按候选数放宽，避免"股票太少 → 指数恒为 1.0 →
@@ -458,6 +473,14 @@ def run_backtest(
             min_contributors=max(1, min(MIN_CONTRIBUTORS, len(codes))),
         )
         market_ma20 = market_close.rolling(20).mean() if len(market_close) else None
+        if use_tier_timing and market_close is not None and not market_close.empty:
+            # 档位「次日生效」已在 exposure_series 内部 shift(1)；
+            # 这里再对齐到实际交易日并前向填充，保证每天都有确定的暴露比例。
+            _exposure = exposure_series(market_close)
+            _ts_index = pd.DatetimeIndex([pd.Timestamp(d) for d in trading_days])
+            timing_exposure = (
+                _exposure.reindex(_ts_index, method="ffill").fillna(1.0).to_dict()
+            )
 
     cash = config.initial_cash
     positions: dict[str, dict] = {}  # code -> {shares, entry_price, entry_date, stop, target}
@@ -479,13 +502,23 @@ def run_backtest(
         else:
             last_bar[_code] = (None, None)
 
-    def _close(code: str, pos: dict, when, close: float, reason: str) -> float:
-        """按给定价格平仓并记录交易，返回平仓后的现金。"""
+    def _close(
+        code: str, pos: dict, when, close: float, reason: str, shares: int | None = None,
+    ) -> float:
+        """按给定价格平仓（或部分减仓）并记录交易，返回平仓后的现金。
+
+        ``shares`` 为 None 时整笔平仓；给定小于持仓的股数时按比例拆分成本、
+        更新剩余持仓（Phase 19 三档择时的「按市值比例降仓」复用它，
+        否则只能整只卖出，降仓粒度会粗到"要么全留要么全卖"）。
+        """
+        sold = int(pos["shares"] if shares is None else shares)
         sell_price = close * (1 - config.slippage)
-        proceeds = pos["shares"] * sell_price
+        proceeds = sold * sell_price
         # 佣金有单笔下限（券商 5 元起收），印花税按成交额单独算、无下限。
         commission_fee = max(proceeds * config.commission, config.min_commission)
         fee = commission_fee + proceeds * config.stamp_tax
+        # 部分卖出时按股数比例拆分原始成本，保证逐笔盈亏可加总回总盈亏。
+        cost_basis = pos["cost"] * sold / pos["shares"] if pos["shares"] else pos["cost"]
         trades.append(
             {
                 "code": code,
@@ -493,15 +526,26 @@ def run_backtest(
                 "exit_date": when,
                 "entry_price": pos["entry_price"],
                 "exit_price": round(sell_price, 2),
-                "shares": pos["shares"],
+                "shares": sold,
                 # 实际持仓自然日数（原实现只把它当局部变量，流水里查不到；
                 # 审计要核对"持有几天"必须先有这一列）
                 "hold_days": (when - pos["entry_date"]).days,
-                "pnl": round(proceeds - fee - pos["cost"], 2),
-                "pnl_pct": round((proceeds - fee - pos["cost"]) / pos["cost"] * 100, 2),
+                "pnl": round(proceeds - fee - cost_basis, 2),
+                "pnl_pct": round(
+                    ((proceeds - fee - cost_basis) / cost_basis * 100) if cost_basis else 0.0, 2
+                ),
                 "reason": reason,
             }
         )
+        if sold < pos["shares"]:
+            pos["shares"] -= sold
+            pos["cost"] -= cost_basis
+        else:
+            # 整笔平仓：把剩余股数显式清零。旧实现依赖调用方 `del positions[code]`，
+            # 但 Phase 19 的「按比例降仓」用 `shares=..."` 卖出全部剩余股数时不会走 del 分支，
+            # 导致持仓既留在 positions 里、又每天重复卖出同一笔股数（现金指数级膨胀）。
+            pos["shares"] = 0
+            pos["cost"] = 0.0
         return cash + proceeds - fee
 
     def _market_value(ts: pd.Timestamp) -> float:
@@ -521,11 +565,64 @@ def run_backtest(
                     value += pos["shares"] * end_close
         return value
 
+    timing_failures: list[dict] = []
+
+    def _reduce_to_cap(day, ts: pd.Timestamp, cap: float) -> None:
+        """把持仓总市值压到 ``cap`` 以内：按每只持仓「市值 × cap/总市值」的比例减仓。
+
+        Phase 19（三档择时）专用。相比「整只卖出」，按比例减仓更接近真实的
+        "总仓位从 100% 降到 50%"，也不会因为只剩 2~3 只持仓就一次清光某只票。
+        约束与引擎其余卖出逻辑一致：100 股整手、不足 100 股不卖、T+1（当日买入）
+        不参与、跌停/停牌跳过（次日继续尝试；跳过的持仓会让当日实际仓位高于目标，
+        报告里按"未能降仓"披露）。
+        """
+        nonlocal cash
+        mv = _market_value(ts)
+        if mv <= 0 or mv <= cap + 1e-6:
+            return
+        ratio = max(cap, 0.0) / mv
+        for code in list(positions.keys()):
+            pos = positions[code]
+            if pos["entry_date"] == day:  # T+1：当日买入当日不能卖
+                continue
+            bars = date_index[code]
+            if ts not in bars.index:  # 停牌：卖不出
+                continue
+            close = float(bars.loc[ts, "close"])
+            if config.enable_price_limit:
+                _up, down = _price_limit(code, bars_map[code], bars.index.get_loc(ts))
+                if close <= down:  # 跌停：卖不出
+                    continue
+            if pos["shares"] < 100:  # 不足一手，不卖
+                continue
+            pos_value = pos["shares"] * close
+            excess_value = pos_value - pos_value * ratio
+            lots = int(excess_value / close / 100) * 100
+            if lots <= 0:
+                continue
+            cash = _close(code, pos, day, close, "择时降仓", shares=min(lots, pos["shares"]))
+            if pos["shares"] <= 0:
+                del positions[code]
+        # 披露用：跌停 / 停牌 / T+1 / 不足一手会让当日仓位高于目标，记录下来
+        realized = _market_value(ts)
+        if realized > cap * 1.02:
+            timing_failures.append(
+                {
+                    "date": str(day),
+                    "target_value": round(float(cap), 2),
+                    "realized_value": round(float(realized), 2),
+                    "gap_pct": round(float((realized / cap - 1.0) * 100.0), 2) if cap > 0 else None,
+                }
+            )
+
     for day in trading_days:
         ts = pd.Timestamp(day)
         # 当日在因子表里的表示：int64 纳秒（与 _FactorTable.dates 同口径），
         # 指针比较用整数比 datetime64 快；与改造前的 np.datetime64(day) 等价。
         ts_int = ts.value
+        # 三档择时的目标仓位（exposure_series 内部已 shift(1)，即次日生效）；
+        # timing_tier="off" 时为 None，恒按 1.0 处理，不触发任何新分支。
+        exposure_today = float(timing_exposure.get(ts, 1.0)) if timing_exposure else 1.0
         # ---------- 1. 检查持仓：止盈 / 止损 / 持仓天数 / 行情终结 ----------
         for code in list(positions.keys()):
             pos = positions[code]
@@ -562,6 +659,11 @@ def run_backtest(
                     "止盈" if hit_exit else ("止损" if hit_stop else "超时"),
                 )
                 del positions[code]
+
+        # ---------- 1.5 择时降仓（三档，100% → 50% / 0%）----------
+        # 只在档位低于满仓时触发，且先降仓再买新股：保证当日买入不会把仓位顶回超配。
+        if timing_exposure is not None and exposure_today < 1.0:
+            _reduce_to_cap(day, ts, (cash + _market_value(ts)) * exposure_today)
 
         # ---------- 2. 生成当日信号并买入 ----------
         # 用截至当天的数据计算因子（避免未来函数）
@@ -709,8 +811,15 @@ def run_backtest(
                 # 指出原注释"最多 1/5 仓位"与实际不符，这里按实际行为改写注释）。
                 budget = cash / max(config.top_n, 1)
                 equity_now = cash + _market_value(ts)
-                # 大盘择时：大盘低于 MA20 时仓位减半
-                if config.market_timing and market_close is not None and market_ma20 is not None:
+                # 三档择时：新买入还受「持仓总市值不超过目标仓位」封顶（不追买，只封顶）。
+                # 当日若因跌停/停牌没能降到位，room 会被压成 0，自然不开新仓。
+                if timing_exposure is not None:
+                    budget = min(
+                        budget, max(equity_now * exposure_today - _market_value(ts), 0.0)
+                    )
+                # 弱择时（旧行为）：大盘低于 MA20 时**只把新买入预算**减半。
+                # 与三档同时开启时已被 use_weak_timing 置为不执行（三档优先）。
+                if use_weak_timing and market_close is not None and market_ma20 is not None:
                     if ts in market_ma20.index and not pd.isna(market_ma20.loc[ts]):
                         if market_close.loc[ts] < market_ma20.loc[ts]:
                             budget *= 0.5
@@ -770,7 +879,12 @@ def run_backtest(
     # 统一为 DatetimeIndex，便于后续 resample
     equity.index = pd.to_datetime(equity.index)
     trades_df = pd.DataFrame(trades)
-    return BacktestResult(equity_curve=equity, trades=trades_df, benchmark=benchmark)
+    return BacktestResult(
+        equity_curve=equity,
+        trades=trades_df,
+        benchmark=benchmark,
+        timing_failures=timing_failures,
+    )
 
 
 if __name__ == "__main__":
