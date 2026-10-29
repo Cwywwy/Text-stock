@@ -2,6 +2,72 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 14）：复筛 Phase 21–22 — 结论落地（默认值不变）、文档与归档
+
+按 [复筛计划书](.github/plans/done/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 21、Phase 22。
+
+- **Phase 21 结论落地（`(phase 21) document timing tiers and rescreen conclusions`）**：本轮复筛**没有任何候选通过**
+  预注册门槛，因此**不改任何用户可见默认值**——三档择时保持默认「关闭」，7 个内置策略参数、`momentum_mode`、
+  `conv_variant`、`conv_weight` 全部原样。README 新增「大盘择时档位（可选，默认关闭）」小节（口径、降仓语义、限制、
+  实测结论）；决策报告 `tests/reports/2026-10-29-18-50.rescreen-decisions.md` 逐条给出结论、证据链（JSON/报告 +
+  数据指纹）与未通过项的替代建议。
+- **Phase 22 归档（`(phase 22) archive rescreen plan and summarise results`）**：计划书归档到
+  `.github/plans/done/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md`，README / CHANGELOG / 计划 6 / 决策报告
+  中的链接同步更新；最终全量测试报告 `tests/reports/2026-10-29-18-56.report-1.md`。
+- **本轮最终结论（一句话）**：收敛因子、动量方向修正、RRG 行业轮动三条候选线在验证期都不成立；双均线三档择时
+  在 2026 下跌段有效、但只有 1/2 年更好且收益集中在单一年份，按预注册规则不算通过——默认关闭，留作研究工具。
+- **未决事项**：UI 默认开弱择时（`market_timing=True`）与全部 A/B 研究用 `False` 的口径不一致，是否改 UI 默认需单独拍板；
+  T-4 换手治理由用户自行推进；真正的样本外（前向）验证尚未做。
+
+## 2026-10-29（续 13）：复筛 Phase 20 — 全市场 150 arm 矩阵与双层判定（候选层无一通过）
+
+按 [复筛计划书](.github/plans/done/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 20：
+全市场 150 arm（144 股票 + 6 行业轮动）、预注册双层判定、月度极值与「未能降仓」披露。全量测试 654 → **656 passed**。
+
+- **矩阵**：7 策略基线 + 收敛 5 变体 ×2 策略 + 动量 3 模式 + RRG，三窗口（W1 训练 / W2 验证 / W3 全期）×
+  三口径（off / weak / tier），全市场 5379 只不抽样、`jobs=4`，144 arm 全部成功（`tests/reports/2026-10-29-17-36.rescreen-matrix.{json,md}`）；
+  RRG 6 arm 另行跑（该 runner 无「弱择时」口径，故为计划的 9 → 实际 6，`2026-10-29-17-45.rescreen-rrg.json`）。
+- **判定结论**（`tests/reports/2026-10-29-18-45.rescreen-judgement.md`）：
+  ① 候选层 W1 各选 1 个进 W2——收敛族 `pvcf/突破`（+3.33pp、4/4 年正）、动量族 `ma_ratio_blend/动量`（+11.77pp、3/4）；
+  ② W2 判定**无一通过**：`pvcf/突破` 超额 +1.24pp（C-1 门槛 +2.0 ❌），`ma_ratio_blend/动量` 超额 +10.20pp 但 C-3 ❌（2025 下半年 -11.4%、2026 才反超，属单年主导）；
+  ③ 择时层：`weak` 对两组选中候选都「帮忙」（回撤 +3.57 / +7.98pp，年化 +9.00 / +9.78pp）；`tier` 回撤改善很大（+20.03 / +16.06pp）但 M-3 只有 1/2 年更好，按预注册规则判「无差别」；
+  ④ 全矩阵 26 组信息性汇总：`weak` 帮忙 5、帮倒忙 3；`tier` 帮忙 1（基线动量 +34.54pp），改善集中在 2026 下跌段（月度极值：2026-07 躲开 +13~+20pp，同时 2026-04/09 错过 -5~-8pp）；
+  ⑤ RRG 行业层 W1 超额 +0.46pp（C-1 ❌）→ 按预注册规则不做 C2，与 Phase 9 一致。
+- **新增脚本**：`scripts/build_rescreen_specs.py`（生成 144 arm spec）、`scripts/measure_rrg_batch.py`（RRG 6 arm）、
+  `scripts/judge_rescreen.py`（双层判定 + 月度极值 + 降仓披露 + 数据指纹）；`measure_factor_ab.py` 增加 `--dump-equity`。
+- **引擎**：`BacktestResult.timing_failures` 记录降档日「未能降仓」残差（跌停/停牌/T+1/不足一手/整手取整），
+  明细回放 12 arm 验证加记录器后六项指标与矩阵逐值一致；`convergence.py` 变体扩到 6 个（补 acf/trcf）。
+- **数据冻结**：跑批前后指纹（bars 5579 / meta.db / 200 只抽样）逐项一致，跑批期间数据未变。
+- 报告：实验 `tests/reports/2026-10-29-18-45.rescreen-judgement.md`；测试 `tests/reports/2026-10-29-18-46.report-1.md`。
+- **结论口径**：本轮没有任何候选通过预注册门槛，因此**不改任何默认值**（择时档位保持默认关闭）；
+  下一轮若要继续，应先扩大验证窗口或做真正样本外验证，而不是继续在同一 W2 上调参。
+
+## 2026-10-29（续 12）：复筛 Phase 18–19 — 全市场基线冻结 + 双均线三档择时（默认关闭）
+
+按 [复筛计划书](.github/plans/done/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 18、Phase 19。
+新增能力**默认关闭**，21 arm 与 HEAD 基线逐字段 **0 差异**；全量测试 637 → **654 passed**。
+
+- **Phase 18 全市场基线**（`(phase 18) add full market baseline for strategy rescreen`）：数据指纹与原记录不一致
+  （`data/update.log` 显示 16:34 增量更新 5575 只），按计划纪律改为「同数据重跑基线」——7 策略 × W1 训练 / W2 验证 / W3 全期，
+  `max_codes=0`（载入 5379 只、有效参与 5182）、`jobs=5`，21 arm 全部成功，
+  产物 `tests/reports/2026-10-29-17-08.rescreen-baseline.{json,md}`。结论：三个窗口 7 策略全部跑输等权基准
+  （基准 W1 +21.95% / W2 +8.31% / W3 +32.67%）；W2 有 3 只转正但均低于基准；年单边换手 14.0–22.2 倍，成本拖累 5.0–8.0pp/年。
+- **Phase 19 三档择时**（`(phase 19) add dual ma timing tiers with default off`）：新增 `src/stock_plan/factors/timing.py`
+  （`close ≥ MA20` 满仓 / `close < MA20` 半仓 / `close < MA60` 且 MA20 五日斜率向下 空仓；预热不足按满仓）；
+  `BacktestConfig.timing_tier`（默认 `"off"`，非法值中文报错）；引擎每日**真实降仓**（按比例卖出、100 股整手、
+  跌停停牌跳过、T+1 豁免、买入侧只封顶不追买）；行业轮动 `run_industry_rotation(..., timing_tier=)` 同口径；
+  `conv_variant`（pcf/vcf/pvcf/multi，默认 pcf，与 Phase 7 逐值一致）；回测 / 策略对比 / 可视化构建三页新增
+  「大盘择时档位」下拉（默认关闭），缓存键纳入档位；旧「弱择时」保留并在文案中标注为旧行为。
+- **默认关闭证明**：21 arm（7 策略 × full/win_a/win_b，`max_codes=800`）与 Phase 14 同数据 HEAD 基线
+  `2026-10-29-08-52.phase14-head-baseline.json` 逐字段 **0 差异**（metrics / annual / turnover / benchmark_return /
+  codes / equity_points，容差 1e-12，产物 `tests/reports/2026-10-29-17-20.phase14-parity.json`）；
+  同一全市场 spec 在实现中途与完成后两次跑批，21 arm 六项指标逐值相同。
+- 新增测试 `tests/test_engine_timing_tiers.py`（17 例：档位边界、斜率相等不算向下、0%/50% 档、跌停不卖、整手、
+  不足一手不卖、T+1、预热、`off` 零副作用）、`tests/test_rotation_timing.py`（4 例）、`tests/test_backtest_pages.py` +2 例 AppTest 冒烟。
+- 报告：实验 `tests/reports/2026-10-29-17-30.phase18-19-timing.md`；测试 `tests/reports/2026-10-29-17-30.report-1.md`。
+- **仍未做**：Phase 20 复筛矩阵（153 arm，含 `weak`/`tier` 口径，预计 1.0–1.7 小时）需用户批准后执行；
+  本阶段只证明「能力可用且默认不改变行为」，不构成「择时是否帮忙」的结论。
+
 ## 2026-10-29（续 11）：回测性能改造 Phase 14–17 — 同数据逐值不变，等待时间降到秒级
 
 按 [性能计划书](.github/plans/done/2026-10-29-5-new-backtest-performance.md) 完成四阶段改造，**不改任何回测数字**：

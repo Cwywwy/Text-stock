@@ -100,6 +100,7 @@ def _comparison_specs() -> dict[str, tuple[str, str]]:
 def _run_comparison(
     start: str, end: str, initial_cash: float, rebalance_freq: str,
     market_timing: bool, max_hold_days: int, boards_json: str, exclude_st: bool,
+    timing_tier: str = "off",
 ) -> tuple[dict, str]:
     """跑全部策略对比：共享 prepared + 逐策略结果缓存 + 进度（Phase 16）。
 
@@ -118,6 +119,7 @@ def _run_comparison(
         "initial_cash": initial_cash,
         "rebalance_freq": rebalance_freq,
         "market_timing": market_timing,
+        "timing_tier": timing_tier,
         "max_hold_days": max_hold_days,
         "boards_json": boards_json,
         "exclude_st": exclude_st,
@@ -142,6 +144,7 @@ def _run_comparison(
                 initial_cash=initial_cash,
                 rebalance_freq=rebalance_freq,
                 market_timing=market_timing,
+                timing_tier=timing_tier,
                 max_hold_days=hold_days,
                 # 与回测页口径一致：财务快照前视修正
                 fundamental_as_of=fundamental_as_of,
@@ -309,7 +312,15 @@ def render():
 
         col5, col6 = st.columns(2)
         with col5:
-            market_timing = st.checkbox("大盘择时", value=True, key="cmp_timing")
+            market_timing = st.checkbox(
+                "弱择时（低于 MA20 只把新买入减半）", value=True, key="cmp_timing"
+            )
+            _tier_labels = {"关闭（默认）": "off", "双均线三档（减仓/清仓）": "dual_ma"}
+            _tier_label = st.selectbox(
+                "大盘择时档位", list(_tier_labels), index=0, key="cmp_timing_tier",
+                help="关闭 = 与以往结果一致；双均线三档会真实减仓/清仓（次日生效，只减不追）。",
+            )
+            timing_tier = _tier_labels[_tier_label]
         with col6:
             max_hold_days = st.number_input(
                 "最大持仓天数", 5, 120, 30, step=5, key="cmp_hold",
@@ -324,6 +335,7 @@ def render():
                 start.isoformat(), end.isoformat(), float(initial_cash),
                 rebalance_freq, bool(market_timing), int(max_hold_days),
                 json.dumps(boards, ensure_ascii=False), exclude_st,
+                timing_tier,
             )
             if not results:
                 st.warning("回测无数据。请先到左侧「🔄 数据更新」页拉取数据。")

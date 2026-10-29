@@ -14,6 +14,7 @@
 
 修订记录：
 2026-10-29  (phase 9) 新建：RRG 行业轮动 C1 回测与报告生成
+2026-10-29 (phase 20) 新增 --timing-tier：复筛矩阵叠三档择时口径
 """
 from __future__ import annotations
 
@@ -74,6 +75,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--top-n", type=int, default=6, help="每次持有行业数")
     ap.add_argument("--rebalance-days", type=int, default=20, help="调仓间隔（交易日）")
     ap.add_argument("--cost-bps", type=float, default=10.0, help="单边调仓成本（基点）")
+    ap.add_argument(
+        "--timing-tier",
+        default="off",
+        choices=("off", "dual_ma"),
+        help="大盘择时档位（off=默认恒满仓；dual_ma=双均线三档，作用于行业组合总暴露）",
+    )
     ap.add_argument("--max-codes", type=int, default=0, help="抽样股票数，0 = 全部")
     ap.add_argument("--out", help="结果 JSON 路径")
     ap.add_argument("--md", help="报告 Markdown 路径")
@@ -118,6 +125,7 @@ def _write_markdown(path: Path, meta: dict, panel_wide: pd.DataFrame, rrg: pd.Da
     lines.append(f"- RRG 首个成形日：**{pd.Timestamp(first_ready).date()}**（预热 {meta['warmup_rows']} 行）")
     lines.append(f"- 回测区间：{rotation.start.date()} ~ {rotation.end.date()}（{len(rotation.equity_curve)} 个交易日）")
     lines.append(f"- 口径：申万一级 **{meta['industries']}** 个行业等权指数；top_n={meta['top_n']}；每 {meta['rebalance_days']} 交易日调仓；单边 {meta['cost_bps']} bp")
+    lines.append(f"- 大盘择时档位：`{meta.get('timing_tier', 'off')}`（off=恒满仓；dual_ma=双均线三档作用于组合总暴露）")
     lines.append("")
     lines.append("## 覆盖度")
     lines.append("")
@@ -254,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         rebalance_days=args.rebalance_days,
         top_n=args.top_n,
         cost_bps=args.cost_bps,
+        timing_tier=args.timing_tier,
     )
     bench_metrics = calc_metrics(rotation.benchmark, pd.DataFrame())
     annual_rotation = calc_annual_metrics(rotation.equity_curve, rotation.trades)
@@ -301,6 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         "top_n": args.top_n,
         "rebalance_days": args.rebalance_days,
         "cost_bps": args.cost_bps,
+        "timing_tier": args.timing_tier,
         "annual_turnover": annual_turnover,
         "holdings_stats": holdings_stats,
         "elapsed_sec": round(time.time() - t0, 1),

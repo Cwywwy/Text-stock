@@ -10,6 +10,7 @@
 - 期望持仓天数 = 由参数 hold_days 决定
 
 修订记录：
+2026-10-29 (phase 19) 新增 conv_variant 参数（pcf 默认/vcf/pvcf/multi），默认逐值不变
 2026-10-29  (phase 15b) build_factor_rows 支持 prepared 因子表复用（只取末行，26 列数值不变）
 2026-10-29  (phase 14) score_with_penalties 增加 enabled 开关（默认 False），回测打分不再构造扣分长表，分数不变
 2026-10-29  (phase 7) 接入均线收敛因子（conv_pcf/vcf/acf/trcf/pvcf），新增 conv_weight 参数（默认 0，不改变旧行为）
@@ -24,7 +25,7 @@ import pandas as pd
 from stock_plan.factors.convergence import (
     compose_pvcf,
     convergence_columns,
-    cross_section_zscore,
+    conv_variant_series,
 )
 from stock_plan.factors.filter import filter_universe
 from stock_plan.factors.momentum import ma_ratio_columns
@@ -82,6 +83,9 @@ class TrendFollowingStrategy(Strategy):
         # 均线收敛加分权重（2026-10-29 起）：0 = 关闭（默认，保证旧行为不变）。
         # 收敛 → 突破的前提，配合突破策略使用；量纲问题见 factors/convergence.py。
         "conv_weight": 0.0,
+        # 收敛因子变体（Phase 19 复筛矩阵用）：pcf（默认）/ vcf / pvcf / multi。
+        # 只在 conv_weight>0 时生效；默认 pcf 与 Phase 7 口径逐值一致。
+        "conv_variant": "pcf",
     }
 
     def filter_universe(
@@ -125,9 +129,12 @@ class TrendFollowingStrategy(Strategy):
 
         # 均线收敛加分（默认关闭）。必须用**截面 z-score** 再乘权重，
         # 否则高价股/高成交量股的原始 PCF 量级会主导排序（见 factors/convergence.py）。
+        # conv_variant 决定用哪个变体（默认 pcf，与 Phase 7 逐值一致）。
         conv_weight = float(self.params.get("conv_weight", 0.0))
-        if conv_weight and "conv_pcf" in df_factors.columns:
-            score = score + conv_weight * cross_section_zscore(df_factors, "conv_pcf")
+        if conv_weight:
+            score = score + conv_weight * conv_variant_series(
+                df_factors, str(self.params.get("conv_variant", "pcf"))
+            )
 
         rows: list[dict[str, Any]] = []
         codes = (

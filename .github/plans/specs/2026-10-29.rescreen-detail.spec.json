@@ -1,0 +1,185 @@
+[
+ {
+  "label": "基线/突破策略/W2验证/off",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "基线/突破策略/W2验证/weak",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "基线/突破策略/W2验证/tier",
+  "strategy": "突破策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "基线/动量策略/W2验证/off",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "基线/动量策略/W2验证/weak",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "基线/动量策略/W2验证/tier",
+  "strategy": "动量策略",
+  "params": {},
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W2验证/off",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W2验证/weak",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "收敛-pvcf/突破策略/W2验证/tier",
+  "strategy": "突破策略",
+  "params": {
+   "conv_weight": 0.2,
+   "conv_variant": "pvcf"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W2验证/off",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W2验证/weak",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": true,
+   "timing_tier": "off"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ },
+ {
+  "label": "动量-ma_ratio_blend/动量策略/W2验证/tier",
+  "strategy": "动量策略",
+  "params": {
+   "momentum_mode": "ma_ratio_blend"
+  },
+  "config": {
+   "market_timing": false,
+   "timing_tier": "dual_ma"
+  },
+  "start": "2025-07-01",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 0,
+  "dump_equity": true
+ }
+]
