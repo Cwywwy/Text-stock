@@ -2,6 +2,261 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 11）：回测性能改造 Phase 14–17 — 同数据逐值不变，等待时间降到秒级
+
+按 [性能计划书](.github/plans/done/2026-10-29-5-new-backtest-performance.md) 完成四阶段改造，**不改任何回测数字**：
+同一数据快照上 7 策略 × 3 窗口（21 arm）改造前后逐字段 **0 差异**，全量测试 547 → **637 passed**。
+
+- **Phase 14 引擎内层数组化**（`befad62`）：因子表改为「列名 → numpy 矩阵 + int64 日期 + 行指针」，
+  逐日逐股不再构造 pandas Series；`builtin.py::score_with_penalties` 增加 `enabled` 开关（默认关闭，
+  今日信号路径显式打开）避免回测每日建扣分明细表；新增 `tests/test_engine_perf_parity.py` 内嵌旧实现对拍。
+  5 年全市场单次回测 449.4 s → 约 82–87 s。
+- **Phase 15 准备层 + 存储并行加载**（`9ae34ab`）：新增 `prepare_backtest()` / `PreparedBacktest`（只读快照），
+  `run_backtest(..., prepared=...)` 跨策略复用因子表；`load_market_maps` 用有界线程池 + pyarrow 窗口下推，
+  15.7 s → 6.4 s；对比页 7 策略 × 1 年 154.9–155.5 s（目标 ≤3 min）。`scripts/measure_factor_ab.py` 支持 `--max-codes 0`（全市场）。
+- **Phase 15b Walk-Forward 与今日信号共享准备层**（`183d641`）：`walk_forward(..., prepared=...)` 整段区间只准备一次，
+  改造前后 OOS 输出 0 数值差异，耗时 113.12 s → 约 25–27 s；今日信号 `generate_signals_with_report(..., prepared=...)`
+  「多周期并存」准备一次、3 次打分，154.5–158.7 s → 84.5–86.0 s（约 1.8–1.9×），信号与 report 全字段一致。
+- **Phase 16 UI 缓存与进度**（`60da69c`）：新增 `src/stock_plan/ui/backtest_cache.py`（进程内 prepared/结果缓存、
+  缓存键含策略配置指纹与数据版本、命中提示「本次为缓存结果」）；对比页逐策略进度条「正在跑 k/N」；
+  回测页 / 对比页 / 可视化拼装页新增「🧹 清除缓存」按钮；命中缓存全市场 7 策略二次运行 0.004 s。
+  新增 `tests/test_backtest_cache.py` / `tests/test_backtest_pages.py`。
+- **Phase 17 终验与文档**：21 arm 与 Phase 14 同数据 HEAD 基线逐字段对拍 0 差异；性能报告
+  `tests/reports/2026-10-29-10-25.perf-backtest.md`（五场景前后对比、机器环境、复现命令）；README 新增「性能」小节；
+  计划书标记完成并归档到 `.github/plans/done/`；分支 `feature/strategy-refresh` 未合并 `main`。
+- **数据口径偏差**：计划书 §1 的 04:12 旧基线在 06:49–08:02 每日数据任务刷新后不可复现（任何代码都复现不了），
+  故全部验收改为「同一数据快照上 HEAD 引擎基线 vs 新代码」逐字段对拍，已记录于计划书 §1.2 与 Phase 14 报告。
+- **已知偏差**：「1 年单策略冷启动 ≤45 s」未达成（实测 100.6–103.6 s：加载 6.2 + 全市场因子表准备 79.4–82.2 + 回测 15.1），
+  原因是因子表构建是与窗口长度无关的全市场固定成本；共享 prepared + UI 缓存后用户感知为秒级（命中 0.004 s）。
+- 全量测试：**637 passed / 0 failed**（`tests/reports/2026-10-29-09-58.report-1.md`）；未引入新依赖；
+  未改回测口径 / 策略公式 / 默认窗口；未做跨进程并行与面板化重构。
+
+## 2026-10-29（续 10）：策略刷新 Phase 13 — 集成、文档与终验
+
+收尾阶段：**不改行为，只做终验与文档同步**，并给出「基线 vs 最终」的逐值对比证据。
+
+- 全量测试复跑：**547 passed / 0 failed**（87.30 s，`tests/reports/2026-10-29-06-05.report-1.md`），较改造前基线 445 增加 102 例，无下降。
+- 新增对比文件 `tests/reports/2026-10-29-06-02.phase13-compare.md`：Phase 6 基线（`2026-10-29-04-12.report-1.json`）与最终状态
+  （`2026-10-29-06-02.phase13-final.json`）在 full 窗口（2021-12-07~2026-10-28）对 7 个策略逐项对比，**收益 / 年化 / 回撤 / 夏普 / 笔数 / 胜率全部逐值相同**；
+  另以 win_a 窗口程序化对拍 7/7 相同。原因是 A/B/C 三块的结论均为「不成立」，默认参数一律保持原口径。
+- 文档同步：`README.md` 新增「股本与财报披露日（B 档字段）」小节并更新策略刷新进度表；`INSTRUCTION.md` §7 新增 9 条关键技术决策
+  （只加列不改口径、收敛 / 动量 / RRG 三块默认关闭的理由、类型白名单、东财直连与离线复用、总股本 proxy、披露日兜底、回补必须 `exclude_st=False`）；
+  `plan.md` §16 新增策略刷新进度行。
+- 计划书 `.github/plans/done/2026-10-29-4-new-strategy-refresh-implementation.md` 标记完成并归档到 `.github/plans/done/`；分支 `feature/strategy-refresh`
+  **未合并 `main`**，等用户指示。
+- 新增 `docs/策略刷新工作报告-2026-10-29.md`：面向非开发者的全过程复盘（大白话 → 每个决策的备选与利弊 → 量化代码思路逐段解释），供日后复盘与交接使用。
+- 本轮结论（诚实版）：A 收敛因子、B 动量方向修正、C RRG 行业轮动在本数据上均未通过预注册判定线，保留为可选能力、默认关闭；
+  D 两段式与 E 字段补齐为纯增量能力，已可用。真正的主要矛盾是**日频换手 13–21 倍/年（年成本拖累约 5.8%–7.6%）与熊市段缺择时**，
+  建议下一阶段优先用现成的 `factors/regime.py` + `BacktestConfig.market_timing`。
+
+## 2026-10-29（续 9）：策略刷新 Phase 12 — B 档字段补齐（总股本 / 财报披露日）
+
+补齐调研报告 §4.2 的 B 档字段。**日线表结构未改动，只新增数据目录与新表；现有 7 策略默认输出逐值不变。**
+
+- 新增 `src/stock_plan/data/share_capital.py`：东财 `push2` 直连抓全市场快照（总市值 / 流通市值 / 最新价），反推
+  `total_shares = 总市值 ÷ 最新价`、`float_shares = 流通市值 ÷ 最新价`；历史流通股本由 `amount ÷ (turnover × close)` 逐日精确反推；
+  历史总股本按当期「总 / 流通比例」外推并标 `source=proxy`。落盘 `data/processed/shares/`（月快照 0.2 MB + 两张历史长表约 228 MB）。
+- 新增 `src/stock_plan/data/disclosure.py`：拉取 2021Q4–2026Q3 共 20 期预约 / 实际披露日，写入 `meta.db` 新表 `report_disclosure`；
+  缺失时退回法定披露截止日（年报 / 一季报 4-30、半年报 8-31、三季报 10-31）；`as_of_disclosure()` 严格只取
+  `announce_date <= date` 的记录，杜绝未来函数。
+- 新增 `src/stock_plan/data/fields.py`：`as_of_total_shares / as_of_float_shares / as_of_total_mv / as_of_float_mv / as_of_disclosure`
+  统一消费接口，缺数据返回 `None` + 中文 `degraded` 说明，不抛异常、不静默。
+- `data/storage.py` 新增 `SHARES_DIR`、`load_shares()`、`load_total_mv()`、`load_float_mv()`、`load_disclosure()`；
+  `data/updater.py` 新增 `refresh_aux_fields()` 并在每日更新尾部接入（披露日只在法定截止前 30 天内刷新，失败只告警不阻断）。
+- 新增回补脚本 `scripts/backfill_share_capital.py`、`scripts/backfill_disclosure.py`：幂等、`--dry-run`、`--skip-fetch`（离线复用快照）、`--json`。
+- 覆盖率（详见 `tests/reports/2026-10-29-05-53.phase12-fields.md`）：股本快照 5571 只 / 历史 5570 只、635.7 万行；北交所 353/353 全覆盖；
+  历史流通市值与快照比值中位 0.997；披露日 99,191 行 / 5223 只 / 20 期（98.2% 有实际披露时间）。
+- 修复：首次回补因 `exclude_st=True` 漏抓 197 只 ST 股（已改为 `exclude_st=False` 重跑）；`load_snapshot()` 误把历史表当月快照；
+  无效日期曾错误回退到快照次日（改为直接降级）。
+- 测试：新增 44 例（`test_share_capital` 15 / `test_disclosure` 17 / `test_fields` 12），全量 **547 passed / 85.60s**；
+  7 策略 win_a 区间回归与 Phase 6 基线逐值一致。
+- 已知限制：历史总股本为比例外推，只能用于市值分档（定增 / 回购 / 解禁不可回溯）；东财接口在本机间歇被网络层重置，重跑用 `--skip-fetch`。
+
+## 2026-10-29（续 8）：策略刷新 Phase 11 — 两段式「先选类型 → LLM 发挥」
+
+落地调研报告 §6 的两段式改造，并把「缺字段静默跳过」改成「禁用规则 + 降级留痕」。**未改动任何现有策略的打分公式与默认值。**
+
+- 新增 `src/stock_plan/strategy/archetypes.py`：六种策略类型画像（趋势跟随 / 动量轮动 / 均值回归 / 多因子 / 小市值 / 事件驱动），
+  每类带「骨架 + 可用字段白名单 + 类型默认参数」；`resolve_config()` 做三层兜底（类型默认值 → 全局默认值 → 缺字段禁用规则 + `degraded`），
+  `rule_columns()` 按配置动态推断依赖的均线列（如 `dev_ma=10 → ma10`）。事件驱动类型 `status="pending_data"`：白名单为空、`is_ready=False`，
+  只占位不产出可回测配置。
+- `src/stock_plan/strategy/codegen.py`：新增 `normalize_config_typed(raw, archetype_key, *, available_columns)`，返回
+  `(config, issues, degraded)`；`normalize_config` 签名不变、内部转调，旧调用方无需改动。新增 `mv_pct`（小市值分位）规则。
+- `src/stock_plan/strategy/custom.py`：`CustomStrategy` 接受 `archetype` / `disabled_rules` / `degraded`；`score()` 中每条规则先过
+  `_rule_enabled()`——缺依赖列时**禁用该规则并记录 `degraded`**，不再静默跳过；`degraded_messages()` 供报告读取。
+  旧配置（不含新键）打分逐值不变。
+- `src/stock_plan/signal/report.py`：`SignalReport` 增加 `degraded: tuple[str, ...] = ()`（带默认值，向后兼容），并写入
+  `to_dict()` 与 `to_facts_text()`；`signal/generator.py` 从策略实例汇总降级说明；今日信号页以 warning 展示「今天少算了哪几条」。
+- UI 两处：可视化拼装页顶部新增「策略类型」下拉（切类型即用该类型默认值重置表单；事件驱动类型回测按钮禁用且不给套用/保存）；
+  AI 分析页改为「先选类型 → 生成」，prompt 只注入该类型的字段白名单，结果表按白名单过滤，越界字段与降级逐条列中文原因。
+- 测试：新增 `tests/test_archetypes.py`（10 例）与 `tests/test_custom_degraded.py`（6 例），全量 **503 passed / 14.22s**，
+  报告见 `tests/reports/2026-10-29-05-34.report-1.md`。
+
+## 2026-10-29（续 7）：策略刷新 Phase 9 — RRG 行业轮动 C1（结论：无超额，C2 不做）
+
+实现调研 Top 3 的第③项的第一段（C1：行业层可证伪验证）。**未改动任何现有策略/引擎行为。**
+
+- 新增 `src/stock_plan/factors/rrg.py`：`build_industry_index()` 按申万一级**等权**聚合行业指数
+  （每日成分收益均值 → 链式累乘；成分 < 3 只置 NaN 不补 0；北交所 `920xxx` 无行业，排除）；
+  `compute_rrg()` 按文档口径算 `RS = index/benchmark×100`、`RS-Ratio = (100×RS/RS.shift(220)).rolling(20).mean()`、
+  `RS-Momentum = (100×RS-Ratio/RS-Ratio.shift(60)).rolling(20).mean()`，预热不足**显式抛
+  `ValueError`**（RS-Ratio 需 239 行、完整 RRG 需 318 行，信息含实际行数）；`select_industries()`
+  只在「转强」象限里按到 `(100,100)` 欧氏距离降序取前 6（A 方案，不足不补并告警）。
+- 新增 `src/stock_plan/backtest/rotation.py`：`run_industry_rotation()` 行业轮动回测，
+  信号严格早于持仓日（防未来函数）、每 20 交易日调仓、单边 10bp 成本、按年累计真实成本、
+  合成交易记录复用 `calc_metrics`（9 键契约）；报告标注「ETF 口径，不可与股票引擎收益直接对比」。
+- 新增 `scripts/measure_rrg_industry.py`：无头脚本，输出 JSON + Markdown（覆盖度、分年度、
+  §3.5 四条预注册判定、象限分布、前视偏差披露、复现命令）。
+- 新增 `tests/test_rrg.py`（13 例，覆盖 238/239/317/318 边界、手算对拍、与 `regime.equal_weight_index`
+  一致性、因果性、成本、四象限边界、错误路径）。
+- **C1 结果（2022-12-29 ~ 2026-10-28，925 个交易日，5026 只股票 / 31 个申万一级）**：
+  轮动 总收益 +37.15% / 年化 +8.59% / 最大回撤 −31.17% / 夏普 0.47 / 年单边换手 5.16 次；
+  基准（31 行业等权）+39.73% / +9.12% / −29.50% / 0.52。
+  §3.5 判定：C1-1 年化超额 **−0.53pp < +2.0pp ❌**；C1-2 回撤差 −1.67pp ✅；C1-3 3 年正超额 ✅；
+  C1-4 换手 5.16 次 ✅ → **C1 不通过，按预注册规则停止 C2（Phase 10 不做），RRG 行业轮动证伪。**
+- 诚实说明：① 变差主要来自 2026 年（超额 −4.23pp），2023–2025 虽为正超额但补不回；② 行业分类只有
+  `classify/2026-10` 单月快照回溯、`incl_date` 无剔除时间，**存在前视偏差——带前视偏差仍无超额，
+  是更强的证伪信号**；③ 持仓并未长期空仓（平均 5.5 个行业/次、仅 1 次空仓），不是空仓拖累造成的假象；
+  ④ 研报口径是买行业 ETF，我们算的是行业等权指数，真实可交易收益只会更低。
+- 报告：`tests/reports/2026-10-29-05-20.rrg-c1.{md,json}`；测试报告：`tests/reports/2026-10-29-05-24.report-1.md`
+  （全量 `pytest` **487 passed**，较 474 增加 13 例、无下降）。
+
+## 2026-10-29（续 6）：策略刷新 Phase 8 — 动量方向修正（结论：变差，保留原口径）
+
+实现调研 Top 3 的第②项：把「裸涨幅动量」换成研报口径 `MA_L / close` 系（L = 20/60/120/240），
+在动量策略上做三模式 A/B。**默认行为未变（仍是 `ret20` 的 `mom_ret`）。**
+
+- 新增 `src/stock_plan/factors/momentum.py`：`ma_ratio_columns()`（`ma_ratio_L = MA_L / close`，
+  **越小越强**，注释写死方向）、`ma_ratio_strength()`（`1 − ratio`，越大越强）、
+  `cross_section_percentile()`（只用当日截面、NaN 保留，避免未来函数）。
+- `strategy/builtin.py::build_factor_rows()` 与 `backtest/engine.py` 因子预计算 / 候选行同步加
+  `ma_ratio_20/60/120/240` 四列；`tests/test_factor_parity.py` 数值对拍补这 4 列，并把 NaN 判定改为
+  「两边同为 NaN 视为一致」（200 行样本上 240 窗口两边都未成形，属同一种退化口径）。
+- `MomentumStrategy` 新增 `momentum_mode ∈ {ret20, ma_ratio, ma_ratio_blend}`（默认 `ret20`）：
+  `ma_ratio` 用 `ma_ratio_strength(60)` 打分，`ma_ratio_blend` 用四窗口强度的截面百分位均值、
+  NaN 视为中性 0.5；两种新模式仍映射到 0~30 分，与旧加分项同量纲。默认模式与 Phase 6 基线
+  `win_b` 逐指标完全一致（收益/年化/回撤/夏普/胜率/笔数）。
+- 顺带删除 `strategy/momentum.py` 里重复的死代码 `build_factor_rows`（用户已确认），
+  该文件现只含策略类。
+- A/B 报告 `tests/reports/2026-10-29-05-11.phase8-ab.{md,json}`（3 arm，区间 2022-09-01~2026-10-28，
+  基准 +37.11%）：`ret20` −32.91%（年化 −9.15%，回撤 −41.16%）／`ma_ratio` −53.26%（−16.71%／−55.88%）／
+  `ma_ratio_blend` −45.99%（−13.77%／−51.79%）。**按 §3.4 判定线两种新口径均显著变差 → 保留 `ret20`
+  为默认**，参数保留可选不删除。
+- 诚实说明：问题不在因子符号，而在用法是**单边做多**——涨幅与 `MA/close` 都是在买近期强势股，
+  样本期 2023–2024 强势股整体跑输（动量反转期），换度量改不了方向；2025 单边上涨年 `ma_ratio`
+  反而更好（+11.99% vs +7.16%）。改进方向应是择时/市场状态过滤（`factors/regime.py` 与
+  `BacktestConfig.market_timing` 至今未被任何策略使用）或降低换手，而非继续换动量度量。
+- 新增 `tests/test_momentum_factor.py`（13 例）；全量 `pytest` **474 passed**。测试报告：
+  `tests/reports/2026-10-29-05-15.report-1.md`。
+- 修正 `scripts/measure_factor_ab.py` 脚手架缺陷：`defaults` 曾把 `start/end/lead_days` 硬编码为
+  `win_a/400`，导致 `--start/--end/--lead-days` 被静默忽略（Phase 8 首跑因此跑错窗口，已作废重跑）。
+
+## 2026-10-29（续 5）：策略刷新 Phase 7 — 均线收敛因子 A/B（结论：不成立，默认关闭）
+
+实现调研 Top 3 的第①项：均线收敛因子（PCF 收盘 / VCF 成交量 / PVCF 截面合成 / ACF 成交额 /
+TRCF 换手率），并做同策略、同区间、同配置的加/不加 A/B。**未改变任何策略默认行为。**
+
+- 新增 `src/stock_plan/factors/convergence.py`：`convergence_series()`（`−log(1+std(MA_1..MA_120))`，
+  `std` 用 `skipna=False`，避免均线未成形时把「算不出的窗口」当成「收敛」）、`convergence_columns()`
+  （四列 + 无量纲诊断列 `conv_pcf_cv`）、`add_conv_columns()`、`cross_section_zscore()`、
+  `compose_pvcf()`（截面 z-score 后相加，零方差截面取 0 中性值）；`MA_1` 即原始价格。
+- 接入两条路径：`strategy/builtin.py::build_factor_rows()` 与 `backtest/engine.py` 的因子预计算 /
+  候选行 / 打分前合成；`tests/test_factor_parity.py` 的列集双向断言与数值对拍各补 5 列，
+  保证「回测 → 今日信号」两条路径同值（单股票零方差截面两边都为 0）。
+- 趋势跟随、突破策略新增 `conv_weight` 参数（默认 0，`score += conv_weight × z(conv_pcf)`）；
+  默认 0 时 `win_a` 上收益/年化/回撤/夏普/胜率/笔数与 Phase 6 基线**逐指标完全一致**。
+- A/B 报告 `tests/reports/2026-10-29-04-41.phase7-ab.{md,json}`（8 arm，`conv_weight ∈ {0,0.1,0.2,0.3}`）。
+  **按预注册判定线 G2 结论：不成立，默认关闭。** 趋势跟随三档权重全部变差（年化 −0.7~−0.9pp、
+  回撤劣化 2.3~2.7pp）；突破仅 0.2 档年化 +0.69pp（<0.5pp 门槛外仅勉强）、回撤改善 1.13pp（<2pp），
+  且 2025 上涨年反而变差、三档无单调性 → 判为样本噪声。参数保留为可选开关，不删除。
+- 新增 `tests/test_convergence.py`（10 例）；`tests/test_metrics.py` 保持 6 例；全量 `pytest`
+  **461 passed**（Phase 6 的 459 + 2）。测试报告：`tests/reports/2026-10-29-04-42.report-1.md`。
+- 附带结论（诚实披露）：样本内 7 策略全部跑输同期等权基准，真正的共同短板是**日频换手 16–18 倍/年**
+  （估算年成本拖累 4–5pp），远大于本轮因子的贡献。建议后续把「调仓频率 / 持有期 / 成本假设」单独立项，
+  而不是继续加因子。
+
+## 2026-10-29（续 4）：策略刷新 Phase 6 — 基线固化与 A/B 测量器
+
+进入 `feature/strategy-refresh` 实施阶段。Phase 6 不改任何策略行为，只把「现状」变成可复跑的数字，
+供后面五块改造（收敛因子 / 动量修正 / RRG / 两段式 / 字段补齐）做 A/B 对照。
+
+- `src/stock_plan/backtest/metrics.py` 新增 `calc_annual_metrics()`（按自然年切资金曲线，交易按平仓日
+  归属年份）与 `calc_turnover()`（单边换手 = 买入成交额 ÷ 期间平均总资产，另给双边与分年度）；
+  `calc_metrics()` 签名与 9 个返回键保持不变。
+- 新增 `scripts/measure_factor_ab.py`：A/B 测量器。父进程只发 spec、子进程真跑回测并回 `RESULT {json}`，
+  避免「改完源码在主进程重跑拿到内存旧代码」的假结果；支持 `--baseline` / `--spec` / `--jobs`，
+  自动生成报告（总表 + 分年度 + 换手 + 基准超额）。
+- 新增 `tests/test_metrics.py`（6 例）；全量 `pytest` **459 passed**（基线 445 + 6 个 metrics 用例 +
+  8 个收敛因子用例；后者代码属 Phase 7 先行落地）。
+- 基线 `tests/reports/2026-10-29-04-12.report-1.{json,md}`：7 策略 × 3 窗口共 21 arm。**7 个策略全部
+  跑输同期等权基准**（full 基准 +26.88%，最好的段永平 −16.59%），日频单边年换手 13–21 倍 —— 这是后续
+  改造必须直面的前提：不先压成本/换手，单加因子很难翻身。
+- 口径修正：`full` 窗口起点 2021-10-01 → **2021-12-07**。日线自 2021-09-06 起、策略硬过滤要求 ≥60 根
+  K 线，2021-12-06 只有 59 根 → 候选池为空、资金曲线 0 点（第一版 7 个 arm 全 `None`）；已加守护：
+  worker 遇空资金曲线直接失败退出，不再把 None 静默写进报告。
+
+## 2026-10-29（续 3）：策略选型调研（只调研，不改代码）
+
+默认 7 个策略同质化、缺整块市场风格。本轮按新分支 `feature/strategy-refresh` 做一次外部策略调研，
+产出选型文档给用户拍板；**本轮不动任何策略代码、不跑回测**。
+
+- 新增 `docs/策略选型调研-2026-10-29.md`（833 行）：六大类 39 个候选逐条评估（趋势跟随 8 / 动量轮动 6 /
+  均值回归 7 / 多因子 10 / 小市值 3 / 事件驱动 5，另含低星抽奖 10 个），每个候选给「一句话赚什么钱 /
+  核心规则 / 我们能算吗 / A 股适配度 / 落地难度 / 与现有策略重叠度 / 风险」。
+- 数据资产实测（写进文档 §4）：日线 `turnover` 覆盖率 100%；`流通市值 = 成交额 ÷ 换手率` 实测对得上
+  （平安银行 2198.9 亿 / 茅台 16710.7 亿 / 宁德 9832.2 亿 / 比亚迪 2884.5 亿）；申万一级行业映射已落盘
+  （5220 只、31 类）；涨停池字段完整但**只有 2 天**，事件驱动类因此无法回测。
+- Top 3 建议（按投产比）：① 均线收敛因子 PCF/TRCF（一个 `rolling.std()`）② 动量因子方向修正
+  （现有 `mom_ret` 按研报实测方向是反的）③ RRG 行业轮动。筹码因子、小市值因成本/稳健性降级，理由写进 §5.5。
+- 新增 `.github/plans/2026-10-29-2-new-strategy-research-and-selection.md`（计划书，Phase 1–5 全完成）。
+- 子代理交付后做了交叉核对与补写：新增 3.4 候选 11「天风多因子指数增强」（20 因子 + MAD 去极值 / 行业市值中性化 /
+  Löwdin 正交 / IC-IR 加权流水线，数据缺但骨架可抄）、补齐筹码因子 4 个算子公式与「A=1.0 隐含日换手 100%、须重标定」
+  的坑、Alpha158 结构（9 K 线 + 4 归一价 + 29 算子×5 窗口）与 Alpha101 残缺情况（82/101 有实现，18 个只剩注释）。
+- 未改代码；全量 `pytest -q` **445 passed**，与基线一致。
+
+## 2026-10-29（续 2）：国内云服务器部署（方案 C）
+
+Streamlit Cloud 在国内打开要跨境，首屏 20 秒以上。新增「在自己国内的云服务器上跑一份」的完整物料；
+服务器只做展示，数据仍由本机发布、服务器定时拉。
+
+- 新增 `deploy/`（7 个文件）：`bootstrap.sh`（幂等引导：系统依赖 → 北京时间 → 建 `stockplan` 用户 →
+  uv 装 Python 3.13 → venv 装 `requirements.txt` → 建数据目录 → 装 systemd → 首次拉快照）、
+  `pull_snapshot.py`（6 小时冷却 + 文件锁 + 重试 3 次 + `--dry-run`/`--force` + 可选重启）、
+  `stock-plan.service`（`0.0.0.0:8501`、`Restart=always`、`PYTHONPATH=src`）、
+  `stock-plan-snapshot.service`/`.timer`（每交易日 17:10 拉快照）、`secrets.toml.example`、
+  `README.md`（选机型到排障、续费迁移的 10 节手册）
+- 新增 `src/stock_plan/ui/startup_flags.py`：`is_service_mode()` / `remote_strategy_sync_enabled()` /
+  `local_publish_enabled()` / `describe()`，只认 `1/true/yes/on`。服务器形态下默认跳过共享策略同步
+  （`raw.githubusercontent.com` 国内常超时）并禁止本机自动发布；不设变量时本机行为完全不变
+- `src/stock_plan/ui/app.py`：两处启动副作用改由上面两个开关判定（原 `if not is_cloud()` 判断移除）
+- 新增 `.gitattributes`：`*.sh` / `*.service` / `*.timer` 强制 LF，避免 Windows 检出带 CRLF 到 Linux 上
+  出现 `bad interpreter`
+- 新增 81 项测试（`tests/test_startup_flags.py` 34 + `tests/test_deploy_assets.py` 47）：开关矩阵、
+  unit 关键字段、脚本参数、无 CRLF、`--dry-run`、冷却/强制/重试/锁超时/重启告警、`app.py` 集成回归。
+  全量 `pytest` **445 passed**，报告 `tests/reports/2026-10-29-00-26.report-1.md`
+- `README.md` 新增「国内云服务器部署（方案 C）」章节，原 Streamlit Cloud 章节加交叉引用
+- 未做（按 2026-10-29 拍板）：本机 scp 推送脚本（改由服务器自己拉 GitHub Releases）、Docker 方案、访问鉴权
+
+## 2026-10-29（续 1）：修「快照同步失败」+ 快照一次带上全部数据
+
+用户反馈三个问题：① 点「同步到最新快照」报「恢复失败」；② 长时间不用的访问者是不是也得先点增量更新；
+③ 能不能所有数据都直接走云端快照。
+
+- **修 bug（恢复必然失败）**：`validate_manifest()` 只认本地打包名 `bars.zip.partNN`，而 Release
+  资产名是 `bars-<时间戳>.partNN`（GitHub 拒收 `.zip` 结尾的资产），于是线上快照**每次都**被判
+  「parts[0].file 应为 bars.zip.part00」而拒绝。现改为 `PART_NAME_RE` 正则同时接受两种写法，
+  并补了序号连续、重名、路径穿越校验（`src/stock_plan/data/snapshot.py`）。
+- **快照 v2：行情 + 分类/情绪/行业/公告一起下发**。原先快照只有 `bars/`，新访问者同步完还得点一次
+  增量更新才有分类/情绪页面。现在 zip 内布局 `bars/*.parquet` + `classify/`、`market/`、`universe/`、
+  `stock_basic.parquet`、`trade_calendar.csv`、`announcements.db`（多约 4MB），manifest 增
+  `format: 2` 与 `extras` 计数；恢复时按分组原子替换，旧版「只有行情」的快照仍兼容（平铺布局）。
+- 新增 `_extract_snapshot()`：解压到同卷暂存目录 → 逐组 rename 覆盖 → 校验各组文件数 → 删旧备份，
+  任一步失败整体回滚，不会留下"半新半旧"数据；新增 `missing_extras()` 供页面提示旧快照缺哪些分组。
+- 页面文案同步：普通用户第一屏「📦 更新数据：同步最新快照」；恢复成功提示列出实际恢复了哪些数据
+  （行情 N 只 + 行业分类 + 市场情绪 + 公告库），旧快照则提示缺哪些分组。
+- 新增 8 项测试（`tests/test_snapshot.py`）：Release 分卷名接受、路径穿越/重名拒绝、v2 打包含 extras、
+  v2 恢复全覆盖且清旧目录、旧平铺快照兼容、文件数不符回滚、`missing_extras`。全量 `pytest` **362 passed**。
+
 ## 2026-10-28（续 13）：数据更新页分「维护者 / 普通用户」两套排版
 
 用户反馈：非本机用户只需要行情快照，增量更新按钮摆在最显眼的主要位置，其他用户不懂、也不会用。

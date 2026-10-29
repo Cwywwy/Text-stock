@@ -11,21 +11,23 @@ Revision History:
     2026-09-04  show cloud sample-universe disclosure
     2026-10-28  (phase 1) tabbed result page with benchmark hero chart
     2026-10-28  (branch4 phase 0) reuse shared hero factory with optional trade markers
+    2026-10-29  (phase 16) reuse shared prepared cache, show cache-hit caption, add clear-cache button
 """
 from __future__ import annotations
 
+import json
+import time
 from datetime import date, timedelta
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from stock_plan.backtest.engine import BacktestConfig, run_backtest
-from stock_plan.backtest.metrics import calc_metrics
+from stock_plan.backtest.engine import BacktestConfig
 from stock_plan.backtest.report import make_report
 from stock_plan.data.storage import Storage
 from stock_plan.llm.analyzer import review_backtest
-from stock_plan.strategy.registry import create_strategy
+from stock_plan.ui import backtest_cache as btc
 from stock_plan.ui import chart_style as cs
 from stock_plan.ui.widgets import (
     apply_time_axis,
@@ -46,45 +48,54 @@ BACKTEST_GLOSSARY = {
     "滑点": "实际成交价比看到的价格差一点，就像网购的运费，回测里模拟了这个损耗。",
 }
 
+# 指标预热窗口：与对比页/拼装页共用同一口径，prepared 才能命中同一份缓存
+_BACKTEST_LEAD_DAYS = 180
 
-@st.cache_data(ttl=600, show_spinner="正在运行回测…")
-def _cached_backtest(
+
+def _run_backtest(
     strategy_name: str, start: str, end: str, initial_cash: float,
     params_json: str, rebalance_freq: str, market_timing: bool, max_hold_days: int,
-    boards_json: str = "[]", exclude_st: bool = True,
-    commission_w: float = 3.0, stamp_tax_w: float = 10.0, slippage_w: float = 10.0,
-    min_commission: float = 5.0,
-    include_delisted: bool = False, config_sig: str = "",
-):
-    """带缓存回测（10 分钟内不重复计算）。
+    boards: list[str], exclude_st: bool,
+    commission_w: float, stamp_tax_w: float, slippage_w: float,
+    min_commission: float, include_delisted: bool, config_sig: str,
+) -> tuple[dict, dict, object | None, str]:
+    """单策略回测：复用全站 shared prepared 与结果缓存（Phase 16）。
 
-    交易成本三个参数单位统一为**万分之**（万三 = 3），与券商报价习惯一致：
-    - commission_w 佣金，买卖都收，默认 3（= 0.0003）
-    - stamp_tax_w  印花税，仅卖出收，默认 10（= 0.001，即千分之一）
-    - slippage_w   滑点，买卖都收，默认 10（= 0.001）
-    这些参数参与缓存键，改动后会自动重算。
-    config_sig 是所选策略的**配置指纹**（JSON）。它不参与计算，但必须进缓存键：
-    策略配置是在函数体内按名字从数据库读的，不会出现在上面的显式参数里，
-    少了它就会出现"改了策略参数、回测结果却不变"的假象（最多持续 10 分钟）。
+    旧实现把「load_market_maps + 回测 + 报告」整体塞进一个 `@st.cache_data`：
+    对比页/拼装页各存一份，同一区间会被重复加载、重复预计算。现在行情与因子表
+    由 `btc.load_shared_prepared` 进程级共享，这里只缓存「单策略结果」。
+
+    交易成本三个参数单位统一为**万分之**（万三 = 3），与券商报价习惯一致；
+    它们全部进缓存键（通过 config_json），改动后自动重算。
+
+    config_sig 是所选策略的**配置指纹**（JSON），不参与计算但必须进缓存键：
+    策略配置是在缓存函数体内按名字从数据库读的，不出现在显式参数里。
+
+    返回 (metrics, report, result, 缓存状态文案)；无行情数据时 result 为 None。
     """
-    import json
-
-    from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
-
-    # 窗口 + 预筛选加载（指标预热 180 个日历日，云端限制股票数量）
-    boards = json.loads(boards_json)
-    stock_list, bars_map, fund_map = Storage().load_market_maps(
-        start=start, end=end, lead_days=180,
-        boards=boards, exclude_st=exclude_st,
-        max_codes=CLOUD_MAX_CODES if is_cloud() else None,
-        include_delisted=include_delisted,
+    boards_json = json.dumps(boards, ensure_ascii=False)
+    max_codes = btc.universe_limit()
+    data_version = btc.market_data_version()
+    state = {
+        "start": start,
+        "end": end,
+        "initial_cash": initial_cash,
+        "rebalance_freq": rebalance_freq,
+        "market_timing": market_timing,
+        "max_hold_days": max_hold_days,
+        "commission_w": commission_w,
+        "stamp_tax_w": stamp_tax_w,
+        "slippage_w": slippage_w,
+        "min_commission": min_commission,
+        "include_delisted": include_delisted,
+        "boards_json": boards_json,
+        "exclude_st": exclude_st,
+        "max_codes": max_codes,
+    }
+    # 策略身份与配置也参与会话命中标记，避免"换了策略却提示缓存命中"
+    saw_before = btc.mark_cache_hit(
+        ("backtest", strategy_name, params_json, config_sig) + btc.build_request_key(state)
     )
-
-    params = json.loads(params_json) if params_json else None
-    from stock_plan.strategy import store
-
-    strategy = store.resolve_strategy(strategy_name, params)
-
     config = BacktestConfig(
         start=date.fromisoformat(start),
         end=date.fromisoformat(end),
@@ -102,10 +113,18 @@ def _cached_backtest(
         # 否则等于用今天抓到的财报回测去年行情（前视）。取不到日期就不修正。
         fundamental_as_of=Storage().fundamentals_snapshot_date(),
     )
-    result = run_backtest(strategy, config, bars_map, fund_map, stock_list)
-    metrics = calc_metrics(result.equity_curve, result.trades)
-    report = make_report(result)
-    return metrics, report, result
+    started = time.perf_counter()
+    with st.status("正在运行回测…", expanded=False) as status:
+        result, metrics = btc.run_strategy_cached(
+            start, end, _BACKTEST_LEAD_DAYS, boards_json, exclude_st,
+            include_delisted, max_codes, data_version,
+            strategy_name, "registry", params_json, config_sig,
+            json.dumps(btc.config_to_dict(config), ensure_ascii=False, sort_keys=True),
+        )
+        status.update(label="回测运行完成", state="complete")
+    elapsed = time.perf_counter() - started
+    report = make_report(result) if result is not None else {}
+    return metrics or {}, report, result, btc.cache_caption(elapsed, saw_before=saw_before)
 
 
 # ---------------- 过拟合自查（暂时需求 5）----------------
@@ -471,6 +490,7 @@ def render():
         )
     st.caption("用历史数据验证策略表现：逐日模拟 T+1 交易，含手续费/印花税/滑点/涨跌停。")
     page_glossary(BACKTEST_GLOSSARY)
+    btc.render_clear_cache_button("bt")
 
     # 选股范围（R5：板块筛选 + 剔除 ST）
     st.markdown("**选股范围**")
@@ -574,13 +594,11 @@ def render():
         if start >= end:
             st.error("开始日期必须早于结束日期")
         else:
-            import json
-
             by_name = st.session_state.get("strategy_params_by_strategy", {})
             saved = by_name.get(strategy_name) or {}
             if not saved and strategy_name == "趋势跟随策略":
                 saved = st.session_state.get("strategy_params") or {}
-            metrics, report, result = _cached_backtest(
+            metrics, report, result, cache_note = _run_backtest(
                 strategy_name,
                 start.isoformat(),
                 end.isoformat(),
@@ -589,20 +607,21 @@ def render():
                 rebalance_freq,
                 bool(market_timing),
                 int(max_hold_days),
-                json.dumps(boards, ensure_ascii=False),
+                boards,
                 exclude_st,
                 float(commission_w),
                 float(stamp_tax_w),
                 float(slippage_w),
                 float(min_commission),
                 bool(include_delisted),
-                config_sig=config_sig,
+                config_sig,
             )
             if not metrics:
                 st.warning("回测无数据。请先到左侧「🔄 数据更新」页拉取数据（首次使用需全量拉取，耗时较久）。")
             else:
                 # 存入 session_state，保证后续按钮交互（如 LLM 复盘）不丢失结果
                 st.session_state["backtest_result"] = (metrics, report, result)
+                st.session_state["backtest_cache_note"] = cache_note
                 st.session_state["backtest_config"] = {
                     "m": saved.get("m", 3.5),
                     "n": saved.get("n", 3.5),
@@ -623,6 +642,9 @@ def render():
     if "backtest_result" in st.session_state:
         metrics, report, result = st.session_state["backtest_result"]
         config_dict = st.session_state.get("backtest_config", {})
+        cache_note = st.session_state.get("backtest_cache_note")
+        if cache_note:
+            st.caption(cache_note)
         _render_result(metrics, report, result, config_dict)
     else:
         st.info("设置参数后点击上方按钮运行回测。")

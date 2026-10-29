@@ -1,0 +1,3067 @@
+{
+ "generated_at": "2026-10-29T04:17:00",
+ "defaults": {
+  "start": "2022-03-07",
+  "end": "2026-10-28",
+  "lead_days": 400,
+  "max_codes": 800
+ },
+ "windows": {
+  "full": {
+   "start": "2021-12-07",
+   "end": "2026-10-28",
+   "lead_days": 400
+  },
+  "win_a": {
+   "start": "2022-03-07",
+   "end": "2026-10-28",
+   "lead_days": 400
+  },
+  "win_b": {
+   "start": "2022-09-01",
+   "end": "2026-10-28",
+   "lead_days": 400
+  }
+ },
+ "runs": [
+  {
+   "label": "趋势跟随策略/full",
+   "strategy": "趋势跟随策略",
+   "params": {},
+   "config": {},
+   "start": "2021-12-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1184,
+   "metrics": {
+    "total_return": -44.98,
+    "annual_return": -11.49,
+    "max_drawdown": -45.51,
+    "sharpe": -0.64,
+    "win_rate": 42.4,
+    "profit_loss": 1.11,
+    "trade_count": 1861,
+    "avg_hold_days": 18.3,
+    "avg_pnl_pct": -0.74
+   },
+   "annual": {
+    "2021": {
+     "total_return": -2.54,
+     "annual_return": -32.42,
+     "max_drawdown": -3.92,
+     "sharpe": -2.66,
+     "win_rate": 36.36,
+     "profit_loss": 0.76,
+     "trade_count": 11,
+     "avg_hold_days": 19.0,
+     "avg_pnl_pct": -4.19
+    },
+    "2022": {
+     "total_return": -16.94,
+     "annual_return": -17.16,
+     "max_drawdown": -25.36,
+     "sharpe": -0.86,
+     "win_rate": 39.49,
+     "profit_loss": 1.17,
+     "trade_count": 395,
+     "avg_hold_days": 18.4,
+     "avg_pnl_pct": -1.49
+    },
+    "2023": {
+     "total_return": -1.55,
+     "annual_return": -1.57,
+     "max_drawdown": -15.15,
+     "sharpe": -0.07,
+     "win_rate": 42.9,
+     "profit_loss": 1.28,
+     "trade_count": 373,
+     "avg_hold_days": 18.6,
+     "avg_pnl_pct": -0.13
+    },
+    "2024": {
+     "total_return": -12.19,
+     "annual_return": -12.22,
+     "max_drawdown": -24.05,
+     "sharpe": -0.61,
+     "win_rate": 44.08,
+     "profit_loss": 1.09,
+     "trade_count": 397,
+     "avg_hold_days": 18.5,
+     "avg_pnl_pct": -0.47
+    },
+    "2025": {
+     "total_return": 12.07,
+     "annual_return": 12.14,
+     "max_drawdown": -10.85,
+     "sharpe": 0.8,
+     "win_rate": 47.58,
+     "profit_loss": 1.23,
+     "trade_count": 372,
+     "avg_hold_days": 18.2,
+     "avg_pnl_pct": 0.5
+    },
+    "2026": {
+     "total_return": -31.57,
+     "annual_return": -37.36,
+     "max_drawdown": -37.11,
+     "sharpe": -2.56,
+     "win_rate": 37.38,
+     "profit_loss": 0.93,
+     "trade_count": 313,
+     "avg_hold_days": 17.7,
+     "avg_pnl_pct": -2.21
+    }
+   },
+   "turnover": {
+    "single_side": 79.4151,
+    "double_side": 158.5603,
+    "buy_amount": 6125414.0,
+    "sell_amount": 6104600.0,
+    "avg_equity": 77131.64,
+    "buy_trades": 1861,
+    "sell_trades": 1861,
+    "annual": {
+     "2021": {
+      "single_side": 1.6126,
+      "double_side": 2.4804,
+      "buy_amount": 158769.0,
+      "sell_amount": 85428.0,
+      "avg_equity": 98452.58,
+      "buy_trades": 30,
+      "sell_trades": 11
+     },
+     "2022": {
+      "single_side": 16.2133,
+      "double_side": 32.3501,
+      "buy_amount": 1347573.0,
+      "sell_amount": 1341221.0,
+      "avg_equity": 83115.49,
+      "buy_trades": 401,
+      "sell_trades": 395
+     },
+     "2023": {
+      "single_side": 15.8209,
+      "double_side": 31.6536,
+      "buy_amount": 1319785.0,
+      "sell_amount": 1320773.0,
+      "avg_equity": 83420.34,
+      "buy_trades": 370,
+      "sell_trades": 373
+     },
+     "2024": {
+      "single_side": 16.383,
+      "double_side": 32.8983,
+      "buy_amount": 1212821.0,
+      "sell_amount": 1222613.0,
+      "avg_equity": 74029.19,
+      "buy_trades": 398,
+      "sell_trades": 397
+     },
+     "2025": {
+      "single_side": 16.1504,
+      "double_side": 32.3083,
+      "buy_amount": 1157556.0,
+      "sell_amount": 1158089.0,
+      "avg_equity": 71673.36,
+      "buy_trades": 368,
+      "sell_trades": 372
+     },
+     "2026": {
+      "single_side": 13.1742,
+      "double_side": 27.023,
+      "buy_amount": 928910.0,
+      "sell_amount": 976476.0,
+      "avg_equity": 70509.69,
+      "buy_trades": 294,
+      "sell_trades": 313
+     }
+    }
+   },
+   "benchmark_return": 26.88,
+   "elapsed_sec": 78.5
+  },
+  {
+   "label": "动量策略/full",
+   "strategy": "动量策略",
+   "params": {},
+   "config": {},
+   "start": "2021-12-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1184,
+   "metrics": {
+    "total_return": -59.34,
+    "annual_return": -16.8,
+    "max_drawdown": -59.95,
+    "sharpe": -0.83,
+    "win_rate": 39.69,
+    "profit_loss": 1.14,
+    "trade_count": 1688,
+    "avg_hold_days": 18.3,
+    "avg_pnl_pct": -1.5
+   },
+   "annual": {
+    "2021": {
+     "total_return": -3.91,
+     "annual_return": -45.5,
+     "max_drawdown": -6.59,
+     "sharpe": -3.62,
+     "win_rate": 10.0,
+     "profit_loss": 0.82,
+     "trade_count": 10,
+     "avg_hold_days": 20.0,
+     "avg_pnl_pct": -5.94
+    },
+    "2022": {
+     "total_return": -31.98,
+     "annual_return": -32.35,
+     "max_drawdown": -38.14,
+     "sharpe": -1.72,
+     "win_rate": 36.59,
+     "profit_loss": 1.01,
+     "trade_count": 358,
+     "avg_hold_days": 18.5,
+     "avg_pnl_pct": -2.53
+    },
+    "2023": {
+     "total_return": -6.78,
+     "annual_return": -6.87,
+     "max_drawdown": -18.62,
+     "sharpe": -0.4,
+     "win_rate": 38.9,
+     "profit_loss": 1.39,
+     "trade_count": 347,
+     "avg_hold_days": 18.8,
+     "avg_pnl_pct": -0.96
+    },
+    "2024": {
+     "total_return": -19.82,
+     "annual_return": -19.87,
+     "max_drawdown": -27.36,
+     "sharpe": -0.89,
+     "win_rate": 40.16,
+     "profit_loss": 1.2,
+     "trade_count": 371,
+     "avg_hold_days": 18.2,
+     "avg_pnl_pct": -1.3
+    },
+    "2025": {
+     "total_return": 2.73,
+     "annual_return": 2.75,
+     "max_drawdown": -14.44,
+     "sharpe": 0.24,
+     "win_rate": 45.03,
+     "profit_loss": 1.11,
+     "trade_count": 322,
+     "avg_hold_days": 18.3,
+     "avg_pnl_pct": -0.29
+    },
+    "2026": {
+     "total_return": -22.18,
+     "annual_return": -26.59,
+     "max_drawdown": -34.6,
+     "sharpe": -1.3,
+     "win_rate": 38.93,
+     "profit_loss": 1.24,
+     "trade_count": 280,
+     "avg_hold_days": 17.6,
+     "avg_pnl_pct": -2.36
+    }
+   },
+   "turnover": {
+    "single_side": 77.6511,
+    "double_side": 154.6475,
+    "buy_amount": 4554751.0,
+    "sell_amount": 4516347.0,
+    "avg_equity": 58656.61,
+    "buy_trades": 1688,
+    "sell_trades": 1688,
+    "annual": {
+     "2021": {
+      "single_side": 1.6596,
+      "double_side": 2.4887,
+      "buy_amount": 163017.0,
+      "sell_amount": 81452.0,
+      "avg_equity": 98229.63,
+      "buy_trades": 30,
+      "sell_trades": 10
+     },
+     "2022": {
+      "single_side": 15.6918,
+      "double_side": 31.3509,
+      "buy_amount": 1110291.0,
+      "sell_amount": 1107975.0,
+      "avg_equity": 70756.06,
+      "buy_trades": 358,
+      "sell_trades": 358
+     },
+     "2023": {
+      "single_side": 15.3166,
+      "double_side": 30.7292,
+      "buy_amount": 990780.0,
+      "sell_amount": 996984.0,
+      "avg_equity": 64686.51,
+      "buy_trades": 342,
+      "sell_trades": 347
+     },
+     "2024": {
+      "single_side": 16.3585,
+      "double_side": 32.7809,
+      "buy_amount": 893894.0,
+      "sell_amount": 897387.0,
+      "avg_equity": 54644.0,
+      "buy_trades": 373,
+      "sell_trades": 371
+     },
+     "2025": {
+      "single_side": 15.2902,
+      "double_side": 30.6166,
+      "buy_amount": 725141.0,
+      "sell_amount": 726854.0,
+      "avg_equity": 47425.17,
+      "buy_trades": 320,
+      "sell_trades": 322
+     },
+     "2026": {
+      "single_side": 13.0883,
+      "double_side": 26.8404,
+      "buy_amount": 671628.0,
+      "sell_amount": 705695.0,
+      "avg_equity": 51315.28,
+      "buy_trades": 265,
+      "sell_trades": 280
+     }
+    }
+   },
+   "benchmark_return": 26.88,
+   "elapsed_sec": 72.3
+  },
+  {
+   "label": "均值回归策略/full",
+   "strategy": "均值回归策略",
+   "params": {},
+   "config": {},
+   "start": "2021-12-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1184,
+   "metrics": {
+    "total_return": -40.01,
+    "annual_return": -9.92,
+    "max_drawdown": -45.14,
+    "sharpe": -0.53,
+    "win_rate": 43.66,
+    "profit_loss": 1.1,
+    "trade_count": 1798,
+    "avg_hold_days": 12.7,
+    "avg_pnl_pct": -0.64
+   },
+   "annual": {
+    "2021": {
+     "total_return": -1.32,
+     "annual_return": -18.25,
+     "max_drawdown": -4.21,
+     "sharpe": -1.5,
+     "win_rate": 26.67,
+     "profit_loss": 1.87,
+     "trade_count": 15,
+     "avg_hold_days": 14.3,
+     "avg_pnl_pct": -2.85
+    },
+    "2022": {
+     "total_return": -21.29,
+     "annual_return": -21.56,
+     "max_drawdown": -27.65,
+     "sharpe": -1.2,
+     "win_rate": 40.38,
+     "profit_loss": 1.04,
+     "trade_count": 364,
+     "avg_hold_days": 12.8,
+     "avg_pnl_pct": -1.48
+    },
+    "2023": {
+     "total_return": -7.56,
+     "annual_return": -7.66,
+     "max_drawdown": -16.47,
+     "sharpe": -0.55,
+     "win_rate": 42.66,
+     "profit_loss": 1.21,
+     "trade_count": 368,
+     "avg_hold_days": 13.4,
+     "avg_pnl_pct": -0.42
+    },
+    "2024": {
+     "total_return": -16.94,
+     "annual_return": -16.98,
+     "max_drawdown": -24.35,
+     "sharpe": -0.87,
+     "win_rate": 43.24,
+     "profit_loss": 1.06,
+     "trade_count": 377,
+     "avg_hold_days": 12.7,
+     "avg_pnl_pct": -0.96
+    },
+    "2025": {
+     "total_return": 22.23,
+     "annual_return": 22.37,
+     "max_drawdown": -10.72,
+     "sharpe": 1.33,
+     "win_rate": 53.26,
+     "profit_loss": 1.16,
+     "trade_count": 368,
+     "avg_hold_days": 12.5,
+     "avg_pnl_pct": 0.89
+    },
+    "2026": {
+     "total_return": -19.45,
+     "annual_return": -23.41,
+     "max_drawdown": -22.82,
+     "sharpe": -1.45,
+     "win_rate": 38.56,
+     "profit_loss": 1.16,
+     "trade_count": 306,
+     "avg_hold_days": 12.1,
+     "avg_pnl_pct": -1.23
+    }
+   },
+   "turnover": {
+    "single_side": 103.2909,
+    "double_side": 206.3714,
+    "buy_amount": 7470043.0,
+    "sell_amount": 7454823.0,
+    "avg_equity": 72320.41,
+    "buy_trades": 1798,
+    "sell_trades": 1798,
+    "annual": {
+     "2021": {
+      "single_side": 1.7217,
+      "double_side": 2.7455,
+      "buy_amount": 169929.0,
+      "sell_amount": 101059.0,
+      "avg_equity": 98700.83,
+      "buy_trades": 27,
+      "sell_trades": 15
+     },
+     "2022": {
+      "single_side": 21.0579,
+      "double_side": 41.9829,
+      "buy_amount": 1734977.0,
+      "sell_amount": 1724038.0,
+      "avg_equity": 82390.98,
+      "buy_trades": 368,
+      "sell_trades": 364
+     },
+     "2023": {
+      "single_side": 20.4928,
+      "double_side": 41.097,
+      "buy_amount": 1621656.0,
+      "sell_amount": 1630470.0,
+      "avg_equity": 79132.99,
+      "buy_trades": 364,
+      "sell_trades": 368
+     },
+     "2024": {
+      "single_side": 21.3873,
+      "double_side": 42.8042,
+      "buy_amount": 1367974.0,
+      "sell_amount": 1369862.0,
+      "avg_equity": 63961.89,
+      "buy_trades": 378,
+      "sell_trades": 377
+     },
+     "2025": {
+      "single_side": 21.2498,
+      "double_side": 42.8465,
+      "buy_amount": 1372254.0,
+      "sell_amount": 1394655.0,
+      "avg_equity": 64577.26,
+      "buy_trades": 363,
+      "sell_trades": 368
+     },
+     "2026": {
+      "single_side": 17.4796,
+      "double_side": 35.4165,
+      "buy_amount": 1203253.0,
+      "sell_amount": 1234739.0,
+      "avg_equity": 68837.73,
+      "buy_trades": 298,
+      "sell_trades": 306
+     }
+    }
+   },
+   "benchmark_return": 26.88,
+   "elapsed_sec": 71.7
+  },
+  {
+   "label": "突破策略/full",
+   "strategy": "突破策略",
+   "params": {},
+   "config": {},
+   "start": "2021-12-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1184,
+   "metrics": {
+    "total_return": -62.18,
+    "annual_return": -18.02,
+    "max_drawdown": -62.96,
+    "sharpe": -0.98,
+    "win_rate": 39.59,
+    "profit_loss": 1.15,
+    "trade_count": 2301,
+    "avg_hold_days": 16.6,
+    "avg_pnl_pct": -1.16
+   },
+   "annual": {
+    "2021": {
+     "total_return": 0.72,
+     "annual_return": 11.46,
+     "max_drawdown": -2.77,
+     "sharpe": 0.72,
+     "win_rate": 62.5,
+     "profit_loss": 0.76,
+     "trade_count": 16,
+     "avg_hold_days": 17.7,
+     "avg_pnl_pct": 1.8
+    },
+    "2022": {
+     "total_return": -38.75,
+     "annual_return": -39.17,
+     "max_drawdown": -39.38,
+     "sharpe": -2.37,
+     "win_rate": 33.33,
+     "profit_loss": 1.08,
+     "trade_count": 468,
+     "avg_hold_days": 16.3,
+     "avg_pnl_pct": -2.72
+    },
+    "2023": {
+     "total_return": -11.66,
+     "annual_return": -11.82,
+     "max_drawdown": -18.18,
+     "sharpe": -0.87,
+     "win_rate": 37.6,
+     "profit_loss": 1.38,
+     "trade_count": 500,
+     "avg_hold_days": 17.2,
+     "avg_pnl_pct": -1.0
+    },
+    "2024": {
+     "total_return": -11.88,
+     "annual_return": -11.91,
+     "max_drawdown": -26.12,
+     "sharpe": -0.5,
+     "win_rate": 41.77,
+     "profit_loss": 1.24,
+     "trade_count": 462,
+     "avg_hold_days": 16.6,
+     "avg_pnl_pct": -0.42
+    },
+    "2025": {
+     "total_return": 18.17,
+     "annual_return": 18.28,
+     "max_drawdown": -14.63,
+     "sharpe": 1.0,
+     "win_rate": 48.13,
+     "profit_loss": 1.25,
+     "trade_count": 482,
+     "avg_hold_days": 16.6,
+     "avg_pnl_pct": 0.24
+    },
+    "2026": {
+     "total_return": -32.33,
+     "annual_return": -38.22,
+     "max_drawdown": -39.81,
+     "sharpe": -2.44,
+     "win_rate": 35.39,
+     "profit_loss": 1.12,
+     "trade_count": 373,
+     "avg_hold_days": 15.8,
+     "avg_pnl_pct": -2.28
+    }
+   },
+   "turnover": {
+    "single_side": 89.2891,
+    "double_side": 177.9834,
+    "buy_amount": 5148271.0,
+    "sell_amount": 5113972.0,
+    "avg_equity": 57658.44,
+    "buy_trades": 2301,
+    "sell_trades": 2301,
+    "annual": {
+     "2021": {
+      "single_side": 1.8767,
+      "double_side": 2.8656,
+      "buy_amount": 187278.0,
+      "sell_amount": 98686.0,
+      "avg_equity": 99792.14,
+      "buy_trades": 39,
+      "sell_trades": 16
+     },
+     "2022": {
+      "single_side": 18.0057,
+      "double_side": 36.1024,
+      "buy_amount": 1344913.0,
+      "sell_amount": 1351706.0,
+      "avg_equity": 74693.69,
+      "buy_trades": 465,
+      "sell_trades": 468
+     },
+     "2023": {
+      "single_side": 17.5433,
+      "double_side": 35.1979,
+      "buy_amount": 1022657.0,
+      "sell_amount": 1029151.0,
+      "avg_equity": 58293.45,
+      "buy_trades": 496,
+      "sell_trades": 500
+     },
+     "2024": {
+      "single_side": 18.4157,
+      "double_side": 36.8748,
+      "buy_amount": 908533.0,
+      "sell_amount": 910667.0,
+      "avg_equity": 49334.57,
+      "buy_trades": 464,
+      "sell_trades": 462
+     },
+     "2025": {
+      "single_side": 18.1979,
+      "double_side": 36.4966,
+      "buy_amount": 924639.0,
+      "sell_amount": 929762.0,
+      "avg_equity": 50810.27,
+      "buy_trades": 487,
+      "sell_trades": 482
+     },
+     "2026": {
+      "single_side": 15.0472,
+      "double_side": 30.7623,
+      "buy_amount": 760251.0,
+      "sell_amount": 794000.0,
+      "avg_equity": 50524.46,
+      "buy_trades": 350,
+      "sell_trades": 373
+     }
+    }
+   },
+   "benchmark_return": 26.88,
+   "elapsed_sec": 73.5
+  },
+  {
+   "label": "价值投资策略/full",
+   "strategy": "价值投资策略",
+   "params": {},
+   "config": {},
+   "start": "2021-12-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1184,
+   "metrics": {
+    "total_return": -29.11,
+    "annual_return": -6.79,
+    "max_drawdown": -37.51,
+    "sharpe": -0.33,
+    "win_rate": 44.42,
+    "profit_loss": 1.09,
+    "trade_count": 1085,
+    "avg_hold_days": 18.5,
+    "avg_pnl_pct": -0.68
+   },
+   "annual": {
+    "2021": {
+     "total_return": -0.83,
+     "annual_return": -11.96,
+     "max_drawdown": -4.24,
+     "sharpe": -0.82,
+     "win_rate": 28.57,
+     "profit_loss": 1.08,
+     "trade_count": 7,
+     "avg_hold_days": 20.0,
+     "avg_pnl_pct": -1.59
+    },
+    "2022": {
+     "total_return": -18.44,
+     "annual_return": -18.67,
+     "max_drawdown": -27.11,
+     "sharpe": -0.93,
+     "win_rate": 44.5,
+     "profit_loss": 0.84,
+     "trade_count": 218,
+     "avg_hold_days": 18.3,
+     "avg_pnl_pct": -1.69
+    },
+    "2023": {
+     "total_return": -5.13,
+     "annual_return": -5.2,
+     "max_drawdown": -12.04,
+     "sharpe": -0.45,
+     "win_rate": 44.65,
+     "profit_loss": 1.11,
+     "trade_count": 215,
+     "avg_hold_days": 19.4,
+     "avg_pnl_pct": -0.34
+    },
+    "2024": {
+     "total_return": 0.37,
+     "annual_return": 0.37,
+     "max_drawdown": -13.81,
+     "sharpe": 0.11,
+     "win_rate": 41.67,
+     "profit_loss": 1.44,
+     "trade_count": 228,
+     "avg_hold_days": 18.6,
+     "avg_pnl_pct": -0.52
+    },
+    "2025": {
+     "total_return": 16.82,
+     "annual_return": 16.92,
+     "max_drawdown": -15.41,
+     "sharpe": 0.97,
+     "win_rate": 52.75,
+     "profit_loss": 1.13,
+     "trade_count": 218,
+     "avg_hold_days": 18.9,
+     "avg_pnl_pct": 0.75
+    },
+    "2026": {
+     "total_return": -20.07,
+     "annual_return": -24.14,
+     "max_drawdown": -28.03,
+     "sharpe": -1.32,
+     "win_rate": 38.69,
+     "profit_loss": 1.17,
+     "trade_count": 199,
+     "avg_hold_days": 17.4,
+     "avg_pnl_pct": -1.66
+    }
+   },
+   "turnover": {
+    "single_side": 68.2781,
+    "double_side": 136.388,
+    "buy_amount": 5462512.0,
+    "sell_amount": 5449045.0,
+    "avg_equity": 80003.81,
+    "buy_trades": 1085,
+    "sell_trades": 1085,
+    "annual": {
+     "2021": {
+      "single_side": 1.3036,
+      "double_side": 2.0453,
+      "buy_amount": 129552.0,
+      "sell_amount": 73709.0,
+      "avg_equity": 99380.42,
+      "buy_trades": 19,
+      "sell_trades": 7
+     },
+     "2022": {
+      "single_side": 13.87,
+      "double_side": 27.5461,
+      "buy_amount": 1143640.0,
+      "sell_amount": 1127662.0,
+      "avg_equity": 82454.43,
+      "buy_trades": 221,
+      "sell_trades": 218
+     },
+     "2023": {
+      "single_side": 13.3824,
+      "double_side": 26.7569,
+      "buy_amount": 1088467.0,
+      "sell_amount": 1087831.0,
+      "avg_equity": 81335.87,
+      "buy_trades": 210,
+      "sell_trades": 215
+     },
+     "2024": {
+      "single_side": 14.1999,
+      "double_side": 28.394,
+      "buy_amount": 1086917.0,
+      "sell_amount": 1086476.0,
+      "avg_equity": 76544.21,
+      "buy_trades": 230,
+      "sell_trades": 228
+     },
+     "2025": {
+      "single_side": 13.3333,
+      "double_side": 27.0339,
+      "buy_amount": 991142.0,
+      "sell_amount": 1018444.0,
+      "avg_equity": 74335.73,
+      "buy_trades": 214,
+      "sell_trades": 218
+     },
+     "2026": {
+      "single_side": 12.0678,
+      "double_side": 24.5147,
+      "buy_amount": 1022794.0,
+      "sell_amount": 1054923.0,
+      "avg_equity": 84753.83,
+      "buy_trades": 191,
+      "sell_trades": 199
+     }
+    }
+   },
+   "benchmark_return": 26.88,
+   "elapsed_sec": 70.2
+  },
+  {
+   "label": "段永平-高质量策略/full",
+   "strategy": "段永平-高质量策略",
+   "params": {},
+   "config": {},
+   "start": "2021-12-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1184,
+   "metrics": {
+    "total_return": -16.59,
+    "annual_return": -3.64,
+    "max_drawdown": -34.02,
+    "sharpe": -0.11,
+    "win_rate": 46.48,
+    "profit_loss": 1.07,
+    "trade_count": 880,
+    "avg_hold_days": 18.4,
+    "avg_pnl_pct": -0.29
+   },
+   "annual": {
+    "2021": {
+     "total_return": 6.3,
+     "annual_return": 153.39,
+     "max_drawdown": -1.86,
+     "sharpe": 6.82,
+     "win_rate": 62.5,
+     "profit_loss": 1.98,
+     "trade_count": 8,
+     "avg_hold_days": 15.0,
+     "avg_pnl_pct": 13.15
+    },
+    "2022": {
+     "total_return": -18.52,
+     "annual_return": -18.75,
+     "max_drawdown": -22.83,
+     "sharpe": -0.9,
+     "win_rate": 45.98,
+     "profit_loss": 0.84,
+     "trade_count": 174,
+     "avg_hold_days": 18.1,
+     "avg_pnl_pct": -1.62
+    },
+    "2023": {
+     "total_return": -1.79,
+     "annual_return": -1.82,
+     "max_drawdown": -9.94,
+     "sharpe": -0.1,
+     "win_rate": 43.09,
+     "profit_loss": 1.26,
+     "trade_count": 181,
+     "avg_hold_days": 19.5,
+     "avg_pnl_pct": -0.43
+    },
+    "2024": {
+     "total_return": -7.3,
+     "annual_return": -7.32,
+     "max_drawdown": -19.38,
+     "sharpe": -0.32,
+     "win_rate": 41.84,
+     "profit_loss": 1.29,
+     "trade_count": 196,
+     "avg_hold_days": 18.1,
+     "avg_pnl_pct": -0.84
+    },
+    "2025": {
+     "total_return": 31.87,
+     "annual_return": 32.07,
+     "max_drawdown": -10.5,
+     "sharpe": 1.54,
+     "win_rate": 54.55,
+     "profit_loss": 1.32,
+     "trade_count": 176,
+     "avg_hold_days": 18.8,
+     "avg_pnl_pct": 1.92
+    },
+    "2026": {
+     "total_return": -19.52,
+     "annual_return": -23.49,
+     "max_drawdown": -28.01,
+     "sharpe": -1.26,
+     "win_rate": 46.9,
+     "profit_loss": 0.83,
+     "trade_count": 145,
+     "avg_hold_days": 17.7,
+     "avg_pnl_pct": -1.19
+    }
+   },
+   "turnover": {
+    "single_side": 63.7892,
+    "double_side": 127.5481,
+    "buy_amount": 5662025.0,
+    "sell_amount": 5659334.0,
+    "avg_equity": 88761.51,
+    "buy_trades": 880,
+    "sell_trades": 880,
+    "annual": {
+     "2021": {
+      "single_side": 1.2861,
+      "double_side": 2.0806,
+      "buy_amount": 133160.0,
+      "sell_amount": 82272.0,
+      "avg_equity": 103540.94,
+      "buy_trades": 16,
+      "sell_trades": 8
+     },
+     "2022": {
+      "single_side": 13.2493,
+      "double_side": 26.2309,
+      "buy_amount": 1192794.0,
+      "sell_amount": 1168700.0,
+      "avg_equity": 90027.04,
+      "buy_trades": 177,
+      "sell_trades": 174
+     },
+     "2023": {
+      "single_side": 12.5904,
+      "double_side": 25.2792,
+      "buy_amount": 1116935.0,
+      "sell_amount": 1125662.0,
+      "avg_equity": 88713.13,
+      "buy_trades": 179,
+      "sell_trades": 181
+     },
+     "2024": {
+      "single_side": 13.5471,
+      "double_side": 27.0557,
+      "buy_amount": 1114270.0,
+      "sell_amount": 1111095.0,
+      "avg_equity": 82251.39,
+      "buy_trades": 197,
+      "sell_trades": 196
+     },
+     "2025": {
+      "single_side": 12.6327,
+      "double_side": 25.4861,
+      "buy_amount": 1051520.0,
+      "sell_amount": 1069887.0,
+      "avg_equity": 83237.83,
+      "buy_trades": 176,
+      "sell_trades": 176
+     },
+     "2026": {
+      "single_side": 10.459,
+      "double_side": 21.3982,
+      "buy_amount": 1053346.0,
+      "sell_amount": 1101718.0,
+      "avg_equity": 100712.23,
+      "buy_trades": 135,
+      "sell_trades": 145
+     }
+    }
+   },
+   "benchmark_return": 26.88,
+   "elapsed_sec": 69.0
+  },
+  {
+   "label": "李录-长期确定性策略/full",
+   "strategy": "李录-长期确定性策略",
+   "params": {},
+   "config": {},
+   "start": "2021-12-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1184,
+   "metrics": {
+    "total_return": -26.23,
+    "annual_return": -6.03,
+    "max_drawdown": -37.24,
+    "sharpe": -0.28,
+    "win_rate": 43.58,
+    "profit_loss": 1.15,
+    "trade_count": 1074,
+    "avg_hold_days": 17.9,
+    "avg_pnl_pct": -0.46
+   },
+   "annual": {
+    "2021": {
+     "total_return": -2.53,
+     "annual_return": -32.25,
+     "max_drawdown": -5.33,
+     "sharpe": -2.54,
+     "win_rate": 16.67,
+     "profit_loss": 0.57,
+     "trade_count": 6,
+     "avg_hold_days": 19.3,
+     "avg_pnl_pct": -4.78
+    },
+    "2022": {
+     "total_return": -16.78,
+     "annual_return": -17.0,
+     "max_drawdown": -21.59,
+     "sharpe": -0.9,
+     "win_rate": 42.92,
+     "profit_loss": 0.92,
+     "trade_count": 212,
+     "avg_hold_days": 17.8,
+     "avg_pnl_pct": -1.51
+    },
+    "2023": {
+     "total_return": -6.56,
+     "annual_return": -6.65,
+     "max_drawdown": -15.65,
+     "sharpe": -0.58,
+     "win_rate": 41.55,
+     "profit_loss": 1.24,
+     "trade_count": 219,
+     "avg_hold_days": 18.8,
+     "avg_pnl_pct": -0.45
+    },
+    "2024": {
+     "total_return": -4.51,
+     "annual_return": -4.52,
+     "max_drawdown": -16.37,
+     "sharpe": -0.19,
+     "win_rate": 40.35,
+     "profit_loss": 1.47,
+     "trade_count": 228,
+     "avg_hold_days": 18.0,
+     "avg_pnl_pct": -0.59
+    },
+    "2025": {
+     "total_return": 24.72,
+     "annual_return": 24.87,
+     "max_drawdown": -10.29,
+     "sharpe": 1.35,
+     "win_rate": 53.55,
+     "profit_loss": 1.11,
+     "trade_count": 211,
+     "avg_hold_days": 17.9,
+     "avg_pnl_pct": 1.06
+    },
+    "2026": {
+     "total_return": -18.24,
+     "annual_return": -21.99,
+     "max_drawdown": -28.06,
+     "sharpe": -1.11,
+     "win_rate": 40.4,
+     "profit_loss": 1.18,
+     "trade_count": 198,
+     "avg_hold_days": 16.7,
+     "avg_pnl_pct": -0.7
+    }
+   },
+   "turnover": {
+    "single_side": 69.6711,
+    "double_side": 139.2111,
+    "buy_amount": 5636131.0,
+    "sell_amount": 5625530.0,
+    "avg_equity": 80896.31,
+    "buy_trades": 1074,
+    "sell_trades": 1074,
+    "annual": {
+     "2021": {
+      "single_side": 1.2248,
+      "double_side": 1.9108,
+      "buy_amount": 120752.0,
+      "sell_amount": 67636.0,
+      "avg_equity": 98591.17,
+      "buy_trades": 18,
+      "sell_trades": 6
+     },
+     "2022": {
+      "single_side": 14.0836,
+      "double_side": 27.8338,
+      "buy_amount": 1185966.0,
+      "sell_amount": 1157902.0,
+      "avg_equity": 84209.27,
+      "buy_trades": 214,
+      "sell_trades": 212
+     },
+     "2023": {
+      "single_side": 13.7722,
+      "double_side": 27.6644,
+      "buy_amount": 1126343.0,
+      "sell_amount": 1136168.0,
+      "avg_equity": 81784.1,
+      "buy_trades": 216,
+      "sell_trades": 219
+     },
+     "2024": {
+      "single_side": 14.4832,
+      "double_side": 28.8897,
+      "buy_amount": 1098571.0,
+      "sell_amount": 1092764.0,
+      "avg_equity": 75851.65,
+      "buy_trades": 231,
+      "sell_trades": 228
+     },
+     "2025": {
+      "single_side": 13.7967,
+      "double_side": 27.8687,
+      "buy_amount": 1021163.0,
+      "sell_amount": 1041546.0,
+      "avg_equity": 74015.28,
+      "buy_trades": 207,
+      "sell_trades": 211
+     },
+     "2026": {
+      "single_side": 12.206,
+      "double_side": 24.9324,
+      "buy_amount": 1083336.0,
+      "sell_amount": 1129514.0,
+      "avg_equity": 88754.03,
+      "buy_trades": 188,
+      "sell_trades": 198
+     }
+    }
+   },
+   "benchmark_return": 26.88,
+   "elapsed_sec": 54.5
+  },
+  {
+   "label": "趋势跟随策略/win_a",
+   "strategy": "趋势跟随策略",
+   "params": {},
+   "config": {},
+   "start": "2022-03-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1126,
+   "metrics": {
+    "total_return": -35.25,
+    "annual_return": -8.93,
+    "max_drawdown": -36.15,
+    "sharpe": -0.46,
+    "win_rate": 43.48,
+    "profit_loss": 1.11,
+    "trade_count": 1803,
+    "avg_hold_days": 18.3,
+    "avg_pnl_pct": -0.54
+   },
+   "annual": {
+    "2022": {
+     "total_return": -19.93,
+     "annual_return": -23.83,
+     "max_drawdown": -26.97,
+     "sharpe": -1.16,
+     "win_rate": 39.51,
+     "profit_loss": 0.99,
+     "trade_count": 329,
+     "avg_hold_days": 18.3,
+     "avg_pnl_pct": -1.67
+    },
+    "2023": {
+     "total_return": -7.76,
+     "annual_return": -7.86,
+     "max_drawdown": -16.36,
+     "sharpe": -0.53,
+     "win_rate": 41.14,
+     "profit_loss": 1.29,
+     "trade_count": 367,
+     "avg_hold_days": 18.9,
+     "avg_pnl_pct": -0.38
+    },
+    "2024": {
+     "total_return": -4.31,
+     "annual_return": -4.33,
+     "max_drawdown": -18.72,
+     "sharpe": -0.18,
+     "win_rate": 46.55,
+     "profit_loss": 1.07,
+     "trade_count": 391,
+     "avg_hold_days": 18.6,
+     "avg_pnl_pct": -0.16
+    },
+    "2025": {
+     "total_return": 30.87,
+     "annual_return": 31.06,
+     "max_drawdown": -9.9,
+     "sharpe": 1.73,
+     "win_rate": 51.68,
+     "profit_loss": 1.49,
+     "trade_count": 387,
+     "avg_hold_days": 17.9,
+     "avg_pnl_pct": 1.46
+    },
+    "2026": {
+     "total_return": -31.69,
+     "annual_return": -37.5,
+     "max_drawdown": -36.12,
+     "sharpe": -2.61,
+     "win_rate": 36.78,
+     "profit_loss": 0.95,
+     "trade_count": 329,
+     "avg_hold_days": 17.8,
+     "avg_pnl_pct": -2.39
+    }
+   },
+   "turnover": {
+    "single_side": 75.9519,
+    "double_side": 151.7588,
+    "buy_amount": 5979361.0,
+    "sell_amount": 5967951.0,
+    "avg_equity": 78725.65,
+    "buy_trades": 1803,
+    "sell_trades": 1803,
+    "annual": {
+     "2022": {
+      "single_side": 14.3269,
+      "double_side": 27.6176,
+      "buy_amount": 1167481.0,
+      "sell_amount": 1083047.0,
+      "avg_equity": 81488.89,
+      "buy_trades": 356,
+      "sell_trades": 329
+     },
+     "2023": {
+      "single_side": 15.4393,
+      "double_side": 30.9637,
+      "buy_amount": 1240537.0,
+      "sell_amount": 1247379.0,
+      "avg_equity": 80349.47,
+      "buy_trades": 361,
+      "sell_trades": 367
+     },
+     "2024": {
+      "single_side": 16.1923,
+      "double_side": 32.4509,
+      "buy_amount": 1176795.0,
+      "sell_amount": 1181613.0,
+      "avg_equity": 72676.29,
+      "buy_trades": 392,
+      "sell_trades": 391
+     },
+     "2025": {
+      "single_side": 16.6353,
+      "double_side": 33.3585,
+      "buy_amount": 1278742.0,
+      "sell_amount": 1285494.0,
+      "avg_equity": 76869.01,
+      "buy_trades": 381,
+      "sell_trades": 387
+     },
+     "2026": {
+      "single_side": 13.3422,
+      "double_side": 27.3374,
+      "buy_amount": 1115806.0,
+      "sell_amount": 1170418.0,
+      "avg_equity": 83629.76,
+      "buy_trades": 313,
+      "sell_trades": 329
+     }
+    }
+   },
+   "benchmark_return": 33.05,
+   "elapsed_sec": 76.0
+  },
+  {
+   "label": "动量策略/win_a",
+   "strategy": "动量策略",
+   "params": {},
+   "config": {},
+   "start": "2022-03-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1126,
+   "metrics": {
+    "total_return": -51.93,
+    "annual_return": -14.59,
+    "max_drawdown": -52.11,
+    "sharpe": -0.69,
+    "win_rate": 41.69,
+    "profit_loss": 1.11,
+    "trade_count": 1691,
+    "avg_hold_days": 18.4,
+    "avg_pnl_pct": -1.16
+   },
+   "annual": {
+    "2022": {
+     "total_return": -20.46,
+     "annual_return": -24.45,
+     "max_drawdown": -28.05,
+     "sharpe": -1.03,
+     "win_rate": 40.38,
+     "profit_loss": 1.0,
+     "trade_count": 312,
+     "avg_hold_days": 18.1,
+     "avg_pnl_pct": -1.59
+    },
+    "2023": {
+     "total_return": -15.87,
+     "annual_return": -16.07,
+     "max_drawdown": -19.95,
+     "sharpe": -1.06,
+     "win_rate": 42.06,
+     "profit_loss": 1.09,
+     "trade_count": 340,
+     "avg_hold_days": 19.2,
+     "avg_pnl_pct": -1.1
+    },
+    "2024": {
+     "total_return": -11.28,
+     "annual_return": -11.31,
+     "max_drawdown": -26.61,
+     "sharpe": -0.49,
+     "win_rate": 43.16,
+     "profit_loss": 1.07,
+     "trade_count": 380,
+     "avg_hold_days": 18.6,
+     "avg_pnl_pct": -0.97
+    },
+    "2025": {
+     "total_return": 1.58,
+     "annual_return": 1.58,
+     "max_drawdown": -17.88,
+     "sharpe": 0.18,
+     "win_rate": 43.34,
+     "profit_loss": 1.32,
+     "trade_count": 353,
+     "avg_hold_days": 18.3,
+     "avg_pnl_pct": -0.29
+    },
+    "2026": {
+     "total_return": -22.11,
+     "annual_return": -26.52,
+     "max_drawdown": -36.81,
+     "sharpe": -1.33,
+     "win_rate": 38.89,
+     "profit_loss": 1.22,
+     "trade_count": 306,
+     "avg_hold_days": 17.5,
+     "avg_pnl_pct": -2.01
+    }
+   },
+   "turnover": {
+    "single_side": 73.9833,
+    "double_side": 147.5119,
+    "buy_amount": 4935789.0,
+    "sell_amount": 4905453.0,
+    "avg_equity": 66714.9,
+    "buy_trades": 1691,
+    "sell_trades": 1691,
+    "annual": {
+     "2022": {
+      "single_side": 13.7734,
+      "double_side": 26.6055,
+      "buy_amount": 1128780.0,
+      "sell_amount": 1051646.0,
+      "avg_equity": 81953.84,
+      "buy_trades": 329,
+      "sell_trades": 312
+     },
+     "2023": {
+      "single_side": 15.1166,
+      "double_side": 30.141,
+      "buy_amount": 1118693.0,
+      "sell_amount": 1111863.0,
+      "avg_equity": 74004.1,
+      "buy_trades": 344,
+      "sell_trades": 340
+     },
+     "2024": {
+      "single_side": 16.0606,
+      "double_side": 32.274,
+      "buy_amount": 982154.0,
+      "sell_amount": 991495.0,
+      "avg_equity": 61152.86,
+      "buy_trades": 381,
+      "sell_trades": 380
+     },
+     "2025": {
+      "single_side": 15.6526,
+      "double_side": 31.4315,
+      "buy_amount": 865308.0,
+      "sell_amount": 872289.0,
+      "avg_equity": 55282.07,
+      "buy_trades": 344,
+      "sell_trades": 353
+     },
+     "2026": {
+      "single_side": 13.3525,
+      "double_side": 27.2974,
+      "buy_amount": 840854.0,
+      "sell_amount": 878160.0,
+      "avg_equity": 62973.56,
+      "buy_trades": 293,
+      "sell_trades": 306
+     }
+    }
+   },
+   "benchmark_return": 33.05,
+   "elapsed_sec": 71.2
+  },
+  {
+   "label": "均值回归策略/win_a",
+   "strategy": "均值回归策略",
+   "params": {},
+   "config": {},
+   "start": "2022-03-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1126,
+   "metrics": {
+    "total_return": -33.12,
+    "annual_return": -8.29,
+    "max_drawdown": -40.97,
+    "sharpe": -0.38,
+    "win_rate": 44.73,
+    "profit_loss": 1.09,
+    "trade_count": 1782,
+    "avg_hold_days": 12.7,
+    "avg_pnl_pct": -0.34
+   },
+   "annual": {
+    "2022": {
+     "total_return": -14.41,
+     "annual_return": -17.35,
+     "max_drawdown": -21.21,
+     "sharpe": -0.67,
+     "win_rate": 42.72,
+     "profit_loss": 1.03,
+     "trade_count": 309,
+     "avg_hold_days": 12.5,
+     "avg_pnl_pct": -0.69
+    },
+    "2023": {
+     "total_return": -12.66,
+     "annual_return": -12.82,
+     "max_drawdown": -19.33,
+     "sharpe": -1.01,
+     "win_rate": 41.71,
+     "profit_loss": 1.14,
+     "trade_count": 374,
+     "avg_hold_days": 13.2,
+     "avg_pnl_pct": -0.48
+    },
+    "2024": {
+     "total_return": -9.56,
+     "annual_return": -9.58,
+     "max_drawdown": -22.27,
+     "sharpe": -0.43,
+     "win_rate": 43.51,
+     "profit_loss": 1.16,
+     "trade_count": 393,
+     "avg_hold_days": 12.8,
+     "avg_pnl_pct": -0.61
+    },
+    "2025": {
+     "total_return": 25.44,
+     "annual_return": 25.6,
+     "max_drawdown": -12.72,
+     "sharpe": 1.4,
+     "win_rate": 54.71,
+     "profit_loss": 1.15,
+     "trade_count": 393,
+     "avg_hold_days": 12.6,
+     "avg_pnl_pct": 1.05
+    },
+    "2026": {
+     "total_return": -22.81,
+     "annual_return": -27.33,
+     "max_drawdown": -26.61,
+     "sharpe": -1.65,
+     "win_rate": 39.3,
+     "profit_loss": 1.07,
+     "trade_count": 313,
+     "avg_hold_days": 12.1,
+     "avg_pnl_pct": -1.26
+    }
+   },
+   "turnover": {
+    "single_side": 100.0048,
+    "double_side": 199.9076,
+    "buy_amount": 7863628.0,
+    "sell_amount": 7855612.0,
+    "avg_equity": 78632.52,
+    "buy_trades": 1782,
+    "sell_trades": 1782,
+    "annual": {
+     "2022": {
+      "single_side": 18.3993,
+      "double_side": 36.0397,
+      "buy_amount": 1631032.0,
+      "sell_amount": 1563759.0,
+      "avg_equity": 88646.37,
+      "buy_trades": 325,
+      "sell_trades": 309
+     },
+     "2023": {
+      "single_side": 20.8753,
+      "double_side": 41.6441,
+      "buy_amount": 1760073.0,
+      "sell_amount": 1751089.0,
+      "avg_equity": 84313.59,
+      "buy_trades": 374,
+      "sell_trades": 374
+     },
+     "2024": {
+      "single_side": 21.584,
+      "double_side": 43.2873,
+      "buy_amount": 1518830.0,
+      "sell_amount": 1527228.0,
+      "avg_equity": 70368.43,
+      "buy_trades": 392,
+      "sell_trades": 393
+     },
+     "2025": {
+      "single_side": 21.4791,
+      "double_side": 43.2758,
+      "buy_amount": 1533385.0,
+      "sell_amount": 1556060.0,
+      "avg_equity": 71389.63,
+      "buy_trades": 387,
+      "sell_trades": 393
+     },
+     "2026": {
+      "single_side": 17.6589,
+      "double_side": 35.78,
+      "buy_amount": 1420308.0,
+      "sell_amount": 1457476.0,
+      "avg_equity": 80429.97,
+      "buy_trades": 304,
+      "sell_trades": 313
+     }
+    }
+   },
+   "benchmark_return": 33.05,
+   "elapsed_sec": 70.4
+  },
+  {
+   "label": "突破策略/win_a",
+   "strategy": "突破策略",
+   "params": {},
+   "config": {},
+   "start": "2022-03-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1126,
+   "metrics": {
+    "total_return": -75.32,
+    "annual_return": -26.0,
+    "max_drawdown": -75.47,
+    "sharpe": -1.55,
+    "win_rate": 37.48,
+    "profit_loss": 1.07,
+    "trade_count": 2113,
+    "avg_hold_days": 16.5,
+    "avg_pnl_pct": -1.67
+   },
+   "annual": {
+    "2022": {
+     "total_return": -39.48,
+     "annual_return": -45.94,
+     "max_drawdown": -40.53,
+     "sharpe": -2.75,
+     "win_rate": 32.1,
+     "profit_loss": 1.01,
+     "trade_count": 405,
+     "avg_hold_days": 16.3,
+     "avg_pnl_pct": -3.01
+    },
+    "2023": {
+     "total_return": -25.2,
+     "annual_return": -25.5,
+     "max_drawdown": -27.59,
+     "sharpe": -1.78,
+     "win_rate": 35.98,
+     "profit_loss": 1.12,
+     "trade_count": 503,
+     "avg_hold_days": 17.5,
+     "avg_pnl_pct": -1.73
+    },
+    "2024": {
+     "total_return": -15.9,
+     "annual_return": -15.94,
+     "max_drawdown": -33.05,
+     "sharpe": -0.79,
+     "win_rate": 41.42,
+     "profit_loss": 1.12,
+     "trade_count": 437,
+     "avg_hold_days": 16.6,
+     "avg_pnl_pct": -0.97
+    },
+    "2025": {
+     "total_return": 2.85,
+     "annual_return": 2.87,
+     "max_drawdown": -13.26,
+     "sharpe": 0.25,
+     "win_rate": 44.02,
+     "profit_loss": 1.26,
+     "trade_count": 443,
+     "avg_hold_days": 16.3,
+     "avg_pnl_pct": -0.43
+    },
+    "2026": {
+     "total_return": -37.15,
+     "annual_return": -43.6,
+     "max_drawdown": -43.58,
+     "sharpe": -3.06,
+     "win_rate": 32.31,
+     "profit_loss": 1.21,
+     "trade_count": 325,
+     "avg_hold_days": 15.5,
+     "avg_pnl_pct": -2.58
+    }
+   },
+   "turnover": {
+    "single_side": 85.1251,
+    "double_side": 169.1846,
+    "buy_amount": 4000496.0,
+    "sell_amount": 3950421.0,
+    "avg_equity": 46995.5,
+    "buy_trades": 2113,
+    "sell_trades": 2113,
+    "annual": {
+     "2022": {
+      "single_side": 16.2264,
+      "double_side": 31.2909,
+      "buy_amount": 1197654.0,
+      "sell_amount": 1111900.0,
+      "avg_equity": 73809.14,
+      "buy_trades": 426,
+      "sell_trades": 405
+     },
+     "2023": {
+      "single_side": 17.555,
+      "double_side": 35.2464,
+      "buy_amount": 933793.0,
+      "sell_amount": 941050.0,
+      "avg_equity": 53192.42,
+      "buy_trades": 499,
+      "sell_trades": 503
+     },
+     "2024": {
+      "single_side": 18.0642,
+      "double_side": 36.1786,
+      "buy_amount": 699848.0,
+      "sell_amount": 701793.0,
+      "avg_equity": 38742.25,
+      "buy_trades": 440,
+      "sell_trades": 437
+     },
+     "2025": {
+      "single_side": 17.9968,
+      "double_side": 36.0898,
+      "buy_amount": 663401.0,
+      "sell_amount": 666945.0,
+      "avg_equity": 36862.1,
+      "buy_trades": 442,
+      "sell_trades": 443
+     },
+     "2026": {
+      "single_side": 14.735,
+      "double_side": 30.138,
+      "buy_amount": 505800.0,
+      "sell_amount": 528733.0,
+      "avg_equity": 34326.53,
+      "buy_trades": 306,
+      "sell_trades": 325
+     }
+    }
+   },
+   "benchmark_return": 33.05,
+   "elapsed_sec": 71.7
+  },
+  {
+   "label": "价值投资策略/win_a",
+   "strategy": "价值投资策略",
+   "params": {},
+   "config": {},
+   "start": "2022-03-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1126,
+   "metrics": {
+    "total_return": -20.85,
+    "annual_return": -4.91,
+    "max_drawdown": -29.82,
+    "sharpe": -0.21,
+    "win_rate": 44.53,
+    "profit_loss": 1.13,
+    "trade_count": 1060,
+    "avg_hold_days": 18.6,
+    "avg_pnl_pct": -0.47
+   },
+   "annual": {
+    "2022": {
+     "total_return": -18.28,
+     "annual_return": -21.91,
+     "max_drawdown": -21.98,
+     "sharpe": -1.05,
+     "win_rate": 45.4,
+     "profit_loss": 0.79,
+     "trade_count": 174,
+     "avg_hold_days": 18.5,
+     "avg_pnl_pct": -1.49
+    },
+    "2023": {
+     "total_return": -6.18,
+     "annual_return": -6.27,
+     "max_drawdown": -13.38,
+     "sharpe": -0.55,
+     "win_rate": 41.47,
+     "profit_loss": 1.21,
+     "trade_count": 217,
+     "avg_hold_days": 19.3,
+     "avg_pnl_pct": -0.5
+    },
+    "2024": {
+     "total_return": 8.77,
+     "annual_return": 8.8,
+     "max_drawdown": -18.05,
+     "sharpe": 0.63,
+     "win_rate": 44.17,
+     "profit_loss": 1.38,
+     "trade_count": 240,
+     "avg_hold_days": 18.6,
+     "avg_pnl_pct": -0.18
+    },
+    "2025": {
+     "total_return": 18.05,
+     "annual_return": 18.15,
+     "max_drawdown": -15.55,
+     "sharpe": 1.04,
+     "win_rate": 52.89,
+     "profit_loss": 1.26,
+     "trade_count": 225,
+     "avg_hold_days": 19.2,
+     "avg_pnl_pct": 1.16
+    },
+    "2026": {
+     "total_return": -20.38,
+     "annual_return": -24.5,
+     "max_drawdown": -28.09,
+     "sharpe": -1.42,
+     "win_rate": 38.24,
+     "profit_loss": 1.18,
+     "trade_count": 204,
+     "avg_hold_days": 17.5,
+     "avg_pnl_pct": -1.68
+    }
+   },
+   "turnover": {
+    "single_side": 65.5944,
+    "double_side": 131.1248,
+    "buy_amount": 5528343.0,
+    "sell_amount": 5522948.0,
+    "avg_equity": 84280.73,
+    "buy_trades": 1060,
+    "sell_trades": 1060,
+    "annual": {
+     "2022": {
+      "single_side": 12.1401,
+      "double_side": 23.3346,
+      "buy_amount": 1018862.0,
+      "sell_amount": 939495.0,
+      "avg_equity": 83925.15,
+      "buy_trades": 189,
+      "sell_trades": 174
+     },
+     "2023": {
+      "single_side": 13.5479,
+      "double_side": 27.1007,
+      "buy_amount": 1110978.0,
+      "sell_amount": 1111387.0,
+      "avg_equity": 82003.83,
+      "buy_trades": 216,
+      "sell_trades": 217
+     },
+     "2024": {
+      "single_side": 14.1444,
+      "double_side": 28.4034,
+      "buy_amount": 1122530.0,
+      "sell_amount": 1131621.0,
+      "avg_equity": 79361.91,
+      "buy_trades": 239,
+      "sell_trades": 240
+     },
+     "2025": {
+      "single_side": 13.3716,
+      "double_side": 27.1577,
+      "buy_amount": 1096932.0,
+      "sell_amount": 1130932.0,
+      "avg_equity": 82034.2,
+      "buy_trades": 219,
+      "sell_trades": 225
+     },
+     "2026": {
+      "single_side": 12.241,
+      "double_side": 24.7984,
+      "buy_amount": 1179041.0,
+      "sell_amount": 1209513.0,
+      "avg_equity": 96318.76,
+      "buy_trades": 197,
+      "sell_trades": 204
+     }
+    }
+   },
+   "benchmark_return": 33.05,
+   "elapsed_sec": 67.9
+  },
+  {
+   "label": "段永平-高质量策略/win_a",
+   "strategy": "段永平-高质量策略",
+   "params": {},
+   "config": {},
+   "start": "2022-03-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1126,
+   "metrics": {
+    "total_return": -30.84,
+    "annual_return": -7.63,
+    "max_drawdown": -38.38,
+    "sharpe": -0.32,
+    "win_rate": 44.06,
+    "profit_loss": 1.09,
+    "trade_count": 842,
+    "avg_hold_days": 18.4,
+    "avg_pnl_pct": -0.42
+   },
+   "annual": {
+    "2022": {
+     "total_return": -14.21,
+     "annual_return": -17.12,
+     "max_drawdown": -18.88,
+     "sharpe": -0.61,
+     "win_rate": 46.21,
+     "profit_loss": 0.88,
+     "trade_count": 145,
+     "avg_hold_days": 18.2,
+     "avg_pnl_pct": -0.92
+    },
+    "2023": {
+     "total_return": -14.75,
+     "annual_return": -14.94,
+     "max_drawdown": -20.48,
+     "sharpe": -1.14,
+     "win_rate": 39.34,
+     "profit_loss": 0.99,
+     "trade_count": 183,
+     "avg_hold_days": 19.3,
+     "avg_pnl_pct": -1.16
+    },
+    "2024": {
+     "total_return": -1.58,
+     "annual_return": -1.59,
+     "max_drawdown": -20.12,
+     "sharpe": 0.01,
+     "win_rate": 40.72,
+     "profit_loss": 1.37,
+     "trade_count": 194,
+     "avg_hold_days": 18.1,
+     "avg_pnl_pct": -0.52
+    },
+    "2025": {
+     "total_return": 12.29,
+     "annual_return": 12.36,
+     "max_drawdown": -13.64,
+     "sharpe": 0.73,
+     "win_rate": 50.57,
+     "profit_loss": 1.26,
+     "trade_count": 176,
+     "avg_hold_days": 19.1,
+     "avg_pnl_pct": 1.24
+    },
+    "2026": {
+     "total_return": -14.9,
+     "annual_return": -18.04,
+     "max_drawdown": -27.69,
+     "sharpe": -0.93,
+     "win_rate": 44.44,
+     "profit_loss": 1.0,
+     "trade_count": 144,
+     "avg_hold_days": 17.3,
+     "avg_pnl_pct": -0.87
+    }
+   },
+   "turnover": {
+    "single_side": 60.7949,
+    "double_side": 121.3579,
+    "buy_amount": 4787693.0,
+    "sell_amount": 4769437.0,
+    "avg_equity": 78751.59,
+    "buy_trades": 842,
+    "sell_trades": 842,
+    "annual": {
+     "2022": {
+      "single_side": 11.6772,
+      "double_side": 22.544,
+      "buy_amount": 1035772.0,
+      "sell_amount": 963888.0,
+      "avg_equity": 88700.33,
+      "buy_trades": 154,
+      "sell_trades": 145
+     },
+     "2023": {
+      "single_side": 12.7596,
+      "double_side": 25.507,
+      "buy_amount": 1049313.0,
+      "sell_amount": 1048302.0,
+      "avg_equity": 82236.92,
+      "buy_trades": 184,
+      "sell_trades": 183
+     },
+     "2024": {
+      "single_side": 13.4389,
+      "double_side": 26.8954,
+      "buy_amount": 965412.0,
+      "sell_amount": 966674.0,
+      "avg_equity": 71837.07,
+      "buy_trades": 194,
+      "sell_trades": 194
+     },
+     "2025": {
+      "single_side": 12.4238,
+      "double_side": 25.0165,
+      "buy_amount": 864603.0,
+      "sell_amount": 876352.0,
+      "avg_equity": 69592.25,
+      "buy_trades": 176,
+      "sell_trades": 176
+     },
+     "2026": {
+      "single_side": 10.3834,
+      "double_side": 21.2622,
+      "buy_amount": 872593.0,
+      "sell_amount": 914221.0,
+      "avg_equity": 84037.26,
+      "buy_trades": 134,
+      "sell_trades": 144
+     }
+    }
+   },
+   "benchmark_return": 33.05,
+   "elapsed_sec": 67.5
+  },
+  {
+   "label": "李录-长期确定性策略/win_a",
+   "strategy": "李录-长期确定性策略",
+   "params": {},
+   "config": {},
+   "start": "2022-03-07",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1126,
+   "metrics": {
+    "total_return": -34.62,
+    "annual_return": -8.74,
+    "max_drawdown": -41.4,
+    "sharpe": -0.44,
+    "win_rate": 43.02,
+    "profit_loss": 1.12,
+    "trade_count": 1032,
+    "avg_hold_days": 17.9,
+    "avg_pnl_pct": -0.67
+   },
+   "annual": {
+    "2022": {
+     "total_return": -15.06,
+     "annual_return": -18.12,
+     "max_drawdown": -20.54,
+     "sharpe": -0.86,
+     "win_rate": 42.11,
+     "profit_loss": 0.93,
+     "trade_count": 171,
+     "avg_hold_days": 17.7,
+     "avg_pnl_pct": -1.65
+    },
+    "2023": {
+     "total_return": -15.76,
+     "annual_return": -15.96,
+     "max_drawdown": -19.5,
+     "sharpe": -1.58,
+     "win_rate": 39.01,
+     "profit_loss": 1.09,
+     "trade_count": 223,
+     "avg_hold_days": 18.7,
+     "avg_pnl_pct": -1.15
+    },
+    "2024": {
+     "total_return": 0.56,
+     "annual_return": 0.57,
+     "max_drawdown": -20.69,
+     "sharpe": 0.12,
+     "win_rate": 42.8,
+     "profit_loss": 1.32,
+     "trade_count": 236,
+     "avg_hold_days": 17.7,
+     "avg_pnl_pct": -0.49
+    },
+    "2025": {
+     "total_return": 18.12,
+     "annual_return": 18.22,
+     "max_drawdown": -18.07,
+     "sharpe": 0.97,
+     "win_rate": 52.34,
+     "profit_loss": 1.19,
+     "trade_count": 214,
+     "avg_hold_days": 18.5,
+     "avg_pnl_pct": 1.23
+    },
+    "2026": {
+     "total_return": -24.56,
+     "annual_return": -29.36,
+     "max_drawdown": -32.77,
+     "sharpe": -1.77,
+     "win_rate": 38.3,
+     "profit_loss": 1.15,
+     "trade_count": 188,
+     "avg_hold_days": 16.6,
+     "avg_pnl_pct": -1.6
+    }
+   },
+   "turnover": {
+    "single_side": 66.498,
+    "double_side": 132.7432,
+    "buy_amount": 5197515.0,
+    "sell_amount": 5177745.0,
+    "avg_equity": 78160.42,
+    "buy_trades": 1032,
+    "sell_trades": 1032,
+    "annual": {
+     "2022": {
+      "single_side": 12.2163,
+      "double_side": 23.5549,
+      "buy_amount": 1054813.0,
+      "sell_amount": 979025.0,
+      "avg_equity": 86344.64,
+      "buy_trades": 182,
+      "sell_trades": 171
+     },
+     "2023": {
+      "single_side": 14.0261,
+      "double_side": 28.0962,
+      "buy_amount": 1128567.0,
+      "sell_amount": 1132108.0,
+      "avg_equity": 80461.81,
+      "buy_trades": 223,
+      "sell_trades": 223
+     },
+     "2024": {
+      "single_side": 14.5037,
+      "double_side": 28.9686,
+      "buy_amount": 1062586.0,
+      "sell_amount": 1059747.0,
+      "avg_equity": 73263.34,
+      "buy_trades": 238,
+      "sell_trades": 236
+     },
+     "2025": {
+      "single_side": 13.5744,
+      "double_side": 27.4926,
+      "buy_amount": 946661.0,
+      "sell_amount": 970634.0,
+      "avg_equity": 69738.61,
+      "buy_trades": 209,
+      "sell_trades": 214
+     },
+     "2026": {
+      "single_side": 12.0591,
+      "double_side": 24.4944,
+      "buy_amount": 1004888.0,
+      "sell_amount": 1036231.0,
+      "avg_equity": 83330.09,
+      "buy_trades": 180,
+      "sell_trades": 188
+     }
+    }
+   },
+   "benchmark_return": 33.05,
+   "elapsed_sec": 67.8
+  },
+  {
+   "label": "趋势跟随策略/win_b",
+   "strategy": "趋势跟随策略",
+   "params": {},
+   "config": {},
+   "start": "2022-09-01",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1004,
+   "metrics": {
+    "total_return": -42.73,
+    "annual_return": -12.54,
+    "max_drawdown": -46.32,
+    "sharpe": -0.73,
+    "win_rate": 43.24,
+    "profit_loss": 1.06,
+    "trade_count": 1605,
+    "avg_hold_days": 18.2,
+    "avg_pnl_pct": -0.7
+   },
+   "annual": {
+    "2022": {
+     "total_return": -3.97,
+     "annual_return": -11.6,
+     "max_drawdown": -8.71,
+     "sharpe": -0.64,
+     "win_rate": 41.59,
+     "profit_loss": 1.2,
+     "trade_count": 113,
+     "avg_hold_days": 18.5,
+     "avg_pnl_pct": -0.4
+    },
+    "2023": {
+     "total_return": -12.62,
+     "annual_return": -12.79,
+     "max_drawdown": -20.88,
+     "sharpe": -1.0,
+     "win_rate": 40.36,
+     "profit_loss": 1.17,
+     "trade_count": 384,
+     "avg_hold_days": 18.7,
+     "avg_pnl_pct": -0.59
+    },
+    "2024": {
+     "total_return": -11.96,
+     "annual_return": -12.0,
+     "max_drawdown": -24.74,
+     "sharpe": -0.62,
+     "win_rate": 43.28,
+     "profit_loss": 1.03,
+     "trade_count": 402,
+     "avg_hold_days": 18.4,
+     "avg_pnl_pct": -0.82
+    },
+    "2025": {
+     "total_return": 16.73,
+     "annual_return": 16.83,
+     "max_drawdown": -11.21,
+     "sharpe": 1.01,
+     "win_rate": 48.71,
+     "profit_loss": 1.33,
+     "trade_count": 388,
+     "avg_hold_days": 18.1,
+     "avg_pnl_pct": 0.72
+    },
+    "2026": {
+     "total_return": -35.12,
+     "annual_return": -41.34,
+     "max_drawdown": -40.97,
+     "sharpe": -2.95,
+     "win_rate": 40.57,
+     "profit_loss": 0.83,
+     "trade_count": 318,
+     "avg_hold_days": 17.4,
+     "avg_pnl_pct": -2.5
+    }
+   },
+   "turnover": {
+    "single_side": 68.5372,
+    "double_side": 136.8158,
+    "buy_amount": 5654646.0,
+    "sell_amount": 5633313.0,
+    "avg_equity": 82504.76,
+    "buy_trades": 1605,
+    "sell_trades": 1605,
+    "annual": {
+     "2022": {
+      "single_side": 6.0134,
+      "double_side": 11.1461,
+      "buy_amount": 588823.0,
+      "sell_amount": 502580.0,
+      "avg_equity": 97917.73,
+      "buy_trades": 143,
+      "sell_trades": 113
+     },
+     "2023": {
+      "single_side": 16.0904,
+      "double_side": 32.2803,
+      "buy_amount": 1534979.0,
+      "sell_amount": 1544482.0,
+      "avg_equity": 95397.4,
+      "buy_trades": 372,
+      "sell_trades": 384
+     },
+     "2024": {
+      "single_side": 16.4479,
+      "double_side": 32.9218,
+      "buy_amount": 1245388.0,
+      "sell_amount": 1247364.0,
+      "avg_equity": 75717.26,
+      "buy_trades": 409,
+      "sell_trades": 402
+     },
+     "2025": {
+      "single_side": 16.4238,
+      "double_side": 32.9264,
+      "buy_amount": 1241576.0,
+      "sell_amount": 1247525.0,
+      "avg_equity": 75596.02,
+      "buy_trades": 380,
+      "sell_trades": 388
+     },
+     "2026": {
+      "single_side": 13.5283,
+      "double_side": 27.672,
+      "buy_amount": 1043880.0,
+      "sell_amount": 1091362.0,
+      "avg_equity": 77162.58,
+      "buy_trades": 301,
+      "sell_trades": 318
+     }
+    }
+   },
+   "benchmark_return": 37.11,
+   "elapsed_sec": 71.9
+  },
+  {
+   "label": "动量策略/win_b",
+   "strategy": "动量策略",
+   "params": {},
+   "config": {},
+   "start": "2022-09-01",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1004,
+   "metrics": {
+    "total_return": -32.91,
+    "annual_return": -9.15,
+    "max_drawdown": -41.16,
+    "sharpe": -0.36,
+    "win_rate": 42.24,
+    "profit_loss": 1.2,
+    "trade_count": 1579,
+    "avg_hold_days": 18.4,
+    "avg_pnl_pct": -0.72
+   },
+   "annual": {
+    "2022": {
+     "total_return": -3.92,
+     "annual_return": -11.46,
+     "max_drawdown": -13.66,
+     "sharpe": -0.48,
+     "win_rate": 45.19,
+     "profit_loss": 0.96,
+     "trade_count": 104,
+     "avg_hold_days": 18.4,
+     "avg_pnl_pct": -0.93
+    },
+    "2023": {
+     "total_return": -11.55,
+     "annual_return": -11.71,
+     "max_drawdown": -15.65,
+     "sharpe": -0.73,
+     "win_rate": 40.0,
+     "profit_loss": 1.31,
+     "trade_count": 380,
+     "avg_hold_days": 19.1,
+     "avg_pnl_pct": -0.6
+    },
+    "2024": {
+     "total_return": -13.55,
+     "annual_return": -13.58,
+     "max_drawdown": -28.91,
+     "sharpe": -0.5,
+     "win_rate": 41.5,
+     "profit_loss": 1.13,
+     "trade_count": 400,
+     "avg_hold_days": 18.3,
+     "avg_pnl_pct": -0.74
+    },
+    "2025": {
+     "total_return": 7.16,
+     "annual_return": 7.21,
+     "max_drawdown": -14.99,
+     "sharpe": 0.45,
+     "win_rate": 44.68,
+     "profit_loss": 1.32,
+     "trade_count": 376,
+     "avg_hold_days": 18.6,
+     "avg_pnl_pct": -0.12
+    },
+    "2026": {
+     "total_return": -17.34,
+     "annual_return": -20.93,
+     "max_drawdown": -33.99,
+     "sharpe": -0.9,
+     "win_rate": 42.01,
+     "profit_loss": 1.16,
+     "trade_count": 319,
+     "avg_hold_days": 17.6,
+     "avg_pnl_pct": -1.47
+    }
+   },
+   "turnover": {
+    "single_side": 66.9842,
+    "double_side": 133.8255,
+    "buy_amount": 5571814.0,
+    "sell_amount": 5559923.0,
+    "avg_equity": 83180.99,
+    "buy_trades": 1579,
+    "sell_trades": 1579,
+    "annual": {
+     "2022": {
+      "single_side": 5.7749,
+      "double_side": 10.7032,
+      "buy_amount": 554007.0,
+      "sell_amount": 472781.0,
+      "avg_equity": 95932.95,
+      "buy_trades": 127,
+      "sell_trades": 104
+     },
+     "2023": {
+      "single_side": 15.5372,
+      "double_side": 31.0924,
+      "buy_amount": 1445167.0,
+      "sell_amount": 1446838.0,
+      "avg_equity": 93013.22,
+      "buy_trades": 373,
+      "sell_trades": 380
+     },
+     "2024": {
+      "single_side": 16.4836,
+      "double_side": 33.1038,
+      "buy_amount": 1241271.0,
+      "sell_amount": 1251555.0,
+      "avg_equity": 75303.31,
+      "buy_trades": 407,
+      "sell_trades": 400
+     },
+     "2025": {
+      "single_side": 15.7311,
+      "double_side": 31.458,
+      "buy_amount": 1185062.0,
+      "sell_amount": 1184748.0,
+      "avg_equity": 75332.6,
+      "buy_trades": 370,
+      "sell_trades": 376
+     },
+     "2026": {
+      "single_side": 13.4499,
+      "double_side": 27.5767,
+      "buy_amount": 1146307.0,
+      "sell_amount": 1204001.0,
+      "avg_equity": 85228.16,
+      "buy_trades": 302,
+      "sell_trades": 319
+     }
+    }
+   },
+   "benchmark_return": 37.11,
+   "elapsed_sec": 67.4
+  },
+  {
+   "label": "均值回归策略/win_b",
+   "strategy": "均值回归策略",
+   "params": {},
+   "config": {},
+   "start": "2022-09-01",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1004,
+   "metrics": {
+    "total_return": -30.6,
+    "annual_return": -8.41,
+    "max_drawdown": -43.09,
+    "sharpe": -0.4,
+    "win_rate": 44.13,
+    "profit_loss": 1.11,
+    "trade_count": 1575,
+    "avg_hold_days": 12.8,
+    "avg_pnl_pct": -0.38
+   },
+   "annual": {
+    "2022": {
+     "total_return": -3.68,
+     "annual_return": -10.79,
+     "max_drawdown": -11.96,
+     "sharpe": -0.35,
+     "win_rate": 41.67,
+     "profit_loss": 1.06,
+     "trade_count": 120,
+     "avg_hold_days": 13.1,
+     "avg_pnl_pct": -0.86
+    },
+    "2023": {
+     "total_return": -11.61,
+     "annual_return": -11.76,
+     "max_drawdown": -18.51,
+     "sharpe": -0.86,
+     "win_rate": 42.6,
+     "profit_loss": 1.15,
+     "trade_count": 385,
+     "avg_hold_days": 13.2,
+     "avg_pnl_pct": -0.4
+    },
+    "2024": {
+     "total_return": -21.97,
+     "annual_return": -22.02,
+     "max_drawdown": -29.42,
+     "sharpe": -1.18,
+     "win_rate": 40.78,
+     "profit_loss": 1.06,
+     "trade_count": 385,
+     "avg_hold_days": 12.9,
+     "avg_pnl_pct": -1.31
+    },
+    "2025": {
+     "total_return": 28.31,
+     "annual_return": 28.49,
+     "max_drawdown": -12.4,
+     "sharpe": 1.56,
+     "win_rate": 54.64,
+     "profit_loss": 1.14,
+     "trade_count": 377,
+     "avg_hold_days": 12.6,
+     "avg_pnl_pct": 1.2
+    },
+    "2026": {
+     "total_return": -19.79,
+     "annual_return": -23.81,
+     "max_drawdown": -21.81,
+     "sharpe": -1.39,
+     "win_rate": 38.31,
+     "profit_loss": 1.19,
+     "trade_count": 308,
+     "avg_hold_days": 12.1,
+     "avg_pnl_pct": -0.92
+    }
+   },
+   "turnover": {
+    "single_side": 88.6121,
+    "double_side": 177.1232,
+    "buy_amount": 7167857.0,
+    "sell_amount": 7159681.0,
+    "avg_equity": 80890.23,
+    "buy_trades": 1575,
+    "sell_trades": 1575,
+    "annual": {
+     "2022": {
+      "single_side": 7.3382,
+      "double_side": 13.9237,
+      "buy_amount": 704601.0,
+      "sell_amount": 632329.0,
+      "avg_equity": 96018.57,
+      "buy_trades": 137,
+      "sell_trades": 120
+     },
+     "2023": {
+      "single_side": 20.9046,
+      "double_side": 41.7907,
+      "buy_amount": 1969537.0,
+      "sell_amount": 1967804.0,
+      "avg_equity": 94215.62,
+      "buy_trades": 381,
+      "sell_trades": 385
+     },
+     "2024": {
+      "single_side": 21.4128,
+      "double_side": 42.9648,
+      "buy_amount": 1535710.0,
+      "sell_amount": 1545695.0,
+      "avg_equity": 71719.26,
+      "buy_trades": 382,
+      "sell_trades": 385
+     },
+     "2025": {
+      "single_side": 21.4116,
+      "double_side": 43.0345,
+      "buy_amount": 1546492.0,
+      "sell_amount": 1561757.0,
+      "avg_equity": 72226.88,
+      "buy_trades": 377,
+      "sell_trades": 377
+     },
+     "2026": {
+      "single_side": 17.5891,
+      "double_side": 35.6838,
+      "buy_amount": 1411517.0,
+      "sell_amount": 1452096.0,
+      "avg_equity": 80249.57,
+      "buy_trades": 298,
+      "sell_trades": 308
+     }
+    }
+   },
+   "benchmark_return": 37.11,
+   "elapsed_sec": 66.7
+  },
+  {
+   "label": "突破策略/win_b",
+   "strategy": "突破策略",
+   "params": {},
+   "config": {},
+   "start": "2022-09-01",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1004,
+   "metrics": {
+    "total_return": -65.65,
+    "annual_return": -22.66,
+    "max_drawdown": -66.41,
+    "sharpe": -1.3,
+    "win_rate": 37.8,
+    "profit_loss": 1.15,
+    "trade_count": 2024,
+    "avg_hold_days": 16.4,
+    "avg_pnl_pct": -1.5
+   },
+   "annual": {
+    "2022": {
+     "total_return": -13.11,
+     "annual_return": -34.79,
+     "max_drawdown": -16.25,
+     "sharpe": -2.26,
+     "win_rate": 26.14,
+     "profit_loss": 1.48,
+     "trade_count": 153,
+     "avg_hold_days": 16.4,
+     "avg_pnl_pct": -3.76
+    },
+    "2023": {
+     "total_return": -29.71,
+     "annual_return": -30.05,
+     "max_drawdown": -31.27,
+     "sharpe": -2.1,
+     "win_rate": 33.89,
+     "profit_loss": 1.18,
+     "trade_count": 540,
+     "avg_hold_days": 17.2,
+     "avg_pnl_pct": -1.93
+    },
+    "2024": {
+     "total_return": -15.68,
+     "annual_return": -15.72,
+     "max_drawdown": -35.18,
+     "sharpe": -0.75,
+     "win_rate": 40.55,
+     "profit_loss": 1.12,
+     "trade_count": 476,
+     "avg_hold_days": 16.2,
+     "avg_pnl_pct": -0.78
+    },
+    "2025": {
+     "total_return": 3.43,
+     "annual_return": 3.45,
+     "max_drawdown": -14.97,
+     "sharpe": 0.28,
+     "win_rate": 45.1,
+     "profit_loss": 1.29,
+     "trade_count": 490,
+     "avg_hold_days": 16.6,
+     "avg_pnl_pct": -0.23
+    },
+    "2026": {
+     "total_return": -36.03,
+     "annual_return": -42.35,
+     "max_drawdown": -42.33,
+     "sharpe": -2.72,
+     "win_rate": 35.07,
+     "profit_loss": 1.11,
+     "trade_count": 365,
+     "avg_hold_days": 15.2,
+     "avg_pnl_pct": -2.57
+    }
+   },
+   "turnover": {
+    "single_side": 76.4039,
+    "double_side": 152.1107,
+    "buy_amount": 4501012.0,
+    "sell_amount": 4459944.0,
+    "avg_equity": 58910.77,
+    "buy_trades": 2024,
+    "sell_trades": 2024,
+    "annual": {
+     "2022": {
+      "single_side": 6.4294,
+      "double_side": 11.9947,
+      "buy_amount": 602713.0,
+      "sell_amount": 521711.0,
+      "avg_equity": 93743.26,
+      "buy_trades": 175,
+      "sell_trades": 153
+     },
+     "2023": {
+      "single_side": 18.0264,
+      "double_side": 36.0746,
+      "buy_amount": 1323473.0,
+      "sell_amount": 1325081.0,
+      "avg_equity": 73418.8,
+      "buy_trades": 536,
+      "sell_trades": 540
+     },
+     "2024": {
+      "single_side": 18.4521,
+      "double_side": 37.0205,
+      "buy_amount": 947582.0,
+      "sell_amount": 953551.0,
+      "avg_equity": 51353.49,
+      "buy_trades": 478,
+      "sell_trades": 476
+     },
+     "2025": {
+      "single_side": 18.2327,
+      "double_side": 36.4864,
+      "buy_amount": 904706.0,
+      "sell_amount": 905750.0,
+      "avg_equity": 49620.06,
+      "buy_trades": 493,
+      "sell_trades": 490
+     },
+     "2026": {
+      "single_side": 15.2266,
+      "double_side": 31.1131,
+      "buy_amount": 722538.0,
+      "sell_amount": 753851.0,
+      "avg_equity": 47452.26,
+      "buy_trades": 342,
+      "sell_trades": 365
+     }
+    }
+   },
+   "benchmark_return": 37.11,
+   "elapsed_sec": 69.1
+  },
+  {
+   "label": "价值投资策略/win_b",
+   "strategy": "价值投资策略",
+   "params": {},
+   "config": {},
+   "start": "2022-09-01",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1004,
+   "metrics": {
+    "total_return": 2.98,
+    "annual_return": 0.71,
+    "max_drawdown": -28.52,
+    "sharpe": 0.13,
+    "win_rate": 45.18,
+    "profit_loss": 1.23,
+    "trade_count": 965,
+    "avg_hold_days": 18.5,
+    "avg_pnl_pct": -0.16
+   },
+   "annual": {
+    "2022": {
+     "total_return": -0.64,
+     "annual_return": -1.94,
+     "max_drawdown": -9.59,
+     "sharpe": -0.07,
+     "win_rate": 46.03,
+     "profit_loss": 1.06,
+     "trade_count": 63,
+     "avg_hold_days": 19.0,
+     "avg_pnl_pct": -0.67
+    },
+    "2023": {
+     "total_return": -9.25,
+     "annual_return": -9.37,
+     "max_drawdown": -18.57,
+     "sharpe": -0.82,
+     "win_rate": 41.18,
+     "profit_loss": 1.17,
+     "trade_count": 221,
+     "avg_hold_days": 19.2,
+     "avg_pnl_pct": -0.77
+    },
+    "2024": {
+     "total_return": 2.06,
+     "annual_return": 2.06,
+     "max_drawdown": -15.95,
+     "sharpe": 0.21,
+     "win_rate": 41.49,
+     "profit_loss": 1.43,
+     "trade_count": 241,
+     "avg_hold_days": 18.6,
+     "avg_pnl_pct": -0.4
+    },
+    "2025": {
+     "total_return": 26.09,
+     "annual_return": 26.25,
+     "max_drawdown": -14.77,
+     "sharpe": 1.41,
+     "win_rate": 56.58,
+     "profit_loss": 1.19,
+     "trade_count": 228,
+     "avg_hold_days": 18.9,
+     "avg_pnl_pct": 1.49
+    },
+    "2026": {
+     "total_return": -12.82,
+     "annual_return": -15.56,
+     "max_drawdown": -23.53,
+     "sharpe": -0.77,
+     "win_rate": 41.04,
+     "profit_loss": 1.25,
+     "trade_count": 212,
+     "avg_hold_days": 17.2,
+     "avg_pnl_pct": -0.87
+    }
+   },
+   "turnover": {
+    "single_side": 59.0708,
+    "double_side": 118.3202,
+    "buy_amount": 5916954.0,
+    "sell_amount": 5934840.0,
+    "avg_equity": 100167.14,
+    "buy_trades": 965,
+    "sell_trades": 965,
+    "annual": {
+     "2022": {
+      "single_side": 4.9464,
+      "double_side": 9.1,
+      "buy_amount": 483263.0,
+      "sell_amount": 405809.0,
+      "avg_equity": 97700.48,
+      "buy_trades": 78,
+      "sell_trades": 63
+     },
+     "2023": {
+      "single_side": 13.729,
+      "double_side": 27.4729,
+      "buy_amount": 1363146.0,
+      "sell_amount": 1364624.0,
+      "avg_equity": 99289.55,
+      "buy_trades": 218,
+      "sell_trades": 221
+     },
+     "2024": {
+      "single_side": 14.3303,
+      "double_side": 28.7652,
+      "buy_amount": 1320119.0,
+      "sell_amount": 1329753.0,
+      "avg_equity": 92120.7,
+      "buy_trades": 241,
+      "sell_trades": 241
+     },
+     "2025": {
+      "single_side": 13.576,
+      "double_side": 27.4006,
+      "buy_amount": 1282722.0,
+      "sell_amount": 1306216.0,
+      "avg_equity": 94484.76,
+      "buy_trades": 226,
+      "sell_trades": 228
+     },
+     "2026": {
+      "single_side": 12.3078,
+      "double_side": 25.1249,
+      "buy_amount": 1467704.0,
+      "sell_amount": 1528438.0,
+      "avg_equity": 119249.93,
+      "buy_trades": 202,
+      "sell_trades": 212
+     }
+    }
+   },
+   "benchmark_return": 37.11,
+   "elapsed_sec": 53.7
+  },
+  {
+   "label": "段永平-高质量策略/win_b",
+   "strategy": "段永平-高质量策略",
+   "params": {},
+   "config": {},
+   "start": "2022-09-01",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1004,
+   "metrics": {
+    "total_return": 20.81,
+    "annual_return": 4.65,
+    "max_drawdown": -24.19,
+    "sharpe": 0.35,
+    "win_rate": 46.28,
+    "profit_loss": 1.26,
+    "trade_count": 780,
+    "avg_hold_days": 18.4,
+    "avg_pnl_pct": 0.25
+   },
+   "annual": {
+    "2022": {
+     "total_return": -3.72,
+     "annual_return": -10.9,
+     "max_drawdown": -10.38,
+     "sharpe": -0.68,
+     "win_rate": 45.61,
+     "profit_loss": 0.91,
+     "trade_count": 57,
+     "avg_hold_days": 18.6,
+     "avg_pnl_pct": -1.19
+    },
+    "2023": {
+     "total_return": -1.03,
+     "annual_return": -1.05,
+     "max_drawdown": -13.42,
+     "sharpe": 0.0,
+     "win_rate": 43.68,
+     "profit_loss": 1.31,
+     "trade_count": 190,
+     "avg_hold_days": 18.9,
+     "avg_pnl_pct": -0.18
+    },
+    "2024": {
+     "total_return": 2.54,
+     "annual_return": 2.55,
+     "max_drawdown": -20.23,
+     "sharpe": 0.23,
+     "win_rate": 43.88,
+     "profit_loss": 1.27,
+     "trade_count": 196,
+     "avg_hold_days": 17.8,
+     "avg_pnl_pct": -0.35
+    },
+    "2025": {
+     "total_return": 33.35,
+     "annual_return": 33.56,
+     "max_drawdown": -12.33,
+     "sharpe": 1.6,
+     "win_rate": 55.62,
+     "profit_loss": 1.4,
+     "trade_count": 178,
+     "avg_hold_days": 18.9,
+     "avg_pnl_pct": 2.41
+    },
+    "2026": {
+     "total_return": -8.07,
+     "annual_return": -9.86,
+     "max_drawdown": -24.17,
+     "sharpe": -0.42,
+     "win_rate": 42.14,
+     "profit_loss": 1.26,
+     "trade_count": 159,
+     "avg_hold_days": 17.7,
+     "avg_pnl_pct": -0.37
+    }
+   },
+   "turnover": {
+    "single_side": 54.7772,
+    "double_side": 109.8707,
+    "buy_amount": 5920197.0,
+    "sell_amount": 5954371.0,
+    "avg_equity": 108077.71,
+    "buy_trades": 780,
+    "sell_trades": 780,
+    "annual": {
+     "2022": {
+      "single_side": 4.8218,
+      "double_side": 8.9014,
+      "buy_amount": 465550.0,
+      "sell_amount": 393886.0,
+      "avg_equity": 96550.26,
+      "buy_trades": 68,
+      "sell_trades": 57
+     },
+     "2023": {
+      "single_side": 13.1297,
+      "double_side": 26.3557,
+      "buy_amount": 1344816.0,
+      "sell_amount": 1354678.0,
+      "avg_equity": 102425.34,
+      "buy_trades": 187,
+      "sell_trades": 190
+     },
+     "2024": {
+      "single_side": 13.5722,
+      "double_side": 27.1453,
+      "buy_amount": 1291290.0,
+      "sell_amount": 1291376.0,
+      "avg_equity": 95142.19,
+      "buy_trades": 196,
+      "sell_trades": 196
+     },
+     "2025": {
+      "single_side": 12.2851,
+      "double_side": 24.981,
+      "buy_amount": 1276916.0,
+      "sell_amount": 1319614.0,
+      "avg_equity": 103940.37,
+      "buy_trades": 179,
+      "sell_trades": 178
+     },
+     "2026": {
+      "single_side": 10.9396,
+      "double_side": 22.2567,
+      "buy_amount": 1541625.0,
+      "sell_amount": 1594817.0,
+      "avg_equity": 140921.4,
+      "buy_trades": 150,
+      "sell_trades": 159
+     }
+    }
+   },
+   "benchmark_return": 37.11,
+   "elapsed_sec": 63.9
+  },
+  {
+   "label": "李录-长期确定性策略/win_b",
+   "strategy": "李录-长期确定性策略",
+   "params": {},
+   "config": {},
+   "start": "2022-09-01",
+   "end": "2026-10-28",
+   "lead_days": 400,
+   "max_codes": 800,
+   "codes": 769,
+   "equity_points": 1004,
+   "metrics": {
+    "total_return": -4.49,
+    "annual_return": -1.1,
+    "max_drawdown": -27.04,
+    "sharpe": 0.03,
+    "win_rate": 43.46,
+    "profit_loss": 1.27,
+    "trade_count": 955,
+    "avg_hold_days": 17.9,
+    "avg_pnl_pct": -0.25
+   },
+   "annual": {
+    "2022": {
+     "total_return": -3.03,
+     "annual_return": -8.93,
+     "max_drawdown": -10.37,
+     "sharpe": -0.57,
+     "win_rate": 44.78,
+     "profit_loss": 0.87,
+     "trade_count": 67,
+     "avg_hold_days": 18.1,
+     "avg_pnl_pct": -1.14
+    },
+    "2023": {
+     "total_return": -10.77,
+     "annual_return": -10.91,
+     "max_drawdown": -14.8,
+     "sharpe": -0.96,
+     "win_rate": 38.01,
+     "profit_loss": 1.34,
+     "trade_count": 221,
+     "avg_hold_days": 18.8,
+     "avg_pnl_pct": -1.02
+    },
+    "2024": {
+     "total_return": 0.0,
+     "annual_return": 0.0,
+     "max_drawdown": -17.85,
+     "sharpe": 0.09,
+     "win_rate": 39.92,
+     "profit_loss": 1.52,
+     "trade_count": 243,
+     "avg_hold_days": 17.6,
+     "avg_pnl_pct": -0.61
+    },
+    "2025": {
+     "total_return": 28.55,
+     "annual_return": 28.73,
+     "max_drawdown": -13.84,
+     "sharpe": 1.42,
+     "win_rate": 56.5,
+     "profit_loss": 1.17,
+     "trade_count": 223,
+     "avg_hold_days": 18.6,
+     "avg_pnl_pct": 1.75
+    },
+    "2026": {
+     "total_return": -15.88,
+     "annual_return": -19.2,
+     "max_drawdown": -24.49,
+     "sharpe": -0.93,
+     "win_rate": 38.81,
+     "profit_loss": 1.29,
+     "trade_count": 201,
+     "avg_hold_days": 16.4,
+     "avg_pnl_pct": -0.9
+    }
+   },
+   "turnover": {
+    "single_side": 60.3795,
+    "double_side": 120.8652,
+    "buy_amount": 5786160.0,
+    "sell_amount": 5796337.0,
+    "avg_equity": 95829.86,
+    "buy_trades": 955,
+    "sell_trades": 955,
+    "annual": {
+     "2022": {
+      "single_side": 5.1072,
+      "double_side": 9.3756,
+      "buy_amount": 490612.0,
+      "sell_amount": 410025.0,
+      "avg_equity": 96062.18,
+      "buy_trades": 79,
+      "sell_trades": 67
+     },
+     "2023": {
+      "single_side": 13.9135,
+      "double_side": 27.8564,
+      "buy_amount": 1325340.0,
+      "sell_amount": 1328139.0,
+      "avg_equity": 95255.68,
+      "buy_trades": 221,
+      "sell_trades": 221
+     },
+     "2024": {
+      "single_side": 14.8076,
+      "double_side": 29.6975,
+      "buy_amount": 1301163.0,
+      "sell_amount": 1308395.0,
+      "avg_equity": 87871.19,
+      "buy_trades": 243,
+      "sell_trades": 243
+     },
+     "2025": {
+      "single_side": 13.8429,
+      "double_side": 28.066,
+      "buy_amount": 1252898.0,
+      "sell_amount": 1287298.0,
+      "avg_equity": 90508.07,
+      "buy_trades": 220,
+      "sell_trades": 223
+     },
+     "2026": {
+      "single_side": 12.547,
+      "double_side": 25.5045,
+      "buy_amount": 1416147.0,
+      "sell_amount": 1462480.0,
+      "avg_equity": 112867.25,
+      "buy_trades": 192,
+      "sell_trades": 201
+     }
+    }
+   },
+   "benchmark_return": 37.11,
+   "elapsed_sec": 64.5
+  }
+ ],
+ "failed": 0
+}

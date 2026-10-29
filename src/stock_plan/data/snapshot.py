@@ -22,6 +22,7 @@ Revision History:
     2026-09-04  preserve shared strategy payloads with market snapshots
     2026-09-04  reuse local snapshot branch for repeated publications
     2026-10-28  manual restore shares Release-first base list; reject stale manifests
+    2026-10-28  (snapshot v2) ship classify/market/universe/announcements with bars
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -51,6 +53,16 @@ DEFAULT_REPO = "Cwywwy/Text-stock"
 # GitHub raw 分卷单文件硬限制 100MB，取 90MB 留余量
 PART_SIZE = 90 * 1024 * 1024
 PART_TMPL = "bars.zip.part{:02d}"
+# Release 资产不能以 .zip 结尾（会被当成可执行包拒收），发布时会改名为
+# `bars-<时间戳>.partNN`；因此校验必须同时接受两种分卷名。
+PART_NAME_RE = re.compile(r"^bars(?:\.zip|-[0-9]{8,20})\.part(\d{2,})$")
+# 快照格式：1=只有 bars；2=行情 + 分类/情绪/行业/基础表/公告库。
+# 版本 2 让「从没点过增量更新」的访问者也能直接看到所有页面，而不是只有 K 线。
+SNAPSHOT_FORMAT = 2
+SNAPSHOT_EXTRA_DIRS = ("classify", "market", "universe")
+SNAPSHOT_EXTRA_FILES = ("stock_basic.parquet", "trade_calendar.csv", "announcements.db")
+# 展开快照时的暂存目录（与目标同卷，便于原子 rename）
+STAGING_DIRNAME = ".snapshot_staging"
 # 本地 bars 少于此数视为"无数据"，触发恢复
 MIN_BARS_READY = 100
 # 手动恢复可接受的快照最大年龄（天）：超过即拒绝，避免旧快照静默覆盖本地数据。
@@ -115,22 +127,56 @@ def cloud_secrets_env() -> None:
 
 # ---------- 打包与清单（纯函数，便于测试） ----------
 
-def build_snapshot(bars_dir: Path, out_dir: Path, part_size: int = PART_SIZE) -> dict:
-    """打包 bars 目录为单 zip 并二进制分卷，返回 manifest dict。
+def _extra_paths(processed_dir: Path) -> dict[str, Path]:
+    """快照要携带的非行情数据（分类/情绪/行业/基础表/公告库），按存在性给出。"""
+    found: dict[str, Path] = {}
+    for name in SNAPSHOT_EXTRA_DIRS:
+        path = processed_dir / name
+        if path.is_dir():
+            found[name] = path
+    for name in SNAPSHOT_EXTRA_FILES:
+        path = processed_dir / name
+        if path.is_file():
+            found[name] = path
+    return found
 
-    manifest.parts 每项含文件名/字节数/sha256；zip_sha256 为整包校验值。
+
+def _count_files(path: Path) -> int:
+    return 1 if path.is_file() else len([p for p in path.rglob("*") if p.is_file()])
+
+
+def build_snapshot(bars_dir: Path, out_dir: Path, part_size: int = PART_SIZE,
+                   extra_root: Path | None = None) -> dict:
+    """打包 bars（+ 分类/情绪/行业/公告）为单 zip 并二进制分卷，返回 manifest dict。
+
+    zip 内布局：`bars/*.parquet` 与 `classify/**`、`market/**`、`universe/**`、
+    `stock_basic.parquet` 等；manifest.parts 每项含文件名/字节数/sha256，
+    zip_sha256 为整包校验值，extras 记录各分组文件数。
+
+    extra_root 默认取 bars_dir 的父目录（即 data/processed）。
     """
     out_dir.mkdir(parents=True, exist_ok=True)
-    n_files = len(list(bars_dir.glob("*.parquet")))
-    if n_files == 0:
+    bar_files = sorted(bars_dir.glob("*.parquet"))
+    if not bar_files:
         raise ValueError(f"{bars_dir} 下没有 parquet 文件，无法打包快照")
+    extras = _extra_paths(extra_root or bars_dir.parent)
 
     zip_path = out_dir / "bars.zip"
     if zip_path.exists():
         zip_path.unlink()
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED, allowZip64=True) as zf:
-        for pq in sorted(bars_dir.glob("*.parquet")):
-            zf.write(pq, pq.name)
+        for pq in bar_files:
+            zf.write(pq, f"bars/{pq.name}")
+        extra_counts: dict[str, int] = {}
+        for name, path in extras.items():
+            if path.is_file():
+                zf.write(path, name)
+                extra_counts[name] = 1
+                continue
+            files = sorted(p for p in path.rglob("*") if p.is_file())
+            for item in files:
+                zf.write(item, f"{name}/{item.relative_to(path).as_posix()}")
+            extra_counts[name] = len(files)
 
     parts: list[dict] = []
     with zip_path.open("rb") as f:
@@ -146,7 +192,9 @@ def build_snapshot(bars_dir: Path, out_dir: Path, part_size: int = PART_SIZE) ->
 
     manifest = {
         "created_at": stamp_cn(),
-        "bars_count": n_files,
+        "format": SNAPSHOT_FORMAT,
+        "bars_count": len(bar_files),
+        "extras": extra_counts,
         "zip_bytes": zip_path.stat().st_size,
         "zip_sha256": _sha256_file(zip_path),
         "parts": parts,
@@ -167,12 +215,27 @@ def validate_manifest(manifest: dict) -> list[str]:
     if not isinstance(parts, list) or not parts:
         problems.append("parts 为空或不是列表")
     else:
+        seen: set[str] = set()
         for i, p in enumerate(parts):
+            if not isinstance(p, dict):
+                problems.append(f"parts[{i}] 不是对象")
+                continue
             for k in ("file", "bytes", "sha256"):
                 if k not in p:
                     problems.append(f"parts[{i}] 缺少 {k}")
-            if p.get("file") != part_filename(i):
-                problems.append(f"parts[{i}].file 应为 {part_filename(i)}，实际 {p.get('file')}")
+            name = p.get("file")
+            match = PART_NAME_RE.match(name) if isinstance(name, str) else None
+            if not match:
+                problems.append(f"parts[{i}].file 分卷名不合法：{name}")
+            elif int(match.group(1)) != i:
+                problems.append(f"parts[{i}].file 序号应为 {i:02d}，实际 {name}")
+            if isinstance(name, str):
+                if name in seen:
+                    problems.append(f"parts[{i}].file 重名：{name}")
+                seen.add(name)
+    extras = manifest.get("extras")
+    if extras is not None and not isinstance(extras, dict):
+        problems.append("extras 不是对象")
     return problems
 
 
@@ -550,14 +613,95 @@ def _download(url: str, dest: Path, timeout: int = 120) -> None:
             f.write(block)
 
 
+def _remove_path(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+    elif path.exists():
+        path.unlink()
+
+
+def _replace_with(src: Path, target: Path, moved: list[tuple[Path, Path | None]]) -> int:
+    """把暂存区里的 src 原子替换到 target；旧内容改名留作回滚。返回文件数。"""
+    backup = target.with_name(target.name + ".snapshot-old")
+    _remove_path(backup)
+    had_old = target.exists()
+    if had_old:
+        target.rename(backup)
+    moved.append((target, backup if had_old else None))
+    shutil.move(str(src), str(target))
+    return _count_files(target)
+
+
+def _rollback(moved: list[tuple[Path, Path | None]]) -> None:
+    for target, backup in reversed(moved):
+        try:
+            _remove_path(target)
+            if backup is not None and backup.exists():
+                backup.rename(target)
+        except OSError:
+            pass
+
+
+def _verify_counts(counts: dict[str, int], expect: dict | None) -> None:
+    for name, want in (expect or {}).items():
+        got = int(counts.get(name, 0))
+        if got < int(want):
+            raise ValueError(f"{name} 解压后文件数 {got} 少于清单 {want}")
+
+
+def _extract_snapshot(
+    zip_path: Path,
+    *,
+    bars_dir: Path,
+    processed_dir: Path,
+    restore_extras: bool = True,
+    expect: dict | None = None,
+) -> dict:
+    """展开快照 zip 到目标目录（行情必换，其余数据可选），返回各类文件数。
+
+    同时兼容两种布局：v2 的 `bars/` 子目录，和旧快照的平铺 parquet。
+    先解压到同卷暂存目录，再逐个 rename 覆盖；任一步失败整体回滚，
+    因此校验不过也不会留下"半新半旧"的数据。
+    """
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    staging = processed_dir / STAGING_DIRNAME
+    _remove_path(staging)
+    staging.mkdir(parents=True, exist_ok=True)
+    moved: list[tuple[Path, Path | None]] = []
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(staging)
+        layout_v2 = (staging / "bars").is_dir()
+        bars_src = staging / "bars" if layout_v2 else staging
+        counts: dict[str, int] = {"bars_count": _replace_with(bars_src, bars_dir, moved)}
+        if layout_v2 and restore_extras:
+            for name in (*SNAPSHOT_EXTRA_DIRS, *SNAPSHOT_EXTRA_FILES):
+                if (staging / name).exists():
+                    counts[name] = _replace_with(staging / name, processed_dir / name, moved)
+        _verify_counts(counts, expect)
+    except Exception:
+        _rollback(moved)
+        raise
+    else:
+        for _, backup in moved:
+            if backup is not None:
+                _remove_path(backup)
+    finally:
+        _remove_path(staging)
+    return counts
+
+
 def restore_from_url(base_url: str, bars_dir: Path, tmp_dir: Path,
                      progress=None, part_workers: int = 4,
-                     max_age_days: int | None = None) -> dict:
-    """从快照基地址下载分卷 → 校验 → 解压到 bars_dir。返回恢复统计。
+                     max_age_days: int | None = None,
+                     processed_dir: Path | None = None,
+                     restore_extras: bool = True) -> dict:
+    """从快照基地址下载分卷 → 校验 → 展开到本地数据目录。返回恢复统计。
 
     progress(done_bytes, total_bytes) 可选；任一分卷校验失败即整体失败，
     不污染既有数据（先落临时目录，成功后再原子替换）。
     max_age_days 非空时校验 manifest.created_at，超期直接抛错（2026-10-28 新增）。
+    快照 v2 会连同分类/情绪/行业/公告一起覆盖本地（restore_extras 可关）。
     """
     import urllib.request
 
@@ -605,30 +749,22 @@ def restore_from_url(base_url: str, bars_dir: Path, tmp_dir: Path,
     if _sha256_file(zip_tmp) != manifest["zip_sha256"]:
         raise ValueError("整包 sha256 校验失败")
 
-    # 原子替换：旧数据挪走 → 解压 → 清理
-    bars_dir.parent.mkdir(parents=True, exist_ok=True)
-    backup = bars_dir.with_name("bars_backup_old")
-    if backup.exists():
-        shutil.rmtree(backup)
-    if bars_dir.exists():
-        bars_dir.rename(backup)
+    # 展开：先解压到暂存区 → 逐个原子替换 → 校验文件数（失败回滚）
+    processed = processed_dir or bars_dir.parent
+    expect = {"bars_count": manifest["bars_count"], **(manifest.get("extras") or {})}
+    counts: dict[str, int] = {}
     try:
-        with zipfile.ZipFile(zip_tmp) as zf:
-            zf.extractall(bars_dir)
-        n = len(list(bars_dir.glob("*.parquet")))
-        if n < manifest["bars_count"]:
-            raise ValueError(f"解压后文件数 {n} 少于清单 {manifest['bars_count']}")
-    except Exception:
-        if backup.exists() and not bars_dir.exists():
-            backup.rename(bars_dir)
-        raise
+        counts = _extract_snapshot(
+            zip_tmp, bars_dir=bars_dir, processed_dir=processed,
+            restore_extras=restore_extras, expect=expect,
+        )
     finally:
-        if backup.exists():
-            shutil.rmtree(backup, ignore_errors=True)
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    return {"bars_count": manifest["bars_count"], "zip_bytes": manifest["zip_bytes"],
-            "created_at": manifest["created_at"], "restored_at": stamp_cn()}
+    stats = {"bars_count": manifest["bars_count"], "zip_bytes": manifest["zip_bytes"],
+             "created_at": manifest["created_at"], "restored_at": stamp_cn()}
+    stats.update({k: v for k, v in counts.items() if k != "bars_count"})
+    return stats
 
 
 def restore_with_fallback(
@@ -638,6 +774,8 @@ def restore_with_fallback(
     progress=None,
     part_workers: int = 4,
     max_age_days: int | None = None,
+    processed_dir: Path | None = None,
+    restore_extras: bool = True,
 ) -> dict:
     """依次尝试多个快照基地址，返回第一个成功的结果。
 
@@ -649,10 +787,29 @@ def restore_with_fallback(
     for base in bases:
         try:
             return restore_from_url(base, bars_dir, tmp_dir, progress=progress,
-                                    part_workers=part_workers, max_age_days=max_age_days)
+                                    part_workers=part_workers, max_age_days=max_age_days,
+                                    processed_dir=processed_dir, restore_extras=restore_extras)
         except Exception as e:  # 单个地址失败就换下一个
             errors.append(f"{base} → {str(e)[:140]}")
     raise RuntimeError("所有快照地址均恢复失败：" + " ｜ ".join(errors))
+
+
+def missing_extras(processed_dir: Path | None = None) -> list[str]:
+    """列出本地缺失的非行情数据分组（分类/情绪/行业/基础表/公告库）。
+
+    快照 v2 会一起带上这些；返回非空说明本地是旧版快照，或只跑过增量更新，
+    页面上应提示「同步一次完整快照即可补齐」。
+    """
+    root = processed_dir or BARS_DIR.parent
+    missing: list[str] = []
+    for name in SNAPSHOT_EXTRA_DIRS:
+        path = root / name
+        if not path.is_dir() or not any(p.is_file() for p in path.rglob("*")):
+            missing.append(name)
+    for name in SNAPSHOT_EXTRA_FILES:
+        if not (root / name).is_file():
+            missing.append(name)
+    return missing
 
 
 def bootstrap_if_needed(ui: bool = False) -> dict | None:
@@ -662,7 +819,11 @@ def bootstrap_if_needed(ui: bool = False) -> dict | None:
     返回恢复统计；数据已存在或快照不可用时返回 None。
     """
     cloud_secrets_env()
-    if BARS_DIR.exists() and len(list(BARS_DIR.glob("*.parquet"))) >= MIN_BARS_READY:
+    ready = BARS_DIR.exists() and len(list(BARS_DIR.glob("*.parquet"))) >= MIN_BARS_READY
+    # 云端旧版快照（只含行情）恢复过之后，分类/情绪/公告仍缺；补齐它们也走同一次
+    # 快照下载，否则今日/新闻等页面会一直是空的，而访问者并不知道该点哪个按钮。
+    need_extras = is_cloud() and bool(missing_extras())
+    if ready and not need_extras:
         return None
 
     # 首选当前后端（默认 Release），失败再回退到另一种地址
@@ -676,15 +837,15 @@ def bootstrap_if_needed(ui: bool = False) -> dict | None:
         pct = min(done / total, 1.0) if total else 0.0
         prog = st.session_state.get("_snapshot_progress")
         if prog is not None:
-            prog.progress(pct, text=f"⬇️ 下载行情数据快照 {done / 1048576:.0f}/{total / 1048576:.0f} MB")
+            prog.progress(pct, text=f"⬇️ 下载数据快照 {done / 1048576:.0f}/{total / 1048576:.0f} MB")
 
     tmp_dir = PROJECT_ROOT / "data" / "snapshot_tmp"
     if ui:
         import streamlit as st
 
         try:
-            with st.status("⬇️ 正在从云端快照恢复行情数据（首次访问约 1~3 分钟）…", expanded=True) as status:
-                st.write("检测到本地无缓存数据，正在自动恢复，完成后页面自动可用。")
+            with st.status("⬇️ 正在从云端快照恢复数据（首次访问约 1~3 分钟）…", expanded=True) as status:
+                st.write("检测到本地无缓存数据，正在自动恢复行情 / 分类 / 情绪 / 公告，完成后页面自动可用。")
                 st.session_state["_snapshot_progress"] = st.progress(0.0)
                 stats = restore_with_fallback(bases, BARS_DIR, tmp_dir, progress=_report)
                 status.update(label="✅ 数据快照恢复完成", state="complete", expanded=False)

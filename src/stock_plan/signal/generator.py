@@ -19,16 +19,22 @@ Revision History:
     2026-09-04  load only 180-day window to avoid cloud OOM
     2026-10-28  (phase 1) add generate_signal_report for explainability
     2026-10-28  (phase 2) share one scoring pass between signals and report
+    2026-10-29  (phase 11) report carries degraded rules (missing columns no longer silent)
+    2026-10-29  (phase 14) report scoring passes enabled=True to reuse penalty collection switch (values unchanged)
+    2026-10-29  (phase 15b) accept prepared factor tables: skip market-map load and per-code factor recompute
 """
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from stock_plan.data.storage import Storage
 from stock_plan.factors.filter import FilterOutcome, filter_universe_explained
+from stock_plan.strategy.archetypes import strategy_degraded
 from stock_plan.signal.report import (
     CandidateFacts,
     EntryGap,
@@ -40,6 +46,9 @@ from stock_plan.signal.report import (
 )
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.builtin import TrendFollowingStrategy, build_factor_rows
+
+if TYPE_CHECKING:
+    from stock_plan.backtest.engine import PreparedBacktest
 
 
 @dataclass
@@ -269,23 +278,34 @@ def _collect_ranked(
     exclude_st: bool,
     industries: list[str] | None,
     industry_level: str,
+    prepared: PreparedBacktest | None = None,
 ) -> _RankedFacts:
-    """加载数据、硬过滤、算因子、打分排名 —— 报告与信号共用的一次性开销。"""
+    """加载数据、硬过滤、算因子、打分排名 —— 报告与信号共用的一次性开销。
+
+    prepared 非空时复用其只读行情/财务快照与因子表，跳过 load_market_maps 与
+    逐 code 重算因子表（Phase 15b）；调用方负责保证快照与过滤口径一致。
+    """
     storage = storage or Storage()
     strategy_name = str(getattr(strategy, "name", type(strategy).__name__))
 
     # 1. 加载数据（窗口与 generate_signals 一致：最近 180 个日历日）
+    #    Phase 15b：传 prepared 时直接用它的快照，不再重复加载行情。
     from datetime import timedelta
 
     from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
 
-    end = date.today()
-    start = end - timedelta(days=180)
-    stock_list, bars_map, fund_map = storage.load_market_maps(
-        start=start, end=end,
-        boards=boards, exclude_st=exclude_st,
-        max_codes=CLOUD_MAX_CODES if is_cloud() else None,
-    )
+    if prepared is not None:
+        stock_list = prepared.stock_list
+        bars_map = prepared.bars_map
+        fund_map = prepared.fund_map
+    else:
+        end = date.today()
+        start = end - timedelta(days=180)
+        stock_list, bars_map, fund_map = storage.load_market_maps(
+            start=start, end=end,
+            boards=boards, exclude_st=exclude_st,
+            max_codes=CLOUD_MAX_CODES if is_cloud() else None,
+        )
 
     warnings: list[str] = [
         "硬过滤使用的 ST 判据是「今天」的 ST 状态，不是历史时点。",
@@ -327,18 +347,43 @@ def _collect_ranked(
             warnings.append("行业筛选后没有候选股。")
 
     # 3. 构建因子行 + 打分
-    factor_rows = build_factor_rows(codes, bars_map, fund_map) if codes else pd.DataFrame()
+    factor_rows = (
+        build_factor_rows(codes, bars_map, fund_map, prepared=prepared) if codes else pd.DataFrame()
+    )
     penalties_map: dict[str, list[Penalty]] = {}
     if factor_rows.empty:
         warnings.append("没有股票能算出因子（日线不足或指标计算失败）。")
         ranked = factor_rows
     else:
+        # 报告需要逐条扣分明细：内置策略显式 enabled=True（引擎打分默认关，省掉长表）。
+        # 先看签名再决定是否传关键字，兼容签名里没有 enabled 的第三方策略；
+        # 方法体内部抛 AttributeError 仍按旧语义降级为「只打分」，但 TypeError 等真实
+        # 错误照常抛出（不能吞掉策略实现里的 bug）。
         try:
-            scores, penalties = strategy.score_with_penalties(factor_rows)
-            penalties_map = _penalty_map(penalties)
+            scorer = strategy.score_with_penalties
         except AttributeError:
+            scorer = None
+        if scorer is None:
             warnings.append("该策略未提供扣分明细（score_with_penalties），报告不含扣分项。")
             scores = strategy.score(factor_rows)
+        else:
+            try:
+                supports_enabled = "enabled" in inspect.signature(scorer).parameters
+            except (TypeError, ValueError):
+                supports_enabled = False
+            try:
+                if supports_enabled:
+                    scores, penalties = scorer(factor_rows, enabled=True)
+                else:
+                    scores, penalties = scorer(factor_rows)
+            except AttributeError:
+                # 旧式策略常用「方法体内抛 AttributeError」表示未实现扣分明细
+                warnings.append(
+                    "该策略未提供扣分明细（score_with_penalties），报告不含扣分项。"
+                )
+                scores = strategy.score(factor_rows)
+            else:
+                penalties_map = _penalty_map(penalties)
         ranked = _rank_factor_rows(factor_rows.assign(score=scores))
 
     # 4. 数据截止日：取实际参与打分的股票里最后一根日线（如实反映"数据到哪天"）
@@ -384,14 +429,17 @@ def _build_report(
     top_n: int,
     runners_up: int,
     rejected_per_reason: int,
+    strategy: Strategy | None = None,
 ) -> SignalReport:
     """把共用中间结果装配成 SignalReport。"""
     warnings = list(facts.warnings)
+    degraded = strategy_degraded(strategy) if strategy is not None else ()
     if facts.aborted:
         return SignalReport(
             generated_at=datetime.now(),
             universe=facts.universe,
             warnings=tuple(warnings),
+            degraded=degraded,
         )
 
     # 入选者 + 紧随者（按名次连续切片，不重复计算）
@@ -440,6 +488,7 @@ def _build_report(
         rejected_samples=samples,
         entry_gap=entry_gap,
         warnings=tuple(warnings),
+        degraded=degraded,
     )
 
 
@@ -453,6 +502,7 @@ def generate_signal_report(
     exclude_st: bool = True,
     industries: list[str] | None = None,
     industry_level: str = "sw_l1",
+    prepared: PreparedBacktest | None = None,
 ) -> SignalReport:
     """生成信号解释报告：入选者为什么入选、紧随者差在哪、硬过滤淘汰了谁。
 
@@ -470,6 +520,8 @@ def generate_signal_report(
         exclude_st:          是否剔除 ST/*ST（默认 True）。
         industries:          保留的行业名列表；None/空 = 不过滤。
         industry_level:      行业名匹配级别，默认申万一级。
+        prepared:            可选只读准备层（Phase 15b）：传入时跳过行情加载与逐 code
+                             因子表重算，报告数值与不传时逐值一致。
 
     返回：
         SignalReport（`to_dict()` 给页面/缓存，`to_facts_text()` 给大模型）。
@@ -483,12 +535,14 @@ def generate_signal_report(
         exclude_st=exclude_st,
         industries=industries,
         industry_level=industry_level,
+        prepared=prepared,
     )
     return _build_report(
         facts,
         top_n=top_n,
         runners_up=runners_up,
         rejected_per_reason=rejected_per_reason,
+        strategy=strategy,
     )
 
 
@@ -532,10 +586,12 @@ def generate_signals_with_report(
     exclude_st: bool = True,
     industries: list[str] | None = None,
     industry_level: str = "sw_l1",
+    prepared: PreparedBacktest | None = None,
 ) -> tuple[list[Signal], SignalReport]:
     """一次打分同时产出「今日信号」与「信号解释报告」。
 
-    参数与 `generate_signal_report()` 相同。之所以单独提供这个入口、而不是让页面
+    参数与 `generate_signal_report()` 相同（含 prepared：跳过行情加载与逐 code
+    因子表重算，Phase 15b）。之所以单独提供这个入口、而不是让页面
     分别调 `generate_signals()` + `generate_signal_report()`：两次调用会把
     「加载 5576 只 + 算 4130 只指标」这 40 多秒重复一遍，冷启动从 46 秒变 92 秒。
     这里只跑一次，信号与报告必然同源同名次（见同一批 `ranked` 行）。
@@ -551,6 +607,7 @@ def generate_signals_with_report(
         exclude_st=exclude_st,
         industries=industries,
         industry_level=industry_level,
+        prepared=prepared,
     )
     signals = _signals_from_ranked(
         facts.ranked,
@@ -563,6 +620,7 @@ def generate_signals_with_report(
         top_n=top_n,
         runners_up=runners_up,
         rejected_per_reason=rejected_per_reason,
+        strategy=strategy,
     )
     return signals, report
 

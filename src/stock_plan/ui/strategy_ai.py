@@ -11,6 +11,7 @@
 
 Revision History:
     2026-10-28  新建：从 ui/views/llm.py 的「策略生成」tab 抽出，改为内嵌区块
+    2026-10-29  (phase 11) 增加「先选类型」下拉，AI 只在类型白名单内发挥，越界/缺字段显式提示
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ import streamlit as st
 from stock_plan.llm.analyzer import generate_strategy_config
 from stock_plan.llm.client import get_client
 from stock_plan.strategy import store
+from stock_plan.strategy.archetypes import ARCHETYPES, get_archetype
 from stock_plan.strategy.codegen import (
     PARAM_SPEC,
     RULE_SPEC,
@@ -69,12 +71,15 @@ def render_ai_strategy_section(
                         "涨 10% 止盈，跌 5% 止损，最多持有 20 天；只做流动性好的主板票。",
             height=100,
         )
+        archetype_key = _pick_archetype(key_prefix)
         if st.button("✨ 生成参数建议", type="primary", key=f"{key_prefix}_gen"):
             if not desc.strip():
                 st.warning("请先描述你的投资偏好")
             else:
                 with st.spinner("正在生成策略建议…"):
-                    st.session_state[f"{key_prefix}_result"] = generate_strategy_config(desc)
+                    st.session_state[f"{key_prefix}_result"] = generate_strategy_config(
+                        desc, archetype_key=archetype_key
+                    )
 
         result = st.session_state.get(f"{key_prefix}_result")
         if not result:
@@ -92,27 +97,59 @@ def render_ai_strategy_section(
         _render_result(result, key_prefix=key_prefix, apply_config=apply_config)
 
 
+def _pick_archetype(key_prefix: str) -> str:
+    """第一段：先选策略类型（决定 AI 的字段白名单与类型默认值）。"""
+    keys = list(ARCHETYPES)
+    archetype_key = st.selectbox(
+        "策略类型（先选类型，AI 只在该类型字段内发挥）",
+        options=keys,
+        format_func=lambda key: ARCHETYPES[key].label,
+        key=f"{key_prefix}_archetype",
+    )
+    archetype = ARCHETYPES[archetype_key]
+    st.caption(f"「{archetype.label}」：{archetype.tagline}")
+    if not archetype.is_ready:
+        st.warning(f"该类型数据不足，本轮仅占位、不可回测：{archetype.note}")
+    return archetype_key
+
+
 def _render_result(
     result: dict,
     key_prefix: str,
     apply_config: Callable[[dict], None] | None,
 ) -> None:
     config = result["config"]
+    archetype_key = str(result.get("archetype") or config.get("archetype") or "")
+    archetype = get_archetype(archetype_key) if archetype_key else None
     mode_txt = "真实 LLM" if result.get("mode") == "llm" else "离线规则模式"
+    type_txt = f"｜类型：{archetype.label}" if archetype else ""
     st.markdown("---")
     st.markdown(
-        f"**📋 建议：{config.get('name', '未命名')}**（{mode_txt}）"
+        f"**📋 建议：{config.get('name', '未命名')}**（{mode_txt}{type_txt}）"
     )
     if result.get("reason"):
         st.caption(f"AI 取值逻辑：{result['reason']}")
 
+    degraded = result.get("degraded") or []
+    if degraded:
+        with st.expander("⚠️ 因缺字段被禁用的规则（今天没算，不是静默跳过）", expanded=True):
+            for item in degraded:
+                message = item.get("message") if isinstance(item, dict) else str(item)
+                st.markdown(f"- {message}")
+
+    def _in_scope(section: str, key: str) -> bool:
+        return archetype is None or archetype.allows(section, key)
+
     rows = []
     for key, (cn, _desc, default, _t) in WEIGHT_SPEC.items():
-        rows.append(("权重", key, cn, default, config["weights"].get(key, default)))
+        if _in_scope("weights", key):
+            rows.append(("权重", key, cn, default, config["weights"].get(key, default)))
     for key, (cn, _desc, default, _t) in RULE_SPEC.items():
-        rows.append(("规则", key, cn, default, config["rules"].get(key, default)))
+        if _in_scope("rules", key):
+            rows.append(("规则", key, cn, default, config["rules"].get(key, default)))
     for key, (cn, _desc, default, _t) in PARAM_SPEC.items():
-        rows.append(("买卖价参数", key, cn, default, config["params"].get(key, default)))
+        if _in_scope("params", key):
+            rows.append(("买卖价参数", key, cn, default, config["params"].get(key, default)))
     table = [
         {
             "类别": cat,
@@ -133,7 +170,12 @@ def _render_result(
                 st.markdown(f"- **{u.get('name', '未知')}**：{u.get('description', '')}")
                 st.markdown(f"  - 💡 建议：{u.get('suggestion', '')}")
             if unknown:
-                st.markdown(f"- **未识别参数**（已忽略）：{', '.join(unknown)}")
+                st.markdown("- **未识别或越界的字段**（已拒绝，未写入配置）：")
+                st.markdown("\n".join(f"  - {item}" for item in unknown))
+
+    if archetype is not None and not archetype.is_ready:
+        st.info("该类型本轮不可用（数据不足），因此不提供「套用」与「保存」按钮。")
+        return
 
     if apply_config is not None:
         if st.button("⬇️ 把建议值套用到下面的表单", type="primary", key=f"{key_prefix}_apply"):

@@ -1,0 +1,9 @@
+﻿[
+  {"label": "full/趋势跟随策略/phase13", "strategy": "趋势跟随策略", "params": {}, "config": {}, "start": "2021-12-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "full/动量策略/phase13", "strategy": "动量策略", "params": {}, "config": {}, "start": "2021-12-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "full/均值回归策略/phase13", "strategy": "均值回归策略", "params": {}, "config": {}, "start": "2021-12-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "full/突破策略/phase13", "strategy": "突破策略", "params": {}, "config": {}, "start": "2021-12-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "full/价值投资策略/phase13", "strategy": "价值投资策略", "params": {}, "config": {}, "start": "2021-12-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "full/段永平-高质量策略/phase13", "strategy": "段永平-高质量策略", "params": {}, "config": {}, "start": "2021-12-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "full/李录-长期确定性策略/phase13", "strategy": "李录-长期确定性策略", "params": {}, "config": {}, "start": "2021-12-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800}
+]

@@ -249,8 +249,17 @@ def check_snapshot_roundtrip() -> None:
         with zipfile.ZipFile(merged) as zf:
             names = zf.namelist()
             bad = zf.testzip()
-        check("zip 可读且无损坏", bad is None and len(names) == manifest["bars_count"],
-              f"{len(names)} 条目")
+        bar_entries = [n for n in names if n.startswith("bars/")]
+        check("zip 可读且无损坏", bad is None and len(bar_entries) == manifest["bars_count"],
+              f"{len(bar_entries)} 只行情 / {len(names)} 条目")
+
+        extras = manifest.get("extras") or {}
+        missing = [
+            name for name, want in extras.items()
+            if sum(1 for n in names if n == name or n.startswith(name + "/")) < int(want)
+        ]
+        check("快照带上分类/情绪/行业/公告等附加数据", not missing,
+              "、".join(missing) or f"{len(extras)} 组")
     except Exception as e:  # noqa: BLE001
         check("快照往返", False, f"{type(e).__name__}: {str(e)[:150]}")
     finally:
