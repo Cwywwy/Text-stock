@@ -9,22 +9,23 @@ Revision History:
     2026-09-04  show cloud sample-universe disclosure
     2026-10-28  (phase 2) charts go through chart_style factories with benchmark line
     2026-10-28  (branch4 phase 1) excess column, best-per-column tint and one-line verdict
+    2026-10-29  (phase 16) share prepared cache, show progress and cache-hit caption, add clear-cache button
 """
 from __future__ import annotations
 
 import json
+import time
 from datetime import date, timedelta
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from stock_plan.backtest.engine import BacktestConfig, run_backtest
-from stock_plan.backtest.metrics import calc_metrics
-from stock_plan.backtest.walkforward import walk_forward
+from stock_plan.backtest.engine import BacktestConfig
 from stock_plan.data.storage import Storage
 from stock_plan.strategy import store
 from stock_plan.strategy.registry import STRATEGIES
+from stock_plan.ui import backtest_cache as btc
 from stock_plan.ui import chart_style as cs
 from stock_plan.ui.widgets import (
     BENCHMARK_LABEL,
@@ -64,86 +65,138 @@ def _oos_fig(oos_equity: pd.Series) -> go.Figure | None:
     return multi_line_fig({"样本外资产": oos_equity}, y_title="总资产（元）", money=True)
 
 
-def _load_and_filter(start: str, end: str, boards: list[str] | None, exclude_st: bool):
-    """加载数据并应用板块筛选 + 剔除 ST（窗口加载，控制内存占用）。"""
-    from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
-
-    return Storage().load_market_maps(
-        start=start, end=end, lead_days=180,
-        boards=boards, exclude_st=exclude_st,
-        max_codes=CLOUD_MAX_CODES if is_cloud() else None,
-    )
+_COMPARE_LEAD_DAYS = 180
 
 
-@st.cache_data(ttl=600, show_spinner="正在运行策略对比…")
-def _cached_compare(
-    start: str, end: str, initial_cash: float,
-    rebalance_freq: str, market_timing: bool, max_hold_days: int,
-    boards_json: str = "[]", exclude_st: bool = True,
-):
-    """多策略对比（带缓存）。"""
-    import json
+def _universe_limit() -> int | None:
+    """云端限制股票数量（控内存），本地返回 None 表示全市场。"""
+    return btc.universe_limit()
 
-    boards = json.loads(boards_json)
-    stock_list, bars_map, fund_map = _load_and_filter(start, end, boards, exclude_st)
 
-    factories = {name: (lambda cls=cls: cls()) for name, cls in STRATEGIES.items()}
-    for n in store.list_strategies():
+def _strategy_sig(label: str) -> str:
+    """已保存策略的配置指纹：配置在缓存函数体内按名从 DB 读，必须显式进缓存键。
+
+    内置策略返回空串；「（自存）」后缀的显示名要按已保存策略处理（同一内置名
+    可能同时存在内置版与自存版，两者的配置指纹必须不同）。
+    """
+    raw = store.strip_display_name(label)
+    if raw in STRATEGIES and label == raw:
+        return ""
+    record = store.load_strategy(raw) or {}
+    return json.dumps(record.get("config") or {}, ensure_ascii=False, sort_keys=True)
+
+
+def _comparison_specs() -> dict[str, tuple[str, str]]:
+    """对比对象：显示名 → (策略来源, 缓存键里的策略名)。保留旧实现的内置在前顺序。"""
+    specs: dict[str, tuple[str, str]] = {name: ("registry", name) for name in STRATEGIES}
+    for name in store.list_strategies():
         # 已保存策略（LLM 生成/拼装页保存）一并纳入对比。重名时用「（自存）」
-        # 后缀区分，否则用户自存的同名策略会被这一行静默丢掉、只剩内置版本。
-        label = store.display_name(n)
-        factories[label] = lambda label=label: store.resolve_strategy(label)
+        # 后缀区分，否则用户自存的同名策略会被静默丢掉、只剩内置版本。
+        label = store.display_name(name)
+        specs[label] = ("registry", label)
+    return specs
 
-    results = {}
-    for name, factory in factories.items():
-        strat = factory()
-        # 策略自带的 hold_days 优先于页面滑杆：LLM/拼装页保存时写的"持有 N 天"
-        # 是策略定义的一部分。原先一律用滑杆默认值 30，导致对比里的自存策略
-        # 与它自己的回测结果对不上（一个持 15 天、一个持 30 天）。
-        strat_hold = int((getattr(strat, "params", {}) or {}).get("hold_days") or 0)
-        config = BacktestConfig(
-            start=date.fromisoformat(start),
-            end=date.fromisoformat(end),
-            initial_cash=initial_cash,
-            rebalance_freq=rebalance_freq,
-            market_timing=market_timing,
-            max_hold_days=strat_hold or max_hold_days,
-            # 与回测页口径一致：佣金单笔下限 + 财务快照前视修正
-            fundamental_as_of=Storage().fundamentals_snapshot_date(),
+
+def _run_comparison(
+    start: str, end: str, initial_cash: float, rebalance_freq: str,
+    market_timing: bool, max_hold_days: int, boards_json: str, exclude_st: bool,
+) -> tuple[dict, str]:
+    """跑全部策略对比：共享 prepared + 逐策略结果缓存 + 进度（Phase 16）。
+
+    进度控件必须放在缓存函数外面：`st.status` / `st.progress` 是页面副作用，
+    写进 `@st.cache_data` 函数里只会被缓存吞掉、第二次命中时不再显示。所以这里
+    只做循环编排，每个策略的「构造策略 + 回测 + 指标」由 `btc.run_strategy_cached`
+    按参数缓存；同一参数第二次点击时每个策略都命中，循环本身只剩毫秒级开销。
+    """
+    specs = _comparison_specs()
+    total = len(specs)
+    max_codes = _universe_limit()
+    data_version = btc.market_data_version()
+    state = {
+        "start": start,
+        "end": end,
+        "initial_cash": initial_cash,
+        "rebalance_freq": rebalance_freq,
+        "market_timing": market_timing,
+        "max_hold_days": max_hold_days,
+        "boards_json": boards_json,
+        "exclude_st": exclude_st,
+        "max_codes": max_codes,
+    }
+    saw_before = btc.mark_cache_hit(("compare",) + btc.build_request_key(state))
+    fundamental_as_of = Storage().fundamentals_snapshot_date()
+    started = time.perf_counter()
+    results: dict[str, dict] = {}
+    status = st.status(f"正在跑 1/{total} …", expanded=True)
+    progress = st.progress(0.0, text=f"正在跑 1/{total} …")
+    try:
+        for index, (label, (kind, name)) in enumerate(specs.items(), start=1):
+            status.update(label=f"正在跑 {index}/{total}：{label}")
+            progress.progress((index - 1) / total, text=f"正在跑 {index}/{total}：{label}")
+            # 策略自带的 hold_days 优先于页面滑杆（LLM/拼装页保存的持仓天数是
+            # 策略定义的一部分，一律用滑杆默认值会让对比结果与策略自己的回测对不上）
+            hold_days = btc.strategy_hold_days(name, kind) or max_hold_days
+            config = BacktestConfig(
+                start=date.fromisoformat(start),
+                end=date.fromisoformat(end),
+                initial_cash=initial_cash,
+                rebalance_freq=rebalance_freq,
+                market_timing=market_timing,
+                max_hold_days=hold_days,
+                # 与回测页口径一致：财务快照前视修正
+                fundamental_as_of=fundamental_as_of,
+            )
+            result, metrics = btc.run_strategy_cached(
+                start, end, _COMPARE_LEAD_DAYS, boards_json, exclude_st,
+                False, max_codes, data_version,
+                name, kind, "", _strategy_sig(label),
+                json.dumps(btc.config_to_dict(config), ensure_ascii=False, sort_keys=True),
+            )
+            if result is None:
+                continue
+            results[label] = {
+                "metrics": metrics or {},
+                "equity": result.equity_curve,
+                "benchmark": result.benchmark,
+            }
+            progress.progress(index / total, text=f"已完成 {index}/{total}")
+    finally:
+        elapsed = time.perf_counter() - started
+        # 跑完折叠成一行耗时；耗时与命中状态只在收尾时给一次，不刷屏
+        status.update(
+            label=f"对比完成：{len(results)} 个策略，耗时 {elapsed:.2f}s",
+            state="complete",
+            expanded=False,
         )
-        result = run_backtest(strat, config, bars_map, fund_map, stock_list)
-        metrics = calc_metrics(result.equity_curve, result.trades)
-        results[name] = {
-            "metrics": metrics,
-            "equity": result.equity_curve,
-            "benchmark": result.benchmark,
-        }
-    return results
+        progress.empty()
+    return results, btc.cache_caption(elapsed, saw_before=saw_before)
 
 
-@st.cache_data(ttl=600, show_spinner="正在运行 Walk-Forward…")
-def _cached_walkforward(
-    strategy_name: str, start: str, end: str,
-    train_days: int, test_days: int,
-    boards_json: str = "[]", exclude_st: bool = True,
+def _run_walkforward(
+    strategy_name: str, start: str, end: str, train_days: int, test_days: int,
+    boards_json: str, exclude_st: bool,
 ):
-    """Walk-Forward 滚动验证（带缓存）。"""
-    import json
-
-    boards = json.loads(boards_json)
-    stock_list, bars_map, fund_map = _load_and_filter(start, end, boards, exclude_st)
-
-    if strategy_name in STRATEGIES:
-        factory = lambda: STRATEGIES[strategy_name]()
-    else:  # 已保存策略
-        factory = lambda: store.resolve_strategy(strategy_name)
-    result = walk_forward(
-        factory,
-        bars_map, fund_map, stock_list,
-        date.fromisoformat(start), date.fromisoformat(end),
-        train_days=train_days, test_days=test_days,
-    )
-    return result
+    """Walk-Forward 验证：复用 shared prepared，结果按参数缓存（Phase 16）。"""
+    max_codes = _universe_limit()
+    state = {
+        "start": start,
+        "end": end,
+        "boards_json": boards_json,
+        "exclude_st": exclude_st,
+        "max_codes": max_codes,
+    }
+    saw_before = btc.mark_cache_hit(("walkforward", strategy_name) + btc.build_request_key(state))
+    started = time.perf_counter()
+    with st.status(f"正在运行 Walk-Forward（{strategy_name}）…", expanded=False) as status:
+        result = btc.run_walkforward_cached(
+            start, end, _COMPARE_LEAD_DAYS, boards_json, exclude_st,
+            False, max_codes, btc.market_data_version(),
+            strategy_name, "registry", "", _strategy_sig(strategy_name),
+            int(train_days), int(test_days),
+        )
+        status.update(label="Walk-Forward 运行完成", state="complete")
+    elapsed = time.perf_counter() - started
+    return result, btc.cache_caption(elapsed, saw_before=saw_before)
 
 
 _BEST_COLUMNS = ("总收益%", "年化%", "夏普", "胜率%", "盈亏比", "超额%")
@@ -232,6 +285,7 @@ def render():
         )
     st.caption("多策略横向对比 + Walk-Forward 滚动样本外验证，避免过拟合历史。")
     page_glossary(COMPARE_GLOSSARY)
+    btc.render_clear_cache_button("cmp")
 
     # 选股范围（R5：板块筛选 + 剔除 ST）
     st.markdown("**选股范围**")
@@ -266,11 +320,15 @@ def render():
             if start >= end:
                 st.error("开始日期必须早于结束日期")
                 return
-            results = _cached_compare(
+            results, cache_note = _run_comparison(
                 start.isoformat(), end.isoformat(), float(initial_cash),
                 rebalance_freq, bool(market_timing), int(max_hold_days),
                 json.dumps(boards, ensure_ascii=False), exclude_st,
             )
+            if not results:
+                st.warning("回测无数据。请先到左侧「🔄 数据更新」页拉取数据。")
+                return
+            st.caption(cache_note)
 
             # 指标对比表 + 一句话结论
             bench_ret = _benchmark_return(results)
@@ -322,14 +380,18 @@ def render():
             if wf_start >= date.today():
                 st.error("开始日期必须早于今天")
                 return
-            wf = _cached_walkforward(
+            wf, cache_note = _run_walkforward(
                 strategy_name, wf_start.isoformat(), date.today().isoformat(),
                 int(train_days), int(test_days),
                 json.dumps(boards, ensure_ascii=False), exclude_st,
             )
+            if wf is None:
+                st.warning("回测无数据。请先到左侧「🔄 数据更新」页拉取数据。")
+                return
             if not wf.windows:
                 st.warning("区间太短，无法形成完整窗口。请把开始日期提前（建议 2 年以上）。")
                 return
+            st.caption(cache_note)
 
             st.subheader("窗口明细")
             rows = []

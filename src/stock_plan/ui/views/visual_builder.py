@@ -16,19 +16,20 @@ Revision History:
     2026-10-28  AI 一句话生成从「LLM 智能分析」页搬到本页，并支持一键套用到表单
 2026-10-28  (branch4 phase 0) 资金曲线改调共享主图工厂
 2026-10-29  (phase 11) 新增「先选类型」下拉：切类型即套用该类型默认值，事件驱动仅占位
+2026-10-29  (phase 16) share prepared cache with other pages, show cache-hit caption, add clear-cache button
 """
 from __future__ import annotations
 
 import json
+import time
 from datetime import date, timedelta
 
 import streamlit as st
 
-from stock_plan.backtest.engine import BacktestConfig, run_backtest
-from stock_plan.backtest.metrics import calc_metrics
+from stock_plan.backtest.engine import BacktestConfig
 from stock_plan.data.storage import Storage
 from stock_plan.strategy.archetypes import ARCHETYPES
-from stock_plan.strategy.custom import CustomStrategy
+from stock_plan.ui import backtest_cache as btc
 from stock_plan.ui.strategy_ai import render_ai_strategy_section
 from stock_plan.ui.widgets import backtest_hero_fig, board_filter_ui, page_glossary, render_chart
 
@@ -45,41 +46,62 @@ BUILDER_GLOSSARY = {
 
 _MA_OPTIONS = ["关闭", 5, 7, 10, 20, 30, 60]
 
+# 指标预热窗口：与回测页/对比页共用同一口径，shared prepared 才能命中同一份缓存
+_BUILDER_LEAD_DAYS = 180
 
-@st.cache_data(ttl=600, show_spinner="正在运行自定义策略回测…")
-def _cached_custom_backtest(
-    config_json: str, start: str, end: str, initial_cash: float,
-    rebalance_freq: str, market_timing: bool,
-    boards_json: str = "[]", exclude_st: bool = True,
-):
-    """自定义策略回测（带缓存）。"""
-    import json
 
-    from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
+def _run_custom_backtest(
+    config: dict, start: str, end: str, initial_cash: float,
+    rebalance_freq: str, market_timing: bool, boards: list[str], exclude_st: bool,
+) -> tuple[dict, object | None, str]:
+    """自定义策略回测：复用全站 shared prepared 与结果缓存（Phase 16）。
 
-    config = json.loads(config_json)
-    # 窗口 + 预筛选加载（指标预热 180 个日历日，云端限制股票数量）
-    boards = json.loads(boards_json)
-    stock_list, bars_map, fund_map = Storage().load_market_maps(
-        start=start, end=end, lead_days=180,
-        boards=boards, exclude_st=exclude_st,
-        max_codes=CLOUD_MAX_CODES if is_cloud() else None,
-    )
+    旧实现把「load_market_maps + 回测」整体缓存一份，与回测页/对比页各存各的；
+    现在行情与因子表由 `btc.load_shared_prepared` 进程级共享，这里只缓存结果。
 
-    strategy = CustomStrategy(config)
+    `name` 只用于展示与提交，不影响信号计算，因此从缓存口径里剔除：
+    改策略名称不会触发重算（符合「只改展示参数不重算」）。
+    返回 (metrics, result, 缓存状态文案)；无行情数据时 result 为 None。
+    """
+    strategy_cfg = {key: value for key, value in config.items() if key != "name"}
+    config_json = json.dumps(strategy_cfg, ensure_ascii=False, sort_keys=True)
+    boards_json = json.dumps(boards, ensure_ascii=False)
+    max_codes = btc.universe_limit()
+    data_version = btc.market_data_version()
+    hold_days = int((config.get("params") or {}).get("hold_days") or 30)
+    state = {
+        "start": start,
+        "end": end,
+        "initial_cash": initial_cash,
+        "rebalance_freq": rebalance_freq,
+        "market_timing": market_timing,
+        "max_hold_days": hold_days,
+        "boards_json": boards_json,
+        "exclude_st": exclude_st,
+        "max_codes": max_codes,
+    }
+    saw_before = btc.mark_cache_hit(("visual_builder", config_json) + btc.build_request_key(state))
     bt_config = BacktestConfig(
         start=date.fromisoformat(start),
         end=date.fromisoformat(end),
         initial_cash=initial_cash,
         rebalance_freq=rebalance_freq,
         market_timing=market_timing,
-        max_hold_days=strategy.params["hold_days"],
+        max_hold_days=hold_days,
         # 与回测页口径一致：财务数据只有一份当前快照，快照日之前中性化，避免前视
         fundamental_as_of=Storage().fundamentals_snapshot_date(),
     )
-    result = run_backtest(strategy, bt_config, bars_map, fund_map, stock_list)
-    metrics = calc_metrics(result.equity_curve, result.trades)
-    return metrics, result
+    started = time.perf_counter()
+    with st.status("正在运行自定义策略回测…", expanded=False) as status:
+        result, metrics = btc.run_strategy_cached(
+            start, end, _BUILDER_LEAD_DAYS, boards_json, exclude_st, False,
+            max_codes, data_version,
+            "自定义策略", "custom", config_json, "",
+            json.dumps(btc.config_to_dict(bt_config), ensure_ascii=False, sort_keys=True),
+        )
+        status.update(label="回测运行完成", state="complete")
+    elapsed = time.perf_counter() - started
+    return metrics or {}, result, btc.cache_caption(elapsed, saw_before=saw_before)
 
 
 def _clamp(value, low, high):
@@ -198,6 +220,7 @@ def render():
     st.header("🧩 可视化策略拼装")
     st.caption("选择因子、权重与阈值，组合成自定义策略并回测验证。")
     page_glossary(BUILDER_GLOSSARY)
+    btc.render_clear_cache_button("vb")
 
     # ============ AI 一句话生成（可选） ============
     st.subheader("🤖 AI 一句话生成（可选）")
@@ -362,16 +385,17 @@ def render():
             if start >= end:
                 st.error("开始日期必须早于结束日期")
                 return
-            metrics, result = _cached_custom_backtest(
-                json.dumps(config, ensure_ascii=False),
+            metrics, result, cache_note = _run_custom_backtest(
+                config,
                 start.isoformat(), end.isoformat(), float(initial_cash),
                 rebalance_freq, bool(market_timing),
-                json.dumps(boards, ensure_ascii=False), exclude_st,
+                boards, exclude_st,
             )
             if not metrics:
                 st.warning("回测无数据。请先运行数据拉取脚本（fetch_all.py）确保有缓存数据。")
                 return
 
+            st.caption(cache_note)
             st.subheader("回测结果")
             cols = st.columns(4)
             cols[0].metric("总收益率", f"{metrics.get('total_return', 0):.2f}%")
