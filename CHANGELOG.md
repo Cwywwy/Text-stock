@@ -2,6 +2,32 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 12）：复筛 Phase 18–19 — 全市场基线冻结 + 双均线三档择时（默认关闭）
+
+按 [复筛计划书](.github/plans/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 18、Phase 19。
+新增能力**默认关闭**，21 arm 与 HEAD 基线逐字段 **0 差异**；全量测试 637 → **654 passed**。
+
+- **Phase 18 全市场基线**（`(phase 18) add full market baseline for strategy rescreen`）：数据指纹与原记录不一致
+  （`data/update.log` 显示 16:34 增量更新 5575 只），按计划纪律改为「同数据重跑基线」——7 策略 × W1 训练 / W2 验证 / W3 全期，
+  `max_codes=0`（载入 5379 只、有效参与 5182）、`jobs=5`，21 arm 全部成功，
+  产物 `tests/reports/2026-10-29-17-08.rescreen-baseline.{json,md}`。结论：三个窗口 7 策略全部跑输等权基准
+  （基准 W1 +21.95% / W2 +8.31% / W3 +32.67%）；W2 有 3 只转正但均低于基准；年单边换手 14.0–22.2 倍，成本拖累 5.0–8.0pp/年。
+- **Phase 19 三档择时**（`(phase 19) add dual ma timing tiers with default off`）：新增 `src/stock_plan/factors/timing.py`
+  （`close ≥ MA20` 满仓 / `close < MA20` 半仓 / `close < MA60` 且 MA20 五日斜率向下 空仓；预热不足按满仓）；
+  `BacktestConfig.timing_tier`（默认 `"off"`，非法值中文报错）；引擎每日**真实降仓**（按比例卖出、100 股整手、
+  跌停停牌跳过、T+1 豁免、买入侧只封顶不追买）；行业轮动 `run_industry_rotation(..., timing_tier=)` 同口径；
+  `conv_variant`（pcf/vcf/pvcf/multi，默认 pcf，与 Phase 7 逐值一致）；回测 / 策略对比 / 可视化构建三页新增
+  「大盘择时档位」下拉（默认关闭），缓存键纳入档位；旧「弱择时」保留并在文案中标注为旧行为。
+- **默认关闭证明**：21 arm（7 策略 × full/win_a/win_b，`max_codes=800`）与 Phase 14 同数据 HEAD 基线
+  `2026-10-29-08-52.phase14-head-baseline.json` 逐字段 **0 差异**（metrics / annual / turnover / benchmark_return /
+  codes / equity_points，容差 1e-12，产物 `tests/reports/2026-10-29-17-20.phase14-parity.json`）；
+  同一全市场 spec 在实现中途与完成后两次跑批，21 arm 六项指标逐值相同。
+- 新增测试 `tests/test_engine_timing_tiers.py`（17 例：档位边界、斜率相等不算向下、0%/50% 档、跌停不卖、整手、
+  不足一手不卖、T+1、预热、`off` 零副作用）、`tests/test_rotation_timing.py`（4 例）、`tests/test_backtest_pages.py` +2 例 AppTest 冒烟。
+- 报告：实验 `tests/reports/2026-10-29-17-30.phase18-19-timing.md`；测试 `tests/reports/2026-10-29-17-30.report-1.md`。
+- **仍未做**：Phase 20 复筛矩阵（153 arm，含 `weak`/`tier` 口径，预计 1.0–1.7 小时）需用户批准后执行；
+  本阶段只证明「能力可用且默认不改变行为」，不构成「择时是否帮忙」的结论。
+
 ## 2026-10-29（续 11）：回测性能改造 Phase 14–17 — 同数据逐值不变，等待时间降到秒级
 
 按 [性能计划书](.github/plans/done/2026-10-29-5-new-backtest-performance.md) 完成四阶段改造，**不改任何回测数字**：

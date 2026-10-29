@@ -287,6 +287,20 @@ uv run python scripts/backfill_share_capital.py --skip-fetch --dry-run --json
 D 两段式与 E 字段补齐是纯增量能力，已可用。真正的主要矛盾是**日频换手 13–21 倍/年（年成本拖累约 5.8%–7.6%）与熊市段缺择时**，
 建议下一阶段优先用已经存在但没人使用的 `factors/regime.py` + `BacktestConfig.market_timing`。
 
+### 复筛与三档择时（`分支6`，2026-10-29 起）
+
+按 [复筛计划书](.github/plans/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 执行，进度：
+
+- ✅ Phase 18 全市场基线（7 策略 × W1 训练 / W2 验证 / W3 全期，`max_codes=0` 全市场）——
+  三个窗口 **7 策略全部跑输等权基准**（基准 +21.95% / +8.31% / +32.67%）；年单边换手 14.0–22.2 倍，
+  成本拖累 5.0–8.0pp/年，见 [基线报告](tests/reports/2026-10-29-17-08.rescreen-baseline.md)；
+- ✅ Phase 19 双均线三档择时（`BacktestConfig.timing_tier`，默认 `"off"`）：`close ≥ MA20` 满仓 /
+  `close < MA20` 半仓 / `close < MA60` 且 MA20 五日斜率向下 空仓；开启后**对已持仓真实降仓**（100 股整手、
+  跌停停牌跳过、T+1 豁免、只封顶不追买）。回测 / 策略对比 / 可视化构建三页均新增「大盘择时档位」下拉，默认关闭；
+  默认关闭时 21 arm 与 HEAD 基线**逐字段 0 差异**，全量 **654 passed**，见
+  [实验报告](tests/reports/2026-10-29-17-30.phase18-19-timing.md)；
+- 🔄 Phase 20–22 待批准：全市场复筛矩阵 153 arm（候选 × 三种择时口径，预注册双层判定 C-1~C-3 / M-1~M-3）。
+
 ## 性能（回测与对比页，2026-10-29 起）
 
 对回测、策略对比、Walk-Forward 与今日信号四条链路做了一轮「**结果逐值不变**」的性能改造

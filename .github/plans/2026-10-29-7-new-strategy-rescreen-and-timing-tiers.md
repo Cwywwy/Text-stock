@@ -1,6 +1,6 @@
 # 策略复筛（全市场）与三档择时（默认关闭）计划
 
-- **状态**：待批准（2026-10-29 13:35 起草；§2 六问已与用户确认）
+- **状态**：执行中——Phase 18、Phase 19 已完成（2026-10-29 17:30）；Phase 20–22 待用户批准后执行
 - **日期**：2026-10-29
 - **分支**：`分支6`（与 `origin/分支6` 已同步，HEAD `78f86e9`）；不合并 `main`、不推送其它分支
 - **环境**：Python 3.13.15 + pandas 3.0.5 + Streamlit 1.63.0；`.venv\Scripts\python.exe`；16 逻辑核 / 31.1 GB
@@ -212,6 +212,13 @@ BacktestConfig.timing_tier: str = "off"      # off | dual_ma
 
 **commit**：`(phase 18) add full market baseline for strategy rescreen`
 
+**执行记录（2026-10-29 17:08）**
+
+- 数据指纹：bars 5579 个；bars 清单 sha256 `1e8cf9c7…`、`meta.db` sha256 `9447ffb2…` 与 §1.2 记录（`24fa553b…` / `eea568d1…`）**不一致**——`data/update.log` 显示 16:34 有一次增量更新（updated=5575）。按 §1.2 处理：本次不沿用任何旧基线数字，21 arm 全部在新数据上重跑，报告注明「同快照内可比」。
+- 21 arm 全部成功（`max_codes=0`，全市场载入 5379 只、有效参与 5182 只，`jobs=5`，总耗时约 4 分钟）。产物 `tests/reports/2026-10-29-17-08.rescreen-baseline.json` / `.md`。
+- 结论：W1/W2/W3 三个窗口 7 策略全部跑输等权基准（W1 基准 +21.95%、W2 +8.31%、W3 +32.67%）；W2 有 3 只转正但均低于基准。年单边换手 14.0–22.2 倍，成本拖累 5.0–8.0pp/年。
+- 与 Phase 14 的 800 只抽样基线**口径不同、数字不同**，按步骤 3 只作信息性对比，不作回归依据。
+
 ### Phase 19 — 三档择时实装与默认关闭证明
 
 **步骤**
@@ -230,6 +237,13 @@ BacktestConfig.timing_tier: str = "off"      # off | dual_ma
 - UI AppTest 冒烟通过；`pytest` ≥637。
 
 **commit**：`(phase 19) add dual ma timing tiers with default off`
+
+**执行记录（2026-10-29 17:30）**
+
+- 实装：新增 `src/stock_plan/factors/timing.py`（档位规则 + 敞口序列，`shift(1)` 防未来函数）；`BacktestConfig.timing_tier`（默认 `"off"`，`__post_init__` 校验）；引擎每日真实降仓（按比例卖出、100 股整手、跌停/停牌跳过、T+1 豁免、买入侧只封顶不追买）；`run_industry_rotation(..., timing_tier=)` 同口径；`conv_variant`（pcf/vcf/pvcf/multi，默认 pcf）；UI 三页下拉（默认关闭）+ 缓存键纳入档位。
+- 默认关闭证明：①21 arm（7 策略 × full/win_a/win_b，`max_codes=800`）与 `2026-10-29-08-52.phase14-head-baseline.json` **逐字段 0 差异**（metrics/annual/turnover/benchmark_return/codes/equity_points，容差 1e-12），产物 `tests/reports/2026-10-29-17-20.phase14-parity.json`；②同一全市场 spec 实现中途（16:52）与完成后（17:08）两次跑批，21 arm 六个指标逐值相同；③`off` 分支不构造档位序列、不进入降仓代码。
+- 单测：`tests/test_engine_timing_tiers.py` 17 例、`tests/test_rotation_timing.py` 4 例、`tests/test_backtest_pages.py` +2 例 AppTest 冒烟；全量 pytest **654 passed**（基线 637）。
+- 实验报告：`tests/reports/2026-10-29-17-30.phase18-19-timing.md`；测试报告：`tests/reports/2026-10-29-17-30.report-1.md`。
 
 ### Phase 20 — 全市场复筛矩阵与双层判定
 

@@ -14,13 +14,14 @@
 - 期望持仓天数 = 由参数 hold_days 决定
 
 修订记录：
+2026-10-29 (phase 19) 新增 conv_variant 参数（pcf 默认/vcf/pvcf/multi），默认逐值不变
 2026-10-29  (phase 7) 接入均线收敛加分 conv_weight（默认 0，收敛→突破前提）
 """
 from __future__ import annotations
 
 import pandas as pd
 
-from stock_plan.factors.convergence import cross_section_zscore
+from stock_plan.factors.convergence import conv_variant_series
 from stock_plan.factors.filter import filter_universe
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.scorer import composite_score
@@ -59,6 +60,8 @@ class BreakoutStrategy(Strategy):
         # 均线收敛加分权重（2026-10-29 起）：0 = 关闭（默认，保证旧行为不变）。
         # 收敛后突破的胜率通常更高，这是「收敛 → 突破」组合的理论依据。
         "conv_weight": 0.0,
+        # 收敛因子变体（Phase 19 复筛矩阵用）：pcf（默认）/ vcf / pvcf / multi。
+        "conv_variant": "pcf",
     }
 
     def filter_universe(
@@ -75,10 +78,12 @@ class BreakoutStrategy(Strategy):
         )
 
         # 均线收敛加分（默认关闭）：收敛是突破的前置条件，越收敛越给分。
-        # 原始 PCF 跨股票不可比，必须转成截面 z-score 再加权。
+        # 原始 PCF 跨股票不可比，必须转成截面 z-score 再加权（conv_variant 选变体）。
         conv_weight = float(self.params.get("conv_weight", 0.0))
-        if conv_weight and "conv_pcf" in df_factors.columns:
-            score = score + conv_weight * cross_section_zscore(df_factors, "conv_pcf")
+        if conv_weight:
+            score = score + conv_weight * conv_variant_series(
+                df_factors, str(self.params.get("conv_variant", "pcf"))
+            )
 
         # 必须中期趋势向上
         if "ma20" in df_factors.columns and "ma60" in df_factors.columns:

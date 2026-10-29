@@ -54,4 +54,6 @@ PARAM_DESC: dict[str, str] = {
     "0=不用这个因子（收敛后再突破通常更可靠）",
     "momentum_mode": "动量口径：ret20=近 20 日涨幅（默认）；ma_ratio=价格相对 60 日均线的位置；"
     "ma_ratio_blend=20/60/120/240 四个窗口综合",
+    "conv_variant": "均线收敛口径：pcf=只看价格（默认）；vcf=只看成交量；pvcf=两者合成；"
+    "multi=两种口径同时收敛才算数（只在收敛加分权重 >0 时生效）",
 }

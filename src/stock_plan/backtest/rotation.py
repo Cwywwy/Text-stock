@@ -16,6 +16,7 @@
 全仓换一遍 = 20bp，与「单边 10bp」的表述一致。
 
 修订记录：
+2026-10-29 (phase 19) 新增 timing_tier（双均线三档）：档位降低时按比例压缩行业权重敞口，默认 off 逐值不变
 2026-10-29  (phase 9) 新建：按 RRG「转强」象限做行业等权轮动回测（C1 证伪用）
 """
 from __future__ import annotations
@@ -27,6 +28,7 @@ import pandas as pd
 
 from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.factors.rrg import QUADRANT_IMPROVING, rrg_ready, select_industries
+from stock_plan.factors.timing import exposure_series, validate_timing_tier
 
 TRADES_COLUMNS: tuple[str, ...] = (
     "code",
@@ -82,6 +84,7 @@ def run_industry_rotation(
     rebalance_days: int = 20,
     top_n: int = 6,
     cost_bps: float = 10.0,
+    timing_tier: str = "off",
 ) -> RotationResult:
     """按 RRG「转强」象限做行业等权轮动回测。
 
@@ -92,11 +95,15 @@ def run_industry_rotation(
         rebalance_days: 每隔多少个交易日调仓一次。
         top_n: 每次最多持有几个行业。
         cost_bps: 单边调仓成本（基点，默认 10 = 0.1%）。
+        timing_tier: 大盘择时档位（`off` 默认 / `dual_ma`）。dual_ma 时用
+            **行业等权基准**算三档，档位降低当日按比例压缩行业权重（总敞口 = 目标仓位），
+            其余部分留现金、不追买；成本沿用 10bp 单边口径（2026-10-29 Phase 19）。
 
     返回：
         `RotationResult`；`trades` 为按行业合成的持仓记录（code 列放行业名），仅用于
         统计胜率/持仓天数，不代表真实股票成交。
     """
+    validate_timing_tier(timing_tier)
     if panel_wide is None or panel_wide.empty:
         raise ValueError("行业指数为空，无法回测")
     if rebalance_days < 1:
@@ -133,6 +140,14 @@ def run_industry_rotation(
     if not benchmark.empty:
         benchmark = benchmark / benchmark.iloc[0]
 
+    # 三档择时（Phase 19）：用**行业等权基准**（同上式的全期净值）算档位，
+    # 再对齐到回测交易日；off 时不构造任何额外序列（逐值不变）。
+    exposure_map: dict[pd.Timestamp, float] | None = None
+    if timing_tier != "off":
+        _full_bench = (1.0 + rets.mean(axis=1, skipna=True).fillna(0.0)).cumprod()
+        _exposure = exposure_series(_full_bench).reindex(dates, method="ffill").fillna(1.0)
+        exposure_map = _exposure.to_dict()
+
     weights: dict[str, float] = {}
     open_positions: dict[str, dict] = {}
     trades: list[dict] = []
@@ -145,10 +160,15 @@ def run_industry_rotation(
 
     for i, day in enumerate(dates):
         do_rebalance = i % int(rebalance_days) == 0
+        # 当日目标总敞口（次日生效已在 exposure_series 内 shift(1)）；off 时恒为 1.0
+        exposure_today = float(exposure_map.get(day, 1.0)) if exposure_map else 1.0
         if do_rebalance:
             day_signal = _signal_before(day)
             picked = select_industries(day_signal, top_n=top_n) if not day_signal.empty else []
-            new_weights = {name: 1.0 / len(picked) for name in picked} if picked else {}
+            # 行业等权，但总敞口受档位约束（余下部分留现金，不追买）
+            new_weights = (
+                {name: exposure_today / len(picked) for name in picked} if picked else {}
+            )
             old_weights = dict(weights)
             names = set(old_weights) | set(new_weights)
             turnover = 0.5 * sum(abs(new_weights.get(n, 0.0) - old_weights.get(n, 0.0)) for n in names)
@@ -173,6 +193,26 @@ def run_industry_rotation(
             rebalances += 1
             for name, weight in sorted(weights.items()):
                 holdings_rows.append({"date": day, "industry": name, "weight": weight})
+
+        # 档位降低时的每日降敞口：按比例压缩权重到目标仓位（不追买、不加仓）
+        if exposure_map is not None and weights:
+            gross = sum(weights.values())
+            if gross > exposure_today + 1e-12:
+                scale = exposure_today / gross
+                scaled = {n: w * scale for n, w in weights.items() if w * scale > 0}
+                names = set(weights) | set(scaled)
+                turnover = 0.5 * sum(
+                    abs(scaled.get(n, 0.0) - weights.get(n, 0.0)) for n in names
+                )
+                cost = turnover * 2.0 * float(cost_bps) / 10000.0
+                if cost > 0:
+                    equity *= 1.0 - cost
+                    total_cost += cost
+                    year = int(day.year)
+                    cost_by_year[year] = cost_by_year.get(year, 0.0) + cost
+                weights = scaled
+                for name, weight in sorted(weights.items()):
+                    holdings_rows.append({"date": day, "industry": name, "weight": weight})
 
         # 当日行业收益（按调仓后权重等权计入）
         if weights:

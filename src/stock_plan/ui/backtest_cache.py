@@ -61,6 +61,7 @@ _BACKTEST_STATE_KEYS: tuple[str, ...] = (
     "initial_cash",
     "rebalance_freq",
     "market_timing",
+    "timing_tier",
     "max_hold_days",
     "commission_w",
     "stamp_tax_w",
