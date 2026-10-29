@@ -182,7 +182,7 @@ def test_score_with_penalties_matches_legacy_score():
     strategy = TrendFollowingStrategy()
     frame = _factor_frame()
     legacy = strategy.score(frame)
-    score, penalties = strategy.score_with_penalties(frame)
+    score, penalties = strategy.score_with_penalties(frame, enabled=True)
     pd.testing.assert_series_equal(score, legacy)
     # 每只股票的扣分合计应与"分数差"一致（分数 = 原始分 - 扣分）
     totals = penalties.groupby("code")["points"].sum().to_dict()
@@ -197,7 +197,7 @@ def test_score_with_penalties_matches_legacy_score():
 
 def test_score_penalties_rules_and_basis():
     strategy = TrendFollowingStrategy()
-    _, penalties = strategy.score_with_penalties(_factor_frame())
+    _, penalties = strategy.score_with_penalties(_factor_frame(), enabled=True)
     by_code = penalties.groupby("code")["rule"].apply(list).to_dict()
     # 600002 追高 +12%、RSI 80 → chase_high、dev_high、rsi_hot 全部命中（顺序与旧实现一致）
     assert by_code["600002"] == ["chase_high", "dev_high", "rsi_hot"]
@@ -209,6 +209,39 @@ def test_score_penalties_rules_and_basis():
     assert chase["points"] == pytest.approx(-100.0)
     assert chase["basis"] == pytest.approx(0.12)
     assert "追高" in chase["label"]
+
+
+def test_score_with_penalties_enabled_defaults_off_and_scores_identical():
+    """enabled 默认关闭（引擎每日打分路径）：只返回分数 + 列集一致的空明细。
+
+    Phase 14：回测每天对全市场候选打分时不需要扣分明细长表，默认关闭可省掉大量
+    dict 构造；两种模式的分数必须逐值相同，明细列集也必须保持兼容。
+    """
+    strategy = TrendFollowingStrategy()
+    frame = _factor_frame()
+    score_off, penalties_off = strategy.score_with_penalties(frame)
+    score_on, penalties_on = strategy.score_with_penalties(frame, enabled=True)
+    pd.testing.assert_series_equal(score_off, score_on)
+    assert list(penalties_off.columns) == ["code", "rule", "label", "points", "basis"]
+    assert penalties_off.empty
+    assert not penalties_on.empty
+
+
+def test_report_scoring_does_not_swallow_real_type_error():
+    """报告路径只降级「未实现扣分明细」，策略实现里的真实 TypeError 必须抛出。"""
+    stock_list, bars_map, fund_map = _market()
+
+    class _BrokenStrategy(TrendFollowingStrategy):
+        name = "坏策略"
+
+        def score_with_penalties(self, df_factors, *, enabled=False):
+            raise TypeError("策略内部真实错误")
+
+    with pytest.raises(TypeError, match="策略内部真实错误"):
+        generate_signal_report(
+            strategy=_BrokenStrategy(),
+            storage=_FakeStorage(stock_list, bars_map, fund_map),
+        )
 
 
 # ---------------------------------------------------------------------------

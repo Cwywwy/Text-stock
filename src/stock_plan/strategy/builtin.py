@@ -10,6 +10,7 @@
 - 期望持仓天数 = 由参数 hold_days 决定
 
 修订记录：
+2026-10-29  (phase 14) score_with_penalties 增加 enabled 开关（默认 False），回测打分不再构造扣分长表，分数不变
 2026-10-29  (phase 7) 接入均线收敛因子（conv_pcf/vcf/acf/trcf/pvcf），新增 conv_weight 参数（默认 0，不改变旧行为）
 2026-10-28  (phase 1) 抽出 score_with_penalties 记录逐条扣分明细，score() 数值不变
 """
@@ -86,7 +87,7 @@ class TrendFollowingStrategy(Strategy):
         return filter_universe(stock_list, bars_map)
 
     def score_with_penalties(
-        self, df_factors: pd.DataFrame
+        self, df_factors: pd.DataFrame, *, enabled: bool = False
     ) -> tuple[pd.Series, pd.DataFrame]:
         """打分，并把每一笔扣分记录成可解释的明细。
 
@@ -99,10 +100,16 @@ class TrendFollowingStrategy(Strategy):
         - RSI 超过 75（严重超买）：扣 20 分
         - 注：经回测隔离测试，vol_ratio 与 RSI<40 惩罚会拖累收益，故不启用
 
+        enabled:
+            是否收集扣分明细长表。默认 False —— 回测每日都要对全市场候选打一次分，
+            而调用方（engine）只取分数、用不到明细，构造长表纯属浪费；「今日信号」报告
+            需要逐条扣分原因时显式传 enabled=True。两种模式的分数完全相同。
+
         返回：
             (score, penalties)。penalties 为长表，列 code/rule/label/points/basis，
             每只股票每触发一条规则一行；`score()` 取第一个返回值，
-            两条路径共用同一份计算，数值不会漂移。
+            两条路径共用同一份计算，数值不会漂移。enabled=False 时 penalties 为
+            列集一致的空表。
         """
         w_tech = self.params["w_tech"]
         w_fund = self.params["w_fund"]
@@ -119,10 +126,16 @@ class TrendFollowingStrategy(Strategy):
             score = score + conv_weight * cross_section_zscore(df_factors, "conv_pcf")
 
         rows: list[dict[str, Any]] = []
-        codes = df_factors["code"].astype(str) if "code" in df_factors.columns else None
+        codes = (
+            df_factors["code"].astype(str)
+            if enabled and "code" in df_factors.columns
+            else None
+        )
 
         def _log(mask: pd.Series, rule: str, basis: pd.Series) -> None:
             """把命中的行记成扣分明细（basis = 触发该规则时的原始数值）。"""
+            if not enabled:
+                return  # 回测打分：明细无人消费，连行扫描都省掉
             for idx in df_factors.index[mask.to_numpy()]:
                 raw = basis.loc[idx]
                 rows.append(

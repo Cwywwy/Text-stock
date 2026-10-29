@@ -16,6 +16,8 @@
 | 单策略回测：全市场 × 5 年 | 496 s | ≤ 150 s |
 | 策略对比：7 策略 × 1 年 | ~13 min | ≤ 3 min |
 
+> Phase 14 实测复核（2026-10-29 08:52）：单策略 1 年目标 ≤ 45 s **未达标**（实测 load 6.2 s + run 96.3 s = 102.5 s；主因是因子表按 code 计的固定成本约 90 s/轮，不随窗口行数下降）。5 年 ≤150 s（实测 run 97.2 s）与 21 arm 3.5x 达标。1 年目标改为在 Phase 15/16 落地后按「prepared 复用 + 结果缓存」口径复核，Phase 17 性能报告如实列出实测值与偏差。
+
 ### 0.2 不做（本轮明确排除）
 
 1. 不改进回测口径：滑点、佣金、印花税、成交时点、`_pool_cutoff`、财务前视修正一律不动。
@@ -41,13 +43,19 @@
 2. **因子预计算每策略重复**：`compute_technical` + 收敛因子 5 列 + `MA_L/close` 4 列，单次约 30 s；对比页 7 个策略各算一遍，白费约 3 分钟。
 3. **逐日扣分明细建表**：`builtin.py::_log` 每天构建一次长表，profile 中占约 7%（真实耗时占比约 2–3%），非主因但可顺手降级。
 
+### 1.2 数据快照刷新与对拍口径变更（2026-10-29 08:45 补记）
+
+04:12 的基线报告生成后，每日数据任务在 06:49 刷新了股票列表、08:00–08:02 回填了估值并增量重建了 5 个日线文件（`data/update.log` 第 964 行），用 HEAD 引擎（b2f08a5，`engine.py` 与 61fe6b4 相同）在当前数据上重跑 21 arm 已与 04:12 JSON 不同（示例：趋势跟随 full 总收益 −44.98% → −43.17%、交易 1861 → 1852 笔，属**数据变化**而非代码差异）——旧 JSON 不可复现。
+
+因此本轮「逐值不变」的验收口径改为：**在同一份固定数据快照上，用 HEAD 引擎重生成 21 arm 基线，再与新代码 21 arm 严格对拍**（数据指纹 f0/f1/f2 一致、HEAD round1 vs round2 0 差异；见 Phase 14 报告 §3）。04:12 与 Phase 13 终验的数字保留为数据刷新前的历史记录，Phase 17 终验同样以「同数据 HEAD 基线」为基准。
+
 ## 2. 模块划分
 
 | 模块 | 职责 | 交互 | 状态 |
 | --- | --- | --- | --- |
 | `src/stock_plan/backtest/engine.py` | 新增私有 `_FactorTable`（列名 → numpy 数组 + 日期 int64 数组 + 行指针），主循环改为数组取值；新增可选 `prepared` 参数供多策略复用 | 被 `run_backtest` 内部使用；对 `compare.py` / `backtest.py` 保持原函数签名兼容 | 修改 |
 | `src/stock_plan/data/storage.py` | `load_market_maps` 的 parquet 读取改为有界线程池（8 并发），保持返回顺序与内容不变 | 被所有回测/信号入口调用 | 修改 |
-| `src/stock_plan/ui/views/compare.py` | 行情与因子预计算用 `st.cache_resource` 共享；每个策略结果单独 `st.cache_data`；`st.status` 显示「正在跑 k/7」 | 调 `engine.prepare()` + `run_backtest(..., prepared=...)` | 修改 |
+| `src/stock_plan/ui/views/compare.py` | 行情与因子预计算用 `st.cache_resource` 共享；每个策略结果单独 `st.cache_data`；`st.status` 显示「正在跑 k/7」 | 调 `engine.prepare_backtest()` + `run_backtest(..., prepared=...)` | 修改 |
 | `src/stock_plan/ui/views/backtest.py` | 复用同一份 `cache_resource` 数据与预计算 | 同上 | 修改 |
 | `src/stock_plan/ui/views/visual_builder.py` | 同上（自定义策略回测） | 同上 | 修改 |
 | `src/stock_plan/strategy/builtin.py` | `_log()` 增加 `enabled` 开关：默认不建明细表，需要明细时才记录 | 被 `score_with_penalties` 调用 | 修改 |
@@ -64,18 +72,19 @@
 3. 候选 dict 里的 `pd.notna(...)` 改为 `math.isnan` / `numpy.isfinite` 的等价判断（行为必须一致：`pd.notna(None)` 与 NaN 的语义要在测试里覆盖）。
 4. `builtin.py::_log()` 加开关，默认关闭明细表（`signal/generator.py` 显式开启，保持今日信号页的明细不变）。
 
-完成标准：
-- [ ] `pytest -q` 全绿且总数不低于 **547 passed**
-- [ ] `tests/test_factor_parity.py` 双向列集断言与 17 列数值对拍通过（新增 5 列 + 4 列后共 26 列）
-- [ ] `tests/test_backtest*.py` / `test_engine_defects*.py` 全部通过且断言数字未改
-- [ ] 7 策略 × full/win_a/win_b 与 `tests/reports/2026-10-29-04-12.report-1.json` 基线**逐值一致**（含收益、回撤、笔数、胜率）
-- [ ] 单策略全市场 5 年 ≤ 150 s（同机复测）
-- [ ] commit：`(phase 14) vectorise backtest inner loop with numpy factor tables`
+完成标准（2026-10-29 08:52 实测，详见 `tests/reports/2026-10-29-08-52.report-1.md`）：
+- [x] `pytest -q` 全绿且总数不低于 **547 passed**：583 passed / 0 failed（135.91 s）
+- [x] `tests/test_factor_parity.py` 双向列集断言与 17 列数值对拍通过（新增 5 列 + 4 列后共 26 列）
+- [x] `tests/test_backtest*.py` / `test_engine_defects*.py` 全部通过且断言数字未改
+- [x] 7 策略 × full/win_a/win_b **同数据 HEAD 基线逐值一致**（§1.2 口径变更；0 字段差异、最大数值偏差 0）
+- [x] 单策略全市场 5 年 run_backtest 97.2 s ≤ 150 s（4.6x）
+- [ ] 单策略全市场 1 年 ≤ 45 s：**未达标**（实测 load 6.2 s + run 96.3 s = 102.5 s；主因是因子表每 code 固定成本，处理见 §0.1 注）
+- [x] commit：`(phase 14) vectorise backtest inner loop with numpy factor tables`
 
 ### Phase 15 — 预计算复用与并行加载
 
 步骤：
-1. `engine.py` 新增 `prepare_backtest(bars_map, fund_map, stock_list, config)`：返回含 `factor_tables`、`trading_days`、`benchmark` 的只读结构；`run_backtest(..., prepared=None)` 可复用。
+1. `engine.py` 新增 `prepare_backtest(bars_map, fund_map, stock_list, config)` → 只读 `PreparedBacktest`（`factor_tables` / `stock_list` / `fund_map` / `bars_map` / `config`）；`trading_days`、`benchmark`、`codes` 依赖策略池，仍由每次 `run_backtest` 计算。`run_backtest(..., prepared=None)` 复用因子表（缺 code 惰性补建、不修改 prepared）；prepared 提供时以其数据快照为准，避免混用不同快照静默错值。
 2. 对比页一次 `prepare`，7 个策略复用；`filter_universe` 仍按策略各自执行（池子不同不影响预计算）。
 3. `storage.load_market_maps` 改 `ThreadPoolExecutor(8)` 读 parquet，保持错误处理（坏文件跳过）与输出顺序。
 

@@ -20,9 +20,11 @@ Revision History:
     2026-10-28  (phase 1) add generate_signal_report for explainability
     2026-10-28  (phase 2) share one scoring pass between signals and report
     2026-10-29  (phase 11) report carries degraded rules (missing columns no longer silent)
+    2026-10-29  (phase 14) report scoring passes enabled=True to reuse penalty collection switch (values unchanged)
 """
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -335,12 +337,35 @@ def _collect_ranked(
         warnings.append("没有股票能算出因子（日线不足或指标计算失败）。")
         ranked = factor_rows
     else:
+        # 报告需要逐条扣分明细：内置策略显式 enabled=True（引擎打分默认关，省掉长表）。
+        # 先看签名再决定是否传关键字，兼容签名里没有 enabled 的第三方策略；
+        # 方法体内部抛 AttributeError 仍按旧语义降级为「只打分」，但 TypeError 等真实
+        # 错误照常抛出（不能吞掉策略实现里的 bug）。
         try:
-            scores, penalties = strategy.score_with_penalties(factor_rows)
-            penalties_map = _penalty_map(penalties)
+            scorer = strategy.score_with_penalties
         except AttributeError:
+            scorer = None
+        if scorer is None:
             warnings.append("该策略未提供扣分明细（score_with_penalties），报告不含扣分项。")
             scores = strategy.score(factor_rows)
+        else:
+            try:
+                supports_enabled = "enabled" in inspect.signature(scorer).parameters
+            except (TypeError, ValueError):
+                supports_enabled = False
+            try:
+                if supports_enabled:
+                    scores, penalties = scorer(factor_rows, enabled=True)
+                else:
+                    scores, penalties = scorer(factor_rows)
+            except AttributeError:
+                # 旧式策略常用「方法体内抛 AttributeError」表示未实现扣分明细
+                warnings.append(
+                    "该策略未提供扣分明细（score_with_penalties），报告不含扣分项。"
+                )
+                scores = strategy.score(factor_rows)
+            else:
+                penalties_map = _penalty_map(penalties)
         ranked = _rank_factor_rows(factor_rows.assign(score=scores))
 
     # 4. 数据截止日：取实际参与打分的股票里最后一根日线（如实反映"数据到哪天"）
