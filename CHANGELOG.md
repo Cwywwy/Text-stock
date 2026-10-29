@@ -2,6 +2,35 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 11）：回测性能改造 Phase 14–17 — 同数据逐值不变，等待时间降到秒级
+
+按 [性能计划书](.github/plans/done/2026-10-29-5-new-backtest-performance.md) 完成四阶段改造，**不改任何回测数字**：
+同一数据快照上 7 策略 × 3 窗口（21 arm）改造前后逐字段 **0 差异**，全量测试 547 → **637 passed**。
+
+- **Phase 14 引擎内层数组化**（`befad62`）：因子表改为「列名 → numpy 矩阵 + int64 日期 + 行指针」，
+  逐日逐股不再构造 pandas Series；`builtin.py::score_with_penalties` 增加 `enabled` 开关（默认关闭，
+  今日信号路径显式打开）避免回测每日建扣分明细表；新增 `tests/test_engine_perf_parity.py` 内嵌旧实现对拍。
+  5 年全市场单次回测 449.4 s → 约 82–87 s。
+- **Phase 15 准备层 + 存储并行加载**（`9ae34ab`）：新增 `prepare_backtest()` / `PreparedBacktest`（只读快照），
+  `run_backtest(..., prepared=...)` 跨策略复用因子表；`load_market_maps` 用有界线程池 + pyarrow 窗口下推，
+  15.7 s → 6.4 s；对比页 7 策略 × 1 年 154.9–155.5 s（目标 ≤3 min）。`scripts/measure_factor_ab.py` 支持 `--max-codes 0`（全市场）。
+- **Phase 15b Walk-Forward 与今日信号共享准备层**（`183d641`）：`walk_forward(..., prepared=...)` 整段区间只准备一次，
+  改造前后 OOS 输出 0 数值差异，耗时 113.12 s → 约 25–27 s；今日信号 `generate_signals_with_report(..., prepared=...)`
+  「多周期并存」准备一次、3 次打分，154.5–158.7 s → 84.5–86.0 s（约 1.8–1.9×），信号与 report 全字段一致。
+- **Phase 16 UI 缓存与进度**（`60da69c`）：新增 `src/stock_plan/ui/backtest_cache.py`（进程内 prepared/结果缓存、
+  缓存键含策略配置指纹与数据版本、命中提示「本次为缓存结果」）；对比页逐策略进度条「正在跑 k/N」；
+  回测页 / 对比页 / 可视化拼装页新增「🧹 清除缓存」按钮；命中缓存全市场 7 策略二次运行 0.004 s。
+  新增 `tests/test_backtest_cache.py` / `tests/test_backtest_pages.py`。
+- **Phase 17 终验与文档**：21 arm 与 Phase 14 同数据 HEAD 基线逐字段对拍 0 差异；性能报告
+  `tests/reports/2026-10-29-10-25.perf-backtest.md`（五场景前后对比、机器环境、复现命令）；README 新增「性能」小节；
+  计划书标记完成并归档到 `.github/plans/done/`；分支 `feature/strategy-refresh` 未合并 `main`。
+- **数据口径偏差**：计划书 §1 的 04:12 旧基线在 06:49–08:02 每日数据任务刷新后不可复现（任何代码都复现不了），
+  故全部验收改为「同一数据快照上 HEAD 引擎基线 vs 新代码」逐字段对拍，已记录于计划书 §1.2 与 Phase 14 报告。
+- **已知偏差**：「1 年单策略冷启动 ≤45 s」未达成（实测 100.6–103.6 s：加载 6.2 + 全市场因子表准备 79.4–82.2 + 回测 15.1），
+  原因是因子表构建是与窗口长度无关的全市场固定成本；共享 prepared + UI 缓存后用户感知为秒级（命中 0.004 s）。
+- 全量测试：**637 passed / 0 failed**（`tests/reports/2026-10-29-09-58.report-1.md`）；未引入新依赖；
+  未改回测口径 / 策略公式 / 默认窗口；未做跨进程并行与面板化重构。
+
 ## 2026-10-29（续 10）：策略刷新 Phase 13 — 集成、文档与终验
 
 收尾阶段：**不改行为，只做终验与文档同步**，并给出「基线 vs 最终」的逐值对比证据。

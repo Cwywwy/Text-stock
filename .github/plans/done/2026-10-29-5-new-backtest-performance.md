@@ -1,7 +1,7 @@
 # 回测与策略对比性能优化（Phase 14–17）
 
-> 状态：待审阅（2026-10-29）
-> 分支：`feature/strategy-refresh`（当前 HEAD `ac09f64`）
+> 状态：**已完成并归档（2026-10-29）**；归档路径 `.github/plans/done/2026-10-29-5-new-backtest-performance.md`
+> 分支：`feature/strategy-refresh`（完成时 HEAD `60da69c`，Phase 17 提交见 git log）
 > 前置：Phase 6–13 已全部完成并提交；本轮不改变任何策略口径与回测结果。
 
 ## 0. 目标与范围
@@ -17,6 +17,13 @@
 | 策略对比：7 策略 × 1 年 | ~13 min | ≤ 3 min |
 
 > Phase 14 实测复核（2026-10-29 08:52）：单策略 1 年目标 ≤ 45 s **未达标**（实测 load 6.2 s + run 96.3 s = 102.5 s；主因是因子表按 code 计的固定成本约 90 s/轮，不随窗口行数下降）。5 年 ≤150 s（实测 run 97.2 s）与 21 arm 3.5x 达标。1 年目标改为在 Phase 15/16 落地后按「prepared 复用 + 结果缓存」口径复核，Phase 17 性能报告如实列出实测值与偏差。
+>
+> Phase 17 终验（2026-10-29 10:34，两次独立计时，见 `tests/reports/2026-10-29-10-25.perf-backtest.md`）：
+> - 5 年单策略：回测（含因子构建）449.4 s → 81.8–86.6 s ✅（≤150 s）；共享 prepared 后 35.8–37.9 s。
+> - 1 年单策略冷启动：223.5 s → 100.6–103.6 s（加载 6.1 + 准备因子表 82.2 + 回测 15.2）**❌ 仍未达 ≤45 s**；
+>   命中缓存后 0.004 s，用户实际感知为秒级。原因：全市场因子表构建约 76–91 s，是与窗口长度无关的固定成本。
+> - 对比页 7 策略 × 1 年：~13 min → 154.9–155.5 s ✅（≤3 min）；`load_market_maps` 15.7 → 6.4 s ✅（≤8 s）。
+> - 21 arm 同数据 HEAD 基线逐字段 0 差异 ✅；全量 pytest 547 → 637 passed ✅。
 
 ### 0.2 不做（本轮明确排除）
 
@@ -104,20 +111,25 @@
 3. `backtest.py` / `visual_builder.py` 复用同一 `cache_resource`，删除各自重复的加载缓存（保留结果缓存）。
 
 完成标准：
-- [ ] 首次运行有可见进度，不再是长时间白屏
-- [ ] 同参数二次运行 < 2 s（命中缓存）
-- [ ] 只改「初始资金 / 图表选项」等展示参数时不重算回测
-- [ ] 单测：缓存键构造、`prepared` 只读约定（对 `bars_map` 做浅拷贝防护）
+- [x] 首次运行有可见进度，不再是长时间白屏（对比页逐策略 `st.status` + `st.progress`「正在跑 k/N」，结束折叠为「对比完成：k 个策略，耗时 x.xxs」；回测页/拼装页/Walk-Forward 均有运行状态）
+- [x] 同参数二次运行 < 2 s（命中缓存）：AppTest 300 只样本口径首次 13.351 s → 命中 0.062 s；真实全市场口径见 Phase 17 性能报告的缓存层实测
+- [x] 只改「初始资金 / 图表选项」等展示参数时不重算回测（缓存键白名单只含回测口径键，图表/标签页/hero 等展示键显式剔除，单测覆盖）
+- [x] 单测：缓存键构造、`prepared` 只读约定（`tests/test_backtest_cache.py` + `tests/test_backtest_pages.py`；R4 由 `clone_prepared()` 与引擎侧 `test_prepare_backtest_readonly_and_shallow_copy` 共同锁定）
+
+实测补充（2026-10-29 09:58，详见 `tests/reports/2026-10-29-09-58.report-1.md`）：
+- 全量 `pytest -q`：637 passed / 0 failed（249.96 s）；较 Phase 15b 的 633 增加 4 条今日信号共享准备层用例。
+- 今日信号「多周期并存」：旧路径 3 次调用各重新加载行情 + 重算因子表 ≈138 s；共享 prepared 后准备一次 + 3 次打分 ≈49 s（约 2.8×），信号 5/5 与 report 全字段一致。
+- 风险 R3 复核：单个全市场 prepared 因子表约 1.18 GB（data 1.175 GB + dates 49 MB）；`PREPARED_MAX_ENTRIES=2` 最坏两份约 2.35 GB，今日信号（`lead_days=0`）与回测页（`lead_days=180`）各占一份。
 
 ### Phase 17 — 回归、报告与文档
 
 步骤：全量 pytest；性能报告 `tests/reports/<ts>.perf-backtest.md`（改造前后对比表、机器环境、复现命令）；`CHANGELOG.md` 续 11；`README.md` 补「性能」小节；计划书勾选并归档到 `done/`；G 汇报。
 
 完成标准：
-- [ ] 全量测试 ≥ 547 passed
-- [ ] 性能报告含「5 年单策略 / 1 年单策略 / 7 策略对比」三行前后对比
-- [ ] 7 策略终验数字与「同数据 HEAD 基线」逐值一致（数据刷新前的 Phase 13 终验数字不可复现，口径变更见 §1.2）
-- [ ] 工作区干净，commit：`(phase 17) document backtest performance optimisation and regression results`
+- [x] 全量测试 ≥ 547 passed：**637 passed / 0 failed**（`tests/reports/2026-10-29-09-58.report-1.md`；Phase 17 文档变更后复跑同样 637 passed）
+- [x] 性能报告含「5 年单策略 / 1 年单策略 / 7 策略对比」三行前后对比：`tests/reports/2026-10-29-10-25.perf-backtest.md`（另含 Walk-Forward、今日信号、缓存命中与机器环境、复现命令）
+- [x] 7 策略终验数字与「同数据 HEAD 基线」逐值一致（数据刷新前的 Phase 13 终验数字不可复现，口径变更见 §1.2）：21 arm 逐字段 0 差异，`compare_ab.py` 差异字段数 0、最大偏差 0
+- [x] 工作区干净，commit：`(phase 17) document backtest performance optimisation and regression results`
 
 ## 4. 测试策略
 
@@ -126,7 +138,7 @@
 | 单元 | `_FactorTable` 索引对齐、缺列、预热不足、NaN/None 语义与 `pd.notna` 等价 | `tests/test_engine_perf_parity.py` |
 | 对拍 | 同一合成行情，旧路径（保留为测试内实现）与新路径候选行逐列 `approx(1e-12)` 相等 | 同上 |
 | 契约 | `test_factor_parity.py` 列集/数值；`test_backtest*.py` 指标；`test_engine_defects*.py` 缺陷修复不回退 | 既有 |
-| 回归 | 7 策略 × 3 窗口对 Phase 6/13 基线 | `scripts/measure_factor_ab.py` + 报告 |
+| 回归 | 7 策略 × 3 窗口对「同数据 HEAD 基线」（旧 04:12 基线因数据刷新不可复现，见 §1.2） | `scripts/measure_factor_ab.py` + 报告 |
 | 性能 | 三场景计时（冷缓存、热缓存） | `tests/reports/<ts>.perf-backtest.md` |
 
 数据缩减说明：本轮不使用抽样做验收（必须全市场对拍），仅性能计时允许在无其他进程干扰时单次运行。

@@ -287,6 +287,40 @@ uv run python scripts/backfill_share_capital.py --skip-fetch --dry-run --json
 D 两段式与 E 字段补齐是纯增量能力，已可用。真正的主要矛盾是**日频换手 13–21 倍/年（年成本拖累约 5.8%–7.6%）与熊市段缺择时**，
 建议下一阶段优先用已经存在但没人使用的 `factors/regime.py` + `BacktestConfig.market_timing`。
 
+## 性能（回测与对比页，2026-10-29 起）
+
+对回测、策略对比、Walk-Forward 与今日信号四条链路做了一轮「**结果逐值不变**」的性能改造
+（计划书见 [.github/plans/done/2026-10-29-5-new-backtest-performance.md](.github/plans/done/2026-10-29-5-new-backtest-performance.md)，
+完整前后对比、机器环境与复现命令见 [性能报告](tests/reports/2026-10-29-10-25.perf-backtest.md)）。
+
+| 场景（全市场 5378 只） | 改造前 | 改造后（首次） | 命中缓存 |
+| --- | --- | --- | --- |
+| 单策略 5 年（lead 400） | ~512 s | ~135 s（加载 6.3 + 准备因子表 90.7 + 回测 37.9；不共享准备的单跑口径 ~82–87 s） | < 0.1 s |
+| 单策略 1 年（页面默认，lead 180） | ~224 s | ~104 s | < 0.1 s |
+| 策略对比 7 策略 × 1 年 | ~13 分钟 | ~2.6 分钟（155 s） | < 0.1 s |
+| Walk-Forward（769 只抽样，2 窗口） | 113.1 s | 25.7 s | — |
+| 今日信号「多周期并存」（3 周期） | ~155–159 s | ~85 s | — |
+
+三条生效机制：
+
+1. **引擎内层数组化**：因子表改为「列名 → numpy 矩阵 + int64 日期 + 行指针」，逐日逐股不再构造 pandas Series；
+2. **准备层复用**：`prepare_backtest()` 一次算好全市场因子表，`run_backtest(..., prepared=...)` 跨策略、跨窗口复用；
+   Walk-Forward 对整段区间只准备一次；
+3. **UI 进程内缓存**：对比页共享同一份 prepared、逐策略缓存结果；缓存键包含区间、成本参数、持仓天数、择时、
+   策略配置指纹与数据版本，数据更新后自动失效。
+
+使用提示：
+
+- 命中缓存时页面会显示「本次为缓存结果」；改区间 / 成本 / 择时 / 策略参数会自动重算，只改图表选项等展示参数不会重算。
+- 回测页、对比页、可视化拼装页均有「🧹 清除缓存」按钮，可手动清空进程内缓存。
+- 全市场 prepared 因子表约 1.2 GB，最多缓存 2 份（约 2.4 GB）；内存紧张时点「清除缓存」释放。
+- 冷启动仍需为全市场构建因子表（约 76–91 s），因此「1 年单策略 ≤45 s」的计划目标在冷启动口径下**未达成**
+  （命中缓存后秒开）；已知偏差与原因记录在计划书 §0.1 与性能报告中。
+
+**逐值不变保证**：同一数据快照上 7 策略 × 3 窗口（21 arm）改造前后 0 差异（收益 / 回撤 / 笔数 / 胜率等全部字段），
+`tests/test_factor_parity.py` 双向列集与数值对拍、`tests/test_engine_perf_parity.py` 内嵌旧实现对拍、
+`tests/test_walkforward_prepared_parity.py` 均通过；全量测试 **637 passed**。
+
 ## 云端部署（Streamlit Community Cloud）
 
 应用可免费部署到 [Streamlit Community Cloud](https://share.streamlit.io)，获得公网链接：
