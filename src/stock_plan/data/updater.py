@@ -163,6 +163,71 @@ def _refresh_stock_list(fetcher: DataFetcher, storage: Storage) -> pd.DataFrame:
         return storage.load_stock_list()
 
 
+def refresh_aux_fields(
+    storage: Storage | None = None,
+    *,
+    include_shares: bool = True,
+    include_disclosure: bool = True,
+    force_disclosure: bool = False,
+) -> dict:
+    """刷新 B 档辅助字段（股本/市值快照 + 财报披露日），返回统计 dict。
+
+    设计取舍：
+    - 股本快照一天一变，抓一次约 3~8 秒，每次增量更新都刷；
+    - 披露日按报告期抓，一期 1 次请求，**只在临近法定截止日的 30 天窗口内补**，
+      平时不打接口（否则每天白跑 1~2 次且命中率极低）；
+    - 两类字段互不影响：一类失败只在自己的键下记 error，不抛给调用方。
+    """
+    storage = storage or Storage()
+    result: dict = {}
+
+    if include_shares:
+        from stock_plan.data.share_capital import fetch_share_snapshot, save_snapshot
+
+        try:
+            snapshot = fetch_share_snapshot()
+            path = save_snapshot(snapshot)
+            result["shares"] = {
+                "codes": int(snapshot["code"].nunique()),
+                "as_of": str(snapshot["as_of"].iloc[0]),
+                "path": str(path),
+            }
+        except Exception as e:  # noqa: BLE001 —— 辅助字段失败不该中断主流程
+            result["shares"] = {"error": f"{type(e).__name__}: {e}"[:200]}
+
+    if include_disclosure:
+        from stock_plan.data.disclosure import (
+            refresh_disclosure,
+            report_periods,
+            statutory_deadline,
+            stored_periods,
+        )
+
+        try:
+            today = today_cn()
+            done = set(stored_periods(storage.db_path))
+            due: list[str] = []
+            for period in report_periods()[-2:]:
+                if period in done and not force_disclosure:
+                    continue
+                deadline = pd.Timestamp(statutory_deadline(period)).date()
+                if force_disclosure or 0 <= (deadline - today).days <= 30:
+                    due.append(period)
+            if due:
+                result["disclosure"] = refresh_disclosure(
+                    due,
+                    skip_existing=not force_disclosure,
+                    db_path=storage.db_path,
+                    verbose=False,
+                )
+            else:
+                result["disclosure"] = {"due": []}
+        except Exception as e:  # noqa: BLE001
+            result["disclosure"] = {"error": f"{type(e).__name__}: {e}"[:200]}
+
+    return result
+
+
 def update_incremental(
     days: int = 30,
     workers: int = 32,
@@ -287,6 +352,13 @@ def update_incremental(
         stats["errors"] = stats["errors"][:50]  # 只保留前 50 条避免过大
 
     stats["elapsed"] = round(time.time() - t0, 1)
+    # B 档字段（Phase 12）：股本/市值快照每次更新刷一次（成本 <10 秒）；披露日只在临近
+    # 法定截止日时才补。任何失败都不影响日线结果，只在 stats 里留痕。
+    try:
+        stats["aux_fields"] = refresh_aux_fields(storage=storage)
+    except Exception as e:  # noqa: BLE001 —— 辅助字段失败不该让日线更新报错
+        logger.warning("B 档辅助字段刷新失败（不影响日线）：%s", e)
+        stats["aux_fields"] = {"error": str(e)[:200]}
     _log_run("incremental", stats)
     # 更新完把体检缓存刷掉，否则页面上的「行情最新交易日」要等到手动重扫才会变新
     try:

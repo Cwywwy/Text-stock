@@ -10,19 +10,31 @@
 - 期望持仓天数 = 由参数 hold_days 决定
 
 修订记录：
+2026-10-29  (phase 15b) build_factor_rows 支持 prepared 因子表复用（只取末行，26 列数值不变）
+2026-10-29  (phase 14) score_with_penalties 增加 enabled 开关（默认 False），回测打分不再构造扣分长表，分数不变
+2026-10-29  (phase 7) 接入均线收敛因子（conv_pcf/vcf/acf/trcf/pvcf），新增 conv_weight 参数（默认 0，不改变旧行为）
 2026-10-28  (phase 1) 抽出 score_with_penalties 记录逐条扣分明细，score() 数值不变
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+from stock_plan.factors.convergence import (
+    compose_pvcf,
+    convergence_columns,
+    cross_section_zscore,
+)
 from stock_plan.factors.filter import filter_universe
+from stock_plan.factors.momentum import ma_ratio_columns
 from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.factors.technical import compute_technical
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.scorer import composite_score, fundamental_composite
+
+if TYPE_CHECKING:
+    from stock_plan.backtest.engine import PreparedBacktest
 
 #: 扣分规则：键 → 文案 + 分值。报告层与页面直接引用，避免"分数改了、文案没改"。
 #: 每条规则只在这里定义一次，score_with_penalties() 是唯一实现处。
@@ -67,6 +79,9 @@ class TrendFollowingStrategy(Strategy):
         "hold_days": 30,      # 期望持仓天数
         "w_tech": 0.6,        # 技术面权重
         "w_fund": 0.4,        # 基本面权重
+        # 均线收敛加分权重（2026-10-29 起）：0 = 关闭（默认，保证旧行为不变）。
+        # 收敛 → 突破的前提，配合突破策略使用；量纲问题见 factors/convergence.py。
+        "conv_weight": 0.0,
     }
 
     def filter_universe(
@@ -76,7 +91,7 @@ class TrendFollowingStrategy(Strategy):
         return filter_universe(stock_list, bars_map)
 
     def score_with_penalties(
-        self, df_factors: pd.DataFrame
+        self, df_factors: pd.DataFrame, *, enabled: bool = False
     ) -> tuple[pd.Series, pd.DataFrame]:
         """打分，并把每一笔扣分记录成可解释的明细。
 
@@ -89,10 +104,16 @@ class TrendFollowingStrategy(Strategy):
         - RSI 超过 75（严重超买）：扣 20 分
         - 注：经回测隔离测试，vol_ratio 与 RSI<40 惩罚会拖累收益，故不启用
 
+        enabled:
+            是否收集扣分明细长表。默认 False —— 回测每日都要对全市场候选打一次分，
+            而调用方（engine）只取分数、用不到明细，构造长表纯属浪费；「今日信号」报告
+            需要逐条扣分原因时显式传 enabled=True。两种模式的分数完全相同。
+
         返回：
             (score, penalties)。penalties 为长表，列 code/rule/label/points/basis，
             每只股票每触发一条规则一行；`score()` 取第一个返回值，
-            两条路径共用同一份计算，数值不会漂移。
+            两条路径共用同一份计算，数值不会漂移。enabled=False 时 penalties 为
+            列集一致的空表。
         """
         w_tech = self.params["w_tech"]
         w_fund = self.params["w_fund"]
@@ -102,11 +123,23 @@ class TrendFollowingStrategy(Strategy):
             weights=(w_tech, w_fund, 0.0),
         )
 
+        # 均线收敛加分（默认关闭）。必须用**截面 z-score** 再乘权重，
+        # 否则高价股/高成交量股的原始 PCF 量级会主导排序（见 factors/convergence.py）。
+        conv_weight = float(self.params.get("conv_weight", 0.0))
+        if conv_weight and "conv_pcf" in df_factors.columns:
+            score = score + conv_weight * cross_section_zscore(df_factors, "conv_pcf")
+
         rows: list[dict[str, Any]] = []
-        codes = df_factors["code"].astype(str) if "code" in df_factors.columns else None
+        codes = (
+            df_factors["code"].astype(str)
+            if enabled and "code" in df_factors.columns
+            else None
+        )
 
         def _log(mask: pd.Series, rule: str, basis: pd.Series) -> None:
             """把命中的行记成扣分明细（basis = 触发该规则时的原始数值）。"""
+            if not enabled:
+                return  # 回测打分：明细无人消费，连行扫描都省掉
             for idx in df_factors.index[mask.to_numpy()]:
                 raw = basis.loc[idx]
                 rows.append(
@@ -164,8 +197,80 @@ class TrendFollowingStrategy(Strategy):
         return exit_price, stop_loss, self.params["hold_days"]
 
 
+def _factor_row_from_table(
+    code: str,
+    bars: pd.DataFrame,
+    table: Any,
+    financial: dict | None,
+) -> dict[str, Any]:
+    """用 prepared 因子表的末行组装一行因子（与逐 code 重算路径逐值一致）。
+
+    只读 ``table.data[-1]``：列语义与 ``compute_technical`` +
+    ``convergence_columns`` + ``ma_ratio_columns`` 的逐 code 路径相同。
+    有两处必须回到日线切片，不能用因子表近似：
+
+    - ``high20``：因子表用 ``rolling(20).max()``（窗口含 NaN 会整体 NaN），
+      逐 code 路径用 ``Series.max()``（跳过 NaN）；两者在短序列/停牌 NaN 上不同。
+    - ``avg_amount20``：因子表用 ``rolling(20).mean()``（不足 20 根为 NaN），
+      逐 code 路径用 ``tail(20).mean()``（不足 20 根也取现有行均值）。
+
+    ``mom_ret`` / ``ma5,7,10,30`` / 收敛四列 / 均线比值四列直接取因子表末行，
+    其中 ``ma`` 与收敛、比值列在两条路径上是**同一批 pandas 运算**，浮点位级相同。
+    """
+    row = table.data[-1]
+    index = table.col_index
+    length = len(table.data)
+    close = row[index["close"]]
+    fund = compute_fundamental_or_neutral(financial)
+    fund_score = fundamental_composite(fund)
+    high20 = bars["close"].iloc[-20:].max() if length >= 20 else close
+    high20_ratio = (close / high20 - 1) if high20 > 0 else 0.0
+    avg_amount20 = (
+        float(bars["amount"].tail(20).mean()) if "amount" in bars.columns else float("nan")
+    )
+    mom_ret = float(close / table.data[-21, index["close"]] - 1) if length >= 21 else 0.0
+    ma_cols = {f"ma{_p}": float(row[index[f"ma{_p}"]]) for _p in (5, 7, 10, 30)}
+    conv_values = {
+        column: (float(row[index[column]]) if pd.notna(row[index[column]]) else float("nan"))
+        for column in ("conv_pcf", "conv_vcf", "conv_acf", "conv_trcf")
+    }
+    ratio_values = {
+        f"ma_ratio_{_w}": (
+            float(row[index[f"ma_ratio_{_w}"]])
+            if pd.notna(row[index[f"ma_ratio_{_w}"]])
+            else float("nan")
+        )
+        for _w in (20, 60, 120, 240)
+    }
+    return {
+        "code": code,
+        "close": close,
+        "atr14": row[index["atr14"]],
+        "ma20": row[index["ma20"]],
+        "ma60": row[index["ma60"]],
+        "rsi14": row[index["rsi14"]],
+        "vol_ratio": row[index["vol_ratio"]],
+        "avg_amount20": avg_amount20,
+        "high20_ratio": high20_ratio,
+        "macd": row[index["macd"]],
+        "macd_signal": row[index["macd_signal"]],
+        "mom_ret": mom_ret,
+        "value_score": fund.get("value_score", 50.0),
+        "growth_score": fund.get("growth_score", 50.0),
+        "quality_score": fund.get("quality_score", 50.0),
+        "trend_score": row[index["trend_score"]],
+        "fund_score": fund_score,
+        **conv_values,
+        **ratio_values,
+        **ma_cols,
+    }
+
+
 def build_factor_rows(
-    codes: list[str], bars_map: dict[str, pd.DataFrame], fund_map: dict[str, dict]
+    codes: list[str],
+    bars_map: dict[str, pd.DataFrame],
+    fund_map: dict[str, dict],
+    prepared: PreparedBacktest | None = None,
 ) -> pd.DataFrame:
     """为候选股票构建打分所需的因子行。
 
@@ -173,6 +278,12 @@ def build_factor_rows(
         codes:    候选股票代码列表（已通过硬过滤）。
         bars_map: {code: 日线 DataFrame}。
         fund_map: {code: 财务指标 dict}。
+        prepared: 可选的只读准备层（Phase 15b）。命中某 code 的因子表且行数与
+            传入日线一致时直接取末行，省掉 compute_technical / 收敛因子 /
+            均线比值的按 code 重算；缺表或行数不匹配（行情快照不同）时自动
+            回落到逐 code 重算，列集与数值与不传 prepared 时逐值一致。
+            复用前提：传 prepared 时调用方应同步传入的 bars_map/fund_map 也就是
+            prepared 的那份快照（generator 内部即如此）。
 
     返回：
         DataFrame，每只股票一行，含 code/close/atr14/trend_score/fund_score。
@@ -181,6 +292,10 @@ def build_factor_rows(
     for code in codes:
         bars = bars_map.get(code)
         if bars is None or bars.empty:
+            continue
+        table = prepared.factor_tables.get(code) if prepared is not None else None
+        if table is not None and len(table.data) == len(bars):
+            rows.append(_factor_row_from_table(code, bars, table, fund_map.get(code)))
             continue
         factored = compute_technical(bars)
         if factored.empty:
@@ -214,6 +329,23 @@ def build_factor_rows(
             f"ma{_p}": float(factored["close"].rolling(_p).mean().iloc[-1])
             for _p in (5, 7, 10, 30)
         }
+        # 均线收敛因子（2026-10-29）：四列原始口径取末行；PVCF 是截面合成，
+        # 必须等全部股票的行拼成表后再算（见下方 compose_pvcf）。
+        conv_last = convergence_columns(bars).iloc[-1]
+        conv_values = {
+            column: (float(conv_last[column]) if pd.notna(conv_last[column]) else float("nan"))
+            for column in ("conv_pcf", "conv_vcf", "conv_acf", "conv_trcf")
+        }
+        # 动量方向修正（2026-10-29）：MA_L/close 四列，越小越强（研报口径）。
+        ratio_last = ma_ratio_columns(bars).iloc[-1]
+        ratio_values = {
+            f"ma_ratio_{_w}": (
+                float(ratio_last[f"ma_ratio_{_w}"])
+                if pd.notna(ratio_last[f"ma_ratio_{_w}"])
+                else float("nan")
+            )
+            for _w in (20, 60, 120, 240)
+        }
         rows.append(
             {
                 "code": code,
@@ -233,10 +365,16 @@ def build_factor_rows(
                 "quality_score": fund.get("quality_score", 50.0),
                 "trend_score": last["trend_score"],
                 "fund_score": fund_score,
+                **conv_values,
+                **ratio_values,
                 **ma_cols,
             }
         )
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        # 截面合成列：PVCF = z(PCF) + z(VCF)，必须按**当日全体候选股**标准化
+        df["conv_pvcf"] = compose_pvcf(df)
+    return df
 
 
 if __name__ == "__main__":

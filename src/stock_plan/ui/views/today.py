@@ -11,12 +11,16 @@ Revision History:
     2026-09-04  show version-matched published full-market public signals
     2026-10-28  (phase 2) one scoring pass also yields the explainability report
     2026-10-28  (phase 3) optional llm narrative inside the explainability section
+    2026-10-29  (phase 16) reuse shared prepared layer to skip repeated market load
 """
 from __future__ import annotations
+
+from datetime import date, timedelta
 
 import streamlit as st
 
 from stock_plan.signal.generator import Signal, generate_signals_with_report
+from stock_plan.ui import backtest_cache as btc
 from stock_plan.ui.signal_report_section import render_report_section
 from stock_plan.ui.widgets import (
     board_filter_ui,
@@ -42,6 +46,39 @@ PERIODS = {
     "中短线": (20, "波段操作，兼顾趋势与节奏"),
     "中线": (30, "趋势持有，容忍回调"),
 }
+
+# 今日信号的行情窗口：end=今天、start=end-180、lead_days=0，与 generator 内部
+# 加载口径完全一致，这样共享 prepared 的快照与旧路径逐值相同。
+SIGNAL_LOOKBACK_DAYS = 180
+
+
+def _shared_prepared(boards_json: str, exclude_st: bool):
+    """取进程级共享 prepared，供非云端信号生成跳过重复的行情加载与因子重算。
+
+    「多周期并存」会按持仓周期各调一次 `_cached_signals_and_report`：旧实现每个
+    周期都重新 `load_market_maps`（5000+ 个 parquet）并逐 code 重算因子表；
+    改用 backtest_cache 的共享 prepared 后，三次调用只加载并准备一次。
+
+    prepared 是只读快照（引擎约定，调用方不得原地改写），这里只透传给生成器。
+    取不到（无数据）或准备层抛错时返回 None：生成器回落到旧的内部加载路径，
+    选股结果不变，只是失去这次的加速。
+    """
+    end = date.today()
+    start = end - timedelta(days=SIGNAL_LOOKBACK_DAYS)
+    try:
+        prepared, _stock_list, _fund_map = btc.load_shared_prepared(
+            start.isoformat(),
+            end.isoformat(),
+            0,  # lead_days：与 generator 内部默认值一致
+            boards_json,
+            exclude_st,
+            False,  # include_delisted：今日信号不看退市股
+            btc.universe_limit(),
+            btc.market_data_version(),
+        )
+    except Exception:  # noqa: BLE001 — 加速层失败不应挡住当日信号，回退旧加载
+        return None
+    return prepared
 
 
 def _get_strategy(name: str, params: dict | None = None):
@@ -70,6 +107,9 @@ def _cached_signals_and_report(
     返回 `(信号列表, 解释报告)`：报告与信号来自**同一次打分**，
     所以页面展示的分数与「为什么是这几只」里的分数必然一致，
     也不会因为多要一份报告就把 40 多秒的行情加载与指标计算跑两遍。
+
+    非云端路径先取 backtest_cache 的共享 prepared：多周期并存模式下三个周期
+    共享同一份行情快照与因子表，只额外付出各自的打分/排名开销（Phase 16）。
 
     `industries_json` 加在最后并带默认值：这样既有调用与缓存键不受影响，
     也避免"忘了传行业"时静默变成全行业。
@@ -102,9 +142,12 @@ def _cached_signals_and_report(
             signals = [Signal(**signal) for signal in published.get("signals", [])[:top_n]]
             return signals, None
         return [], None
+    # 非云端：先取进程级共享 prepared，跳过重复的行情加载与逐 code 因子表重算
+    # （Phase 16；prepared 为 None 时生成器自动走原来的内部加载路径）。
     return generate_signals_with_report(
         strategy=strategy, top_n=top_n, boards=boards, exclude_st=exclude_st,
         industries=industries,
+        prepared=_shared_prepared(boards_json, exclude_st),
     )
 
 

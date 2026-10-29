@@ -2,6 +2,9 @@
 
 所有函数在无 API Key 时自动降级为规则化模板输出（mock 模式），
 保证 UI 在未配置 LLM 时也能正常展示。
+
+修订记录：
+2026-10-29 (phase 11) 策略生成支持「先选类型」：白名单内的字段才允许，越界返回中文原因。
 """
 from __future__ import annotations
 
@@ -72,17 +75,30 @@ def analyze_news(code: str, name: str, news_items: list[dict], client: Optional[
     return c.chat(_SYSTEM_NEWS, user)
 
 
-def _vocab_text() -> str:
-    """把参数词表拼成 LLM 提示（来自 codegen，单一事实来源）。"""
+def _vocab_text(archetype_key: str | None = None) -> str:
+    """把参数词表拼成 LLM 提示（来自 codegen，单一事实来源）。
+
+    给定 `archetype_key` 时**只列该类型白名单内的字段**——第二段 LLM 发挥不能越界，
+    否则它写出的字段（如置 max_position_pct）系统根本取不到，只会静默失效。
+    """
+    from stock_plan.strategy.archetypes import get_archetype
     from stock_plan.strategy.codegen import PARAM_SPEC, RULE_SPEC, WEIGHT_SPEC
+
+    archetype = get_archetype(archetype_key) if archetype_key else None
+
+    def _allowed(section: str, key: str) -> bool:
+        return archetype is None or archetype.allows(section, key)
 
     lines = []
     for key, (cn, desc, default, _t) in WEIGHT_SPEC.items():
-        lines.append(f"- weights.{key}（{cn}，默认 {default}）：{desc}")
+        if _allowed("weights", key):
+            lines.append(f"- weights.{key}（{cn}，默认 {default}）：{desc}")
     for key, (cn, desc, default, _t) in RULE_SPEC.items():
-        lines.append(f"- rules.{key}（{cn}，默认 {_default_show(default)}）：{desc}")
+        if _allowed("rules", key):
+            lines.append(f"- rules.{key}（{cn}，默认 {_default_show(default)}）：{desc}")
     for key, (cn, desc, default, _t) in PARAM_SPEC.items():
-        lines.append(f"- params.{key}（{cn}，默认 {default}）：{desc}")
+        if _allowed("params", key):
+            lines.append(f"- params.{key}（{cn}，默认 {default}）：{desc}")
     lines.append("- name（策略名）")
     return "\n".join(lines)
 
@@ -93,39 +109,75 @@ def _default_show(default) -> str:
     return str(default)
 
 
-def generate_strategy_config(description: str, client: Optional[LLMClient] = None) -> dict:
+def _config_empty(
+    reason: str,
+    mode: str,
+    error: str = "",
+    archetype_key: str = "",
+) -> dict:
+    """策略配置失败时的统一返回结构（含 `error`，避免页面一片空白）。"""
+    return {
+        "config": {},
+        "unknown": [],
+        "unsupported": [],
+        "proposal_code": "",
+        "reason": reason,
+        "error": error or reason,
+        "degraded": [],
+        "archetype": archetype_key,
+        "mode": mode,
+    }
+
+
+def generate_strategy_config(
+    description: str,
+    client: Optional[LLMClient] = None,
+    archetype_key: str | None = None,
+) -> dict:
     """根据自然语言描述生成结构化策略配置（V4 需求：参数优先，代码提案兜底）。
+
+    两段式：调用方先选「策略类型」（`archetype_key`），本函数只把该类型的
+    字段白名单喂给 LLM，并用三层默认值兜底。越界字段被拒绝（写进 `unknown` 的中文原因），
+    缺字段引起的规则禁用写进 `degraded`，报告里可逐条看到。
+
+    参数：
+        description:  用户的自然语言描述。
+        client:       LLM 客户端（默认全局单例）。
+        archetype_key: 策略类型 key（见 `strategy/archetypes.py`）；None = 旧式无类型模式。
 
     返回 dict：
         config:         清洗后的合法 CustomStrategy 配置
-        unknown:        无法识别的键（词表外）
+        unknown:        无法识别/越界的键与原因（词表外）
         unsupported:    未支持参数反馈清单 [{name, description, suggestion}]
         proposal_code:  自定义代码提案（仅当词表不够表达时；不参与实际选股）
         reason:         LLM 一句话取值逻辑
+        degraded:       规则级降级记录（缺字段 → 该条规则禁用）
+        archetype:      实际使用的类型 key（无类型时为空串）
         mode:           "llm" | "mock"
     """
     c = client or get_client()
-    system = _SYSTEM_STRATEGY_CFG + _vocab_text()
+    if archetype_key:
+        from stock_plan.strategy.archetypes import get_archetype
+
+        try:
+            archetype = get_archetype(archetype_key)
+        except ValueError as exc:
+            return _config_empty(str(exc), "llm", archetype_key=str(archetype_key))
+        system = _SYSTEM_STRATEGY_CFG + _vocab_text(archetype.key)
+        system += (
+            f"\n类型约束（最高优先级）：「{archetype.label}」只允许上面列出的字段；"
+            "任何不在列表中的字段都会被拒绝并回落默认值，不要输出。\n"
+            f"参考骨架：{archetype.skeleton or '—'}\n"
+        )
+    else:
+        system = _SYSTEM_STRATEGY_CFG + _vocab_text()
 
     def _empty(reason: str, mode: str, error: str = "") -> dict:
-        """失败时的返回结构。
-
-        关键点：带上 `error` 字段。原实现只返回 `config={}`，而 UI 的渲染条件是
-        `if result.get("config")` —— 于是失败时页面**一片空白**，连一句原因都不显示，
-        用户只能反复点按钮。现在把"为什么失败"传上去由页面显式展示。
-        """
-        return {
-            "config": {},
-            "unknown": [],
-            "unsupported": [],
-            "proposal_code": "",
-            "reason": reason,
-            "error": error or reason,
-            "mode": mode,
-        }
+        """失败时的返回结构（带 `error` + 类型信息，页面会显式展示原因）。"""
+        return _config_empty(reason, mode, error=error, archetype_key=archetype_key or "")
 
     if c.mock:
-        return _mock_strategy_config(description)
+        return _mock_strategy_config(description, archetype_key=archetype_key)
 
     raw = c.chat(system, description)
     data, err = _parse_json_dict(raw)
@@ -137,10 +189,16 @@ def generate_strategy_config(description: str, client: Optional[LLMClient] = Non
             error=f"调用 LLM 未拿到合法 JSON：{detail or raw[:200]}",
         )
 
-    from stock_plan.strategy.codegen import normalize_config
-
     raw_cfg = data.get("config", data)
-    config, unknown = normalize_config(raw_cfg)
+    degraded: list[dict] = []
+    if archetype_key:
+        from stock_plan.strategy.codegen import normalize_config_typed
+
+        config, unknown, degraded = normalize_config_typed(raw_cfg, archetype_key)
+    else:
+        from stock_plan.strategy.codegen import normalize_config
+
+        config, unknown = normalize_config(raw_cfg)
     unsupported = [
         {
             "name": str(u.get("name", ""))[:50],
@@ -160,6 +218,8 @@ def generate_strategy_config(description: str, client: Optional[LLMClient] = Non
         "unsupported": unsupported,
         "proposal_code": code,
         "reason": str(data.get("reason") or "")[:300],
+        "degraded": degraded,
+        "archetype": archetype_key or "",
         "mode": "llm",
     }
 
@@ -220,11 +280,15 @@ def _keyword_number(desc: str, keywords: tuple[str, ...]) -> tuple[float | None,
     return best[1], best[2]
 
 
-def _mock_strategy_config(description: str) -> dict:
-    """离线规则模式：关键词启发式生成配置（无 LLM 也可用）。"""
+def _mock_strategy_config(description: str, archetype_key: str | None = None) -> dict:
+    """离线规则模式：关键词启发式生成配置（无 LLM 也可用）。
+
+    给定 `archetype_key` 时同样走类型白名单：启发式命中的字段若不属于该类型，
+    会被拒绝并给出中文原因，而不是静默生效。
+    """
     import re
 
-    from stock_plan.strategy.codegen import normalize_config
+    from stock_plan.strategy.codegen import normalize_config, normalize_config_typed
 
     desc = description or ""
     raw: dict = {"name": "LLM 生成策略（离线模式）"}
@@ -281,7 +345,11 @@ def _mock_strategy_config(description: str) -> dict:
     if "新高" in desc or "突破" in desc:
         raw["require_breakout"] = True
 
-    config, unknown = normalize_config(raw)
+    degraded: list[dict] = []
+    if archetype_key:
+        config, unknown, degraded = normalize_config_typed(raw, archetype_key)
+    else:
+        config, unknown = normalize_config(raw)
 
     # 未支持能力识别（供用户日后补充新参数）
     unsupported = []
@@ -318,6 +386,8 @@ def _mock_strategy_config(description: str) -> dict:
         "proposal_code": "",
         "reason": "离线关键词匹配生成；配置 .env 启用真实 LLM 后效果更佳。",
         "error": "",
+        "degraded": degraded,
+        "archetype": archetype_key or "",
         "mode": "mock",
     }
 

@@ -1,0 +1,9 @@
+[
+  {"label": "win_a/趋势跟随策略/phase12", "strategy": "趋势跟随策略", "params": {}, "config": {}, "start": "2022-03-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "win_a/动量策略/phase12", "strategy": "动量策略", "params": {}, "config": {}, "start": "2022-03-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "win_a/均值回归策略/phase12", "strategy": "均值回归策略", "params": {}, "config": {}, "start": "2022-03-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "win_a/突破策略/phase12", "strategy": "突破策略", "params": {}, "config": {}, "start": "2022-03-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "win_a/价值投资策略/phase12", "strategy": "价值投资策略", "params": {}, "config": {}, "start": "2022-03-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "win_a/段永平-高质量策略/phase12", "strategy": "段永平-高质量策略", "params": {}, "config": {}, "start": "2022-03-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800},
+  {"label": "win_a/李录-长期确定性策略/phase12", "strategy": "李录-长期确定性策略", "params": {}, "config": {}, "start": "2022-03-07", "end": "2026-10-28", "lead_days": 400, "max_codes": 800}
+]

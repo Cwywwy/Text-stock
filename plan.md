@@ -2,7 +2,7 @@
 
 > 版本：v0.3 含 Phase Tasklist
 > 作者：AI 辅助 + 用户决策
-> 最后更新：2026-09-03
+> 最后更新：2026-10-29（策略刷新 Phase 6–13 落地与结论）
 
 ---
 
@@ -635,6 +635,7 @@ uv run python -m stock_plan.data.update_daily
 
 | 2026-09-03 | Phase 15 云端部署准备（分支1） | ✅ 完成：①requirements.txt（本地验证版本固定，Streamlit Community Cloud 只认它）②llm/config.py 加 `st.secrets` 回退③update_center 按平台显示说明④空数据提示统一指向「数据更新」页⑤修复选中未编辑参数策略时 `{**None}` 抛 TypeError |
 | 2026-10-15 | 数据层并发化与前复权回溯修复 | ✅ 完成：①fetcher 全局锁 → **线程本地 V8 上下文**（只锁"创建"那一步），A/B 实测 24 只×16 线程 19.57s→3.56s，全市场 **75.5→13.7 分钟**；V8 上下文创建 16 次/24 请求/16 线程，证明上下文被复用②新增 **`--rebuild` 全历史重建**（5553 只 9.6 分钟），修正 000001 偏 2.19%、601318 偏 1.74% 的历史偏移③`save_bars` 改原子写④`last_date` 只读 date 列、`cache_exists` 单次分桶、workers 8→16⑤计划任务重写为 `daily_job.ps1` + `register_tasks.ps1` + 3 份 XML⑥pytest 54 passed、12 页 AppTest 全绿 |
+| 2026-10-29 | 策略刷新 Phase 6–13（`feature/strategy-refresh`） | ✅ 完成：按调研结论落地五块——A 收敛因子（`factors/convergence.py`，5 列，`conv_weight` 默认 0，**不成立**）/ B 动量方向修正（`factors/momentum.py`，`momentum_mode` 三模式，默认 `ret20` 不变，**新口径更差**）/ C RRG 行业轮动（`factors/rrg.py` + `backtest/rotation.py`，C1 年化超额 −0.53pp，**证伪、C2 不做**）/ D 两段式「先选类型 → LLM 白名单内发挥」（`strategy/archetypes.py` + `SignalReport.degraded`，六类型、事件驱动占位）/ E B 档字段（`data/share_capital.py` + `data/disclosure.py` + `data/fields.py`，5571 只快照 / 635.7 万行 / 99,191 条披露日）。7 策略默认输出逐值不变，测试 210 → **547**。计划书 `.github/plans/done/2026-10-29-4-new-strategy-refresh-implementation.md` |
 
 > 注：pandas-ta 与 numpy 2.5 冲突（numba 限制 numpy<2.3），技术指标改为**自研**（plan 备选方案）。
 > 注：metrics 的 total_return 等已是百分比数值，显示时直接用 `:.2f`，不要再用 `:.2%` 或 `*100`。
