@@ -2,9 +2,26 @@
 
 > 按日期分组，从新到旧排列。
 
+## 2026-10-29（续 14）：复筛 Phase 21–22 — 结论落地（默认值不变）、文档与归档
+
+按 [复筛计划书](.github/plans/done/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 21、Phase 22。
+
+- **Phase 21 结论落地（`(phase 21) document timing tiers and rescreen conclusions`）**：本轮复筛**没有任何候选通过**
+  预注册门槛，因此**不改任何用户可见默认值**——三档择时保持默认「关闭」，7 个内置策略参数、`momentum_mode`、
+  `conv_variant`、`conv_weight` 全部原样。README 新增「大盘择时档位（可选，默认关闭）」小节（口径、降仓语义、限制、
+  实测结论）；决策报告 `tests/reports/2026-10-29-18-50.rescreen-decisions.md` 逐条给出结论、证据链（JSON/报告 +
+  数据指纹）与未通过项的替代建议。
+- **Phase 22 归档（`(phase 22) archive rescreen plan and summarise results`）**：计划书归档到
+  `.github/plans/done/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md`，README / CHANGELOG / 计划 6 / 决策报告
+  中的链接同步更新；最终全量测试报告 `tests/reports/2026-10-29-18-56.report-1.md`。
+- **本轮最终结论（一句话）**：收敛因子、动量方向修正、RRG 行业轮动三条候选线在验证期都不成立；双均线三档择时
+  在 2026 下跌段有效、但只有 1/2 年更好且收益集中在单一年份，按预注册规则不算通过——默认关闭，留作研究工具。
+- **未决事项**：UI 默认开弱择时（`market_timing=True`）与全部 A/B 研究用 `False` 的口径不一致，是否改 UI 默认需单独拍板；
+  T-4 换手治理由用户自行推进；真正的样本外（前向）验证尚未做。
+
 ## 2026-10-29（续 13）：复筛 Phase 20 — 全市场 150 arm 矩阵与双层判定（候选层无一通过）
 
-按 [复筛计划书](.github/plans/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 20：
+按 [复筛计划书](.github/plans/done/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 20：
 全市场 150 arm（144 股票 + 6 行业轮动）、预注册双层判定、月度极值与「未能降仓」披露。全量测试 654 → **656 passed**。
 
 - **矩阵**：7 策略基线 + 收敛 5 变体 ×2 策略 + 动量 3 模式 + RRG，三窗口（W1 训练 / W2 验证 / W3 全期）×
@@ -27,7 +44,7 @@
 
 ## 2026-10-29（续 12）：复筛 Phase 18–19 — 全市场基线冻结 + 双均线三档择时（默认关闭）
 
-按 [复筛计划书](.github/plans/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 18、Phase 19。
+按 [复筛计划书](.github/plans/done/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md) 完成 Phase 18、Phase 19。
 新增能力**默认关闭**，21 arm 与 HEAD 基线逐字段 **0 差异**；全量测试 637 → **654 passed**。
 
 - **Phase 18 全市场基线**（`(phase 18) add full market baseline for strategy rescreen`）：数据指纹与原记录不一致

@@ -1,4 +1,4 @@
-﻿# 盘前选股系统
+# 盘前选股系统
 
 基于 A 股技术面 + 基本面选股，提供盘前信号（目标买入/卖出价、止损、持仓周期）、回测引擎与模拟交易，通过本地 Streamlit Web 仪表板查看。
 
@@ -307,7 +307,10 @@ D 两段式与 E 字段补齐是纯增量能力，已可用。真正的主要矛
   [判定报告](tests/reports/2026-10-29-18-45.rescreen-judgement.md) 与
   [矩阵报告](tests/reports/2026-10-29-17-36.rescreen-matrix.md)；
 - ✅ Phase 21 结论落地：**不改任何用户可见默认值**（三档择时保持默认「关闭」），只补文档与决策报告，见
-  [决策报告](tests/reports/2026-10-29-18-50.rescreen-decisions.md)。
+  [决策报告](tests/reports/2026-10-29-18-50.rescreen-decisions.md)；
+- ✅ Phase 22 归档：计划书移至 [.github/plans/done/](.github/plans/done/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md)，
+  链接已同步；最终全量 **656 passed**，见 [最终测试报告](tests/reports/2026-10-29-18-56.report-1.md)。
+  本轮**没有一条候选策略线通过预注册门槛**，因此默认值全部保持原样。
 
 #### 大盘择时档位（可选，默认关闭）
 

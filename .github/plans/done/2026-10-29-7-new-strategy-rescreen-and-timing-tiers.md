@@ -1,6 +1,6 @@
-# 策略复筛（全市场）与三档择时（默认关闭）计划
+﻿# 策略复筛（全市场）与三档择时（默认关闭）计划
 
-- **状态**：执行中——Phase 18、Phase 19、Phase 20 已完成（2026-10-29 18:44）；Phase 21–22 待执行
+- **状态**：**已完成**（2026-10-29 18:56，Phase 18–22 全部完成，计划已归档）
 - **日期**：2026-10-29
 - **分支**：`分支6`（与 `origin/分支6` 已同步，HEAD `78f86e9`）；不合并 `main`、不推送其它分支
 - **环境**：Python 3.13.15 + pandas 3.0.5 + Streamlit 1.63.0；`.venv\Scripts\python.exe`；16 逻辑核 / 31.1 GB
@@ -290,6 +290,18 @@ BacktestConfig.timing_tier: str = "off"      # off | dual_ma
 
 **完成标准**：README/CHANGELOG 与实现一致；默认值未变（21 arm 0 差异复核）；`pytest` ≥637；工作区干净。
 
+- [x] README 增加「大盘择时档位（可选，默认关闭）」小节，CHANGELOG 追加本条（续 13）
+- [x] 决策报告 `tests/reports/2026-10-29-18-50.rescreen-decisions.md`（逐条结论 + 证据链 + 替代建议）
+- [x] 计划书勾选完成标准；`pytest` 656 passed（≥637）
+- [x] 未改任何用户可见默认值（`timing_tier="off"`、7 策略参数、`momentum_mode`/`conv_variant`/`conv_weight` 全部原样）
+
+**执行记录（2026-10-29 18:50）**
+
+- README §「复筛与三档择时」补 Phase 21 行与「大盘择时档位（可选，默认关闭）」小节（口径、降仓语义、限制、实测结论）。
+- 决策报告落盘：候选人层（收敛/动量/RRG）全部「不通过」、择时层 `weak` 帮忙但 `tier` 无差别，并写明「证据链、跑数次数、未决事项」。
+- 默认值冻结声明：三档择时默认关闭；本轮未新增/修改任何默认路径，故 Phase 19 的 21 arm 0 差异结论继续有效。
+- 未做：README 里「UI 默认开弱择时、A/B 默认关」的口径统一（需用户单独拍板，已写入未决事项）。
+
 **commit**：`(phase 21) document timing tiers and rescreen conclusions`
 
 ### Phase 22 — 归档与总结
@@ -301,6 +313,19 @@ BacktestConfig.timing_tier: str = "off"      # off | dual_ma
 3. 给用户中文总结：改动、数字前后对比、证据链、commit 列表、风险与未决事项。
 
 **完成标准**：归档完成、链接有效、总结含全部要求项。
+
+- [x] 最终全量 `pytest` 与报告落盘（`tests/reports/2026-10-29-18-56.report-1.md`）
+- [x] 计划归档到 `.github/plans/done/`，引用链接已同步（README / CHANGELOG / 计划 6 / 决策报告）
+- [x] 给用户中文总结：改动、数字前后对比、证据链、commit 列表、风险与未决事项
+
+**执行记录（2026-10-29 18:56）**
+
+- 归档路径：`.github/plans/done/2026-10-29-7-new-strategy-rescreen-and-timing-tiers.md`。
+- commit 链（本计划）：`6a472ea` Phase 18 → `6995f19` Phase 19 → `5b0b40c` Phase 20 → Phase 21 → Phase 22。
+- 最终数字：pytest **656 passed**（Phase 18 起点 637）；矩阵 150 arm（144 + 6）；W2 判定「候选层无一通过」；默认值全部未变。
+- 给用户的总结要点：①三条候选线都不成立（收敛 pvcf W2 +1.24pp、动量 blend 单年主导、RRG +0.46pp）；
+  ②择时 `weak` 帮忙、`tier` 单年主导（不通过）；③所有结论都在同一份数据 + 预注册门槛下得出，未调参。
+- 状态改为 **已完成**。
 
 **commit**：`(phase 22) archive rescreen plan and summarise results`
 
