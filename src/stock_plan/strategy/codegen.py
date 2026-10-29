@@ -10,6 +10,9 @@
 
 规则词表（RULE_SPEC / PARAM_SPEC / WEIGHT_SPEC）同时作为 LLM 的输出约束提示，
 保证 LLM 优先输出系统能直接落地的结构化参数。
+
+修订记录：
+2026-10-29  (phase 11) 新增 mv_pct 规则与 normalize_config_typed（类型白名单/三层默认值/降级）
 """
 from __future__ import annotations
 
@@ -41,6 +44,7 @@ RULE_SPEC: dict[str, tuple[str, str, object, type]] = {
     "vol_surge_bonus": ("放量加分数值", "触发放量异动时额外加多少分", 10.0, float),
     "macd_golden": ("MACD 金叉", "要求 MACD 快线在信号线上方（多头动能）；仅作过滤不满足排除", False, bool),
     "macd_above_zero": ("MACD 零轴上方", "要求 MACD 在零轴上方（中期多头市场）", False, bool),
+    "mv_pct": ("小市值分位", "只在总市值最小的这个比例里选股（0.2 = 最小 20%）；0 = 不启用", 0.0, float),
 }
 
 PARAM_SPEC: dict[str, tuple[str, str, float, type]] = {
@@ -148,6 +152,7 @@ def normalize_config(raw: dict) -> tuple[dict, list[str]]:
     rules["liquidity_min"] = _clip(float(rules["liquidity_min"]), 0, 1000)
     rules["vol_surge_min"] = _clip(float(rules["vol_surge_min"]), 0, 20)
     rules["vol_surge_bonus"] = _clip(float(rules["vol_surge_bonus"]), 0, 100)
+    rules["mv_pct"] = _clip(float(rules["mv_pct"]), 0.0, 1.0)
     unknown.extend(rules_raw.keys())
     config["rules"] = rules
 
@@ -167,6 +172,60 @@ def normalize_config(raw: dict) -> tuple[dict, list[str]]:
     config["params"] = params
 
     return config, sorted(set(unknown))
+
+
+def _provided_keys(raw: dict) -> set[str]:
+    """收集用户/LLM **显式给出**的键集合。
+
+    为什么需要：`normalize_config` 会把词表里所有键补齐成默认值，事后无法区分
+    「LLM 真的想要 dev_min=-3」和「这个词表默认值就是 -3」。三层默认值必须先知道
+    哪些键是显式给的，否则类型默认值永远压不住清洗阶段的默认值。
+    """
+    provided: set[str] = set()
+    if not isinstance(raw, dict):
+        return provided
+    for section in ("weights", "rules", "params"):
+        nested = raw.get(section) or {}
+        if isinstance(nested, dict):
+            provided.update(str(key) for key in nested)
+    for key in raw:
+        if key in ("name", "rules", "params", "weights", "description", "archetype"):
+            continue
+        provided.add(str(key))
+    return provided
+
+
+def normalize_config_typed(
+    raw: dict,
+    archetype_key: str,
+    *,
+    available_columns: set[str] | None = None,
+) -> tuple[dict, list[str], list[dict]]:
+    """清洗 + 类型收敛：`normalize_config` 之上叠加「白名单 / 三层默认值 / 缺字段降级」。
+
+    参数：
+        raw: LLM 或可视化拼装器给出的原始配置。
+        archetype_key: 策略类型 key（见 `stock_plan.strategy.archetypes.ARCHETYPES`）。
+        available_columns: 当前可用的因子列；None 表示未知，留到运行期再降级。
+
+    返回：
+        (config, issues, degraded)：issues 是越界/未识别字段的中文说明，
+        degraded 是规则级降级记录（缺字段 → 该条规则禁用，报告里可见）。
+    """
+    from stock_plan.strategy.archetypes import resolve_config
+
+    config, unknown = normalize_config(raw)
+    if not config:
+        return {}, unknown, []
+    provided = _provided_keys(raw)
+    config, issues, degraded = resolve_config(
+        archetype_key,
+        config,
+        provided=provided,
+        available_columns=available_columns,
+        extra_unknown=unknown,
+    )
+    return config, issues, degraded
 
 
 def _fmt(v) -> str:

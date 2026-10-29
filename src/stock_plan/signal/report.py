@@ -19,6 +19,7 @@
 
 修订记录：
 2026-10-28 新建（phase 1）信号解释报告数据层。
+2026-10-29 (phase 11) SignalReport 增加 degraded 字段：缺字段被禁用的规则在报告里留痕。
 """
 from __future__ import annotations
 
@@ -278,6 +279,9 @@ class SignalReport:
     rejected_samples: tuple[RejectedSample, ...] = ()
     entry_gap: EntryGap | None = None
     warnings: tuple[str, ...] = ()
+    # 缺字段降级：早期 CustomStrategy 遇到缺列会「静默跳过」那条规则，
+    # 用户看到的是「策略跑完了」其实少算了几条。现在逐条记录，报告里显式展示。
+    degraded: tuple[str, ...] = ()
 
     @property
     def version(self) -> int:
@@ -297,6 +301,7 @@ class SignalReport:
             "rejected_samples": [item.to_dict() for item in self.rejected_samples],
             "entry_gap": self.entry_gap.to_dict() if self.entry_gap else None,
             "warnings": list(self.warnings),
+            "degraded": list(self.degraded),
         }
 
     def cache_payload(self) -> dict[str, Any]:
@@ -348,4 +353,8 @@ class SignalReport:
             lines.append("")
             lines.append("【口径提醒】")
             lines.extend(f"- {item}" for item in self.warnings)
+        if self.degraded:
+            lines.append("")
+            lines.append("【降级规则：因缺字段今天没算】")
+            lines.extend(f"- {item}" for item in self.degraded)
         return "\n".join(lines)

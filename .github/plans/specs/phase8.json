@@ -1,0 +1,5 @@
+[
+  {"label": "动量/ret20", "strategy": "动量策略", "params": {"momentum_mode": "ret20"}},
+  {"label": "动量/ma_ratio", "strategy": "动量策略", "params": {"momentum_mode": "ma_ratio"}},
+  {"label": "动量/ma_ratio_blend", "strategy": "动量策略", "params": {"momentum_mode": "ma_ratio_blend"}}
+]

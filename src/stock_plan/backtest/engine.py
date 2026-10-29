@@ -13,16 +13,23 @@
 - 涨跌停：涨停无法买入、跌停无法卖出（简化判断）
 
 Revision History:
+    2026-10-29  (phase 15) add PreparedBacktest and prepare_backtest; run_backtest reuses prepared factor tables
+    2026-10-29  (phase 14) flatten per-code factor frames into numpy factor tables; drop per-row Series lookups
+    2026-10-29  (phase 7) inject convergence factor columns (conv_pcf/vcf/acf/trcf/pvcf) into candidates
     2026-10-28  (phase 1) expose equal-weight benchmark on BacktestResult
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
 
+from stock_plan.factors.convergence import add_conv_columns, compose_pvcf
+from stock_plan.factors.momentum import add_ma_ratio_columns
 from stock_plan.factors.technical import compute_technical
 from stock_plan.factors.fundamental import compute_fundamental_or_neutral
 from stock_plan.strategy.base import Strategy
@@ -129,12 +136,213 @@ def _price_limit(code: str, bars: pd.DataFrame, idx: int) -> tuple[float, float]
     return round(prev_close * (1 + limit), 2), round(prev_close * (1 - limit), 2)
 
 
+# 候选因子表列（Phase 14）：主循环只读这些列，顺序与下面的整数列号常量绑定。
+# `avg_amount20` 只在行情有 amount 列时有意义；缺列时统一补一整列 NaN（语义等价于
+# 原实现 `last.get("avg_amount20")` 取不到列时回落到 float("nan")）。
+_FACTOR_COLUMNS: tuple[str, ...] = (
+    "volume",
+    "close",
+    "atr14",
+    "ma20",
+    "ma60",
+    "rsi14",
+    "vol_ratio",
+    "high20",
+    "avg_amount20",
+    "macd",
+    "macd_signal",
+    "trend_score",
+    "ma5",
+    "ma7",
+    "ma10",
+    "ma30",
+    "conv_pcf",
+    "conv_vcf",
+    "conv_acf",
+    "conv_trcf",
+    "ma_ratio_20",
+    "ma_ratio_60",
+    "ma_ratio_120",
+    "ma_ratio_240",
+)
+# 列号常量：主循环（5379 只 × 1184 个交易日）里避免每次候选都做 dict 查列名。
+(
+    _C_VOLUME,
+    _C_CLOSE,
+    _C_ATR14,
+    _C_MA20,
+    _C_MA60,
+    _C_RSI14,
+    _C_VOL_RATIO,
+    _C_HIGH20,
+    _C_AVG_AMT20,
+    _C_MACD,
+    _C_MACD_SIGNAL,
+    _C_TREND,
+    _C_MA5,
+    _C_MA7,
+    _C_MA10,
+    _C_MA30,
+    _C_CONV_PCF,
+    _C_CONV_VCF,
+    _C_CONV_ACF,
+    _C_CONV_TRCF,
+    _C_RATIO20,
+    _C_RATIO60,
+    _C_RATIO120,
+    _C_RATIO240,
+) = range(len(_FACTOR_COLUMNS))
+
+
+class _FactorTable:
+    """单只股票的候选因子表：列名元组 + float64 矩阵 + 日期 int64 数组。
+
+    为什么需要（Phase 14 性能改造）：原实现每个交易日对每只股票做一次
+    `factor_index[code].iloc[p]` 生成一行 Series，再按列名逐项取值 —— 全市场 5 年
+    约 640 万次 Series 构造，固定开销远大于取值本身（cProfile 中
+    `Series.__getitem__` 与 `DataFrame.__getitem__` 合计占单次回测约一半）。
+    这里把整列预转成 numpy 矩阵，主循环只做「矩阵行 view + 列号」取值；
+    构建路径、列顺序与改造前逐函数复用完全一致，因此数值逐值相同。
+
+    只读约定：构造后不再修改，可被同一次回测内的多个 loop 迭代共享，也可被
+    Phase 15 的 PreparedBacktest 跨策略复用（R4：调用方不得原地改写）。
+    """
+
+    __slots__ = ("columns", "col_index", "data", "dates")
+
+    def __init__(self, columns: tuple[str, ...], data: np.ndarray, dates: np.ndarray):
+        self.columns = tuple(columns)
+        self.col_index = {name: i for i, name in enumerate(self.columns)}
+        self.data = data
+        self.dates = dates
+
+
+def _build_factor_table(bars: pd.DataFrame) -> _FactorTable:
+    """为单只股票构建候选因子表（与改造前的 pandas 构建步骤逐函数一致）。
+
+    ⚠️ 构建顺序必须与改造前相同：先技术因子，再 high20 / avg_amount20 / 四组均线，
+    最后收敛因子与 MA_L/close。滚动窗口的 min_periods 语义依赖 pandas 默认值，
+    任何一步改写都会移动 NaN 的位置。
+
+    参数：
+        bars: 单只股票日线（含 date/open/high/low/close/volume/amount/turnover）。
+
+    返回：
+        _FactorTable（只读）。
+    """
+    f = compute_technical(bars).set_index("date")
+    # 近 20 日最高收盘价（供突破策略使用，rolling 窗口止于当日，无未来函数）
+    f["high20"] = f["close"].rolling(20).max()
+    # 近 20 日平均成交额（供流动性筛选使用）。必须用 **rolling** 而不是
+    # `bars["amount"].tail(20)` —— 后者取的是整条序列末尾，在逐日回测里就是未来数据。
+    if "amount" in f.columns:
+        f["avg_amount20"] = f["amount"].rolling(20).mean()
+    else:
+        # 缺可选列：补 NaN 列，保持所有股票列集一致（取值语义与 last.get(...) 回落 nan 相同）
+        f["avg_amount20"] = np.nan
+    # 自定义均线列（供自定义策略均线自由组合使用）
+    for _p in (5, 7, 10, 30):
+        f[f"ma{_p}"] = f["close"].rolling(_p).mean()
+    # 均线收敛因子（2026-10-29）：滚动计算天然无未来函数，整列预计算、按日取行。
+    # PVCF 依赖「当日截面」，只能在候选集拼成 DataFrame 后算（见下方 compose_pvcf）。
+    f = add_conv_columns(f, bars)
+    # 动量方向修正（2026-10-29）：MA_L/close 四列，同样整列滚动预计算。
+    f = add_ma_ratio_columns(f)
+    data = f[list(_FACTOR_COLUMNS)].to_numpy(dtype=np.float64)
+    # 日期转 int64 纳秒：指针查找用整数比较，比 datetime64 更快，且口径与 ts.value 一致。
+    dates = f.index.values.astype("datetime64[ns]").astype(np.int64)
+    # 只读：防止后续代码（含 prepared 复用方）原地改写，破坏逐值对拍
+    data.setflags(write=False)
+    dates.setflags(write=False)
+    return _FactorTable(_FACTOR_COLUMNS, data, dates)
+
+
+@dataclass(frozen=True)
+class PreparedBacktest:
+    """回测准备层：一次算好的只读数据快照，供同一批行情上多次 run_backtest 复用。
+
+    Phase 15 性能目标：7 策略 × 1 年对比时，因子表构建（全市场约 50~70s）只做一次，
+    各策略只跑主循环；UI 对比页 / walk-forward / 今日信号路径共用同一份快照。
+
+    只读约定（R4）：
+        - 构造时浅拷贝三个容器（bars_map/fund_map/factor_tables），并用
+          MappingProxyType 包成只读视图，避免调用方后续增删 key 影响已制备结果。
+        - 容器内的 DataFrame / _FactorTable / dict **不深拷贝**，调用方不得原地改写；
+          `_FactorTable.data` 已是 write=False 的 numpy 数组。
+
+    不缓存的内容：
+        - `trading_days`、`benchmark`、候选池（`filter_universe` 结果）都依赖策略与
+          回测区间，每次 run_backtest 按传入的 config 与策略重新计算，数值语义与
+          不传 prepared 时完全一致。
+        - `config` 只是制备时的配置快照，便于 UI 侧校验/展示；run_backtest 仍以
+          调用时传入的 config 为准（窗口可不同，因子表按整段行情预计算）。
+
+    字段：
+        factor_tables: {code: _FactorTable}，prepare_backtest 一次算好。
+        stock_list:    制表时的股票列表快照（用于 filter_universe）。
+        fund_map:      制表时的财务快照。
+        bars_map:      制表时的行情快照（run_backtest 传 prepared 时以此为准）。
+        config:        制备时的回测配置快照。
+    """
+
+    factor_tables: Mapping[str, _FactorTable]
+    stock_list: pd.DataFrame
+    fund_map: Mapping[str, dict]
+    bars_map: Mapping[str, pd.DataFrame]
+    config: BacktestConfig
+
+    def __post_init__(self) -> None:
+        # 浅拷贝容器 + 只读视图：外部 dict 增删 key 不影响本对象（R4）
+        object.__setattr__(self, "factor_tables", MappingProxyType(dict(self.factor_tables)))
+        object.__setattr__(self, "fund_map", MappingProxyType(dict(self.fund_map)))
+        object.__setattr__(self, "bars_map", MappingProxyType(dict(self.bars_map)))
+
+
+def prepare_backtest(
+    bars_map: Mapping[str, pd.DataFrame],
+    fund_map: Mapping[str, dict],
+    stock_list: pd.DataFrame,
+    config: BacktestConfig,
+) -> PreparedBacktest:
+    """一次算好全部 code 的因子表，返回只读快照供多次 run_backtest 复用。
+
+    参数：
+        bars_map:  {code: 日线 DataFrame}（建议传整段回测区间，各窗口复用）。
+        fund_map:  {code: 财务指标 dict}。
+        stock_list: 全 A 股列表（用于策略 filter_universe）。
+        config:    制备时的回测配置（仅作快照/校验；run_backtest 以调用时 config 为准）。
+
+    返回：
+        PreparedBacktest（只读）。
+
+    注意：
+        - 本函数不跑策略、不截断候选池，因此不做 filter_universe —— 因子表对同一
+          code 是整段行情上的滚动结果，与回测窗口无关；run_backtest 仍会按
+          config.start 截断后再做策略过滤。
+        - 缺 K 线/None 的 code 直接跳过（不写入 factor_tables），run_backtest 遇到
+          候选池里的缺失 code 会惰性补建（仅影响性能，不影响结果）。
+    """
+    factor_tables = {
+        code: _build_factor_table(bars)
+        for code, bars in bars_map.items()
+        if bars is not None
+    }
+    return PreparedBacktest(
+        factor_tables=factor_tables,
+        stock_list=stock_list,
+        fund_map=fund_map,
+        bars_map=bars_map,
+        config=config,
+    )
+
+
 def run_backtest(
     strategy: Strategy,
     config: BacktestConfig,
     bars_map: dict[str, pd.DataFrame],
     fund_map: dict[str, dict],
     stock_list: pd.DataFrame,
+    prepared: PreparedBacktest | None = None,
 ) -> BacktestResult:
     """执行回测。
 
@@ -144,10 +352,27 @@ def run_backtest(
         bars_map:  {code: 日线 DataFrame}。
         fund_map:  {code: 财务指标 dict}。
         stock_list: 全 A 股列表（用于硬过滤）。
+        prepared:  可选。Phase 15 准备层快照（prepare_backtest 的返回值）。提供时：
+                   - 内部**以 prepared 的 bars_map/fund_map/stock_list 为准**，忽略
+                     本次调用传进来的这三个位置参数，避免调用方混用不同数据快照
+                     造成静默错值；
+                   - 复用 prepared.factor_tables 中已有的因子表，缺某 code 时惰性
+                     补建（不修改 prepared 本身）；
+                   - codes / trading_days / benchmark / 候选池仍按策略与 config
+                     重新计算，数值语义与不传 prepared 时完全一致。
+                   不传时行为与历史版本完全相同（向后兼容）。
 
     返回：
         BacktestResult（资金曲线 + 交易明细 + 指标）。
     """
+    # Phase 15：prepared 提供时以它的数据快照为准（只读视图，不复制容器）。
+    _prepared_tables: Mapping[str, _FactorTable] | None = None
+    if prepared is not None:
+        bars_map = prepared.bars_map  # type: ignore[assignment]
+        fund_map = prepared.fund_map  # type: ignore[assignment]
+        stock_list = prepared.stock_list
+        _prepared_tables = prepared.factor_tables
+
     # 候选股票：硬过滤。
     # ⚠️ 必须**先把行情截到回测开始日**再交给策略过滤（2026-10-28 修正）。
     # 原因：`filter_universe` 内部会做 `tail(20)` / `iloc[-1]` 之类的"近期形态"判断，
@@ -182,23 +407,38 @@ def run_backtest(
     date_index = {code: bars_map[code].set_index("date") for code in codes}
 
     # 预计算每只股票的完整技术因子（滚动计算无未来函数，可一次性算完再按日查表）
-    # 相比逐日对每只股票重新 compute_technical，可大幅提升回测速度
-    factor_index = {}
+    # 相比逐日对每只股票重新 compute_technical，可大幅提升回测速度。
+    # Phase 14：因子帧压平成 numpy 矩阵（见 _FactorTable），主循环不再逐行构造 Series；
+    # 列顺序、取值语义与改造前的 factor_index 逐值相同。
+    # Phase 15：prepared 提供时复用已有因子表（缺 code 惰性补建，不修改 prepared）。
+    factor_tables: dict[str, _FactorTable] = {}
     for code in codes:
-        f = compute_technical(bars_map[code]).set_index("date")
-        # 近 20 日最高收盘价（供突破策略使用，rolling 窗口止于当日，无未来函数）
-        f["high20"] = f["close"].rolling(20).max()
-        # 近 20 日平均成交额（供流动性筛选使用）。必须用 **rolling** 而不是
-        # `bars["amount"].tail(20)` —— 后者取的是整条序列末尾，在逐日回测里就是未来数据。
-        if "amount" in f.columns:
-            f["avg_amount20"] = f["amount"].rolling(20).mean()
-        # 自定义均线列（供自定义策略均线自由组合使用）
-        for _p in (5, 7, 10, 30):
-            f[f"ma{_p}"] = f["close"].rolling(_p).mean()
-        factor_index[code] = f
-    # 每只股票的日期数组（numpy datetime64），配合指针做单调递增查找
-    code_dates = {code: factor_index[code].index.values for code in codes}
+        _table = _prepared_tables.get(code) if _prepared_tables is not None else None
+        factor_tables[code] = _table if _table is not None else _build_factor_table(bars_map[code])
+    # 主循环的 (code, table) 配对：避免每个交易日对 5379 只股票重复做 dict 查找。
+    code_items = tuple((code, factor_tables[code]) for code in codes)
+    # 每只股票的日期数组（int64 纳秒），配合指针做单调递增查找
     code_ptr = {code: -1 for code in codes}
+
+    # 财务分数缓存（Phase 14）：同一 code 的财务 dict 恒定，原实现里每个候选都调用
+    # 一次 compute_fundamental_or_neutral，属于纯重复计算。这里预计算「正常快照」与
+    # 「快照日之前中性化」两种取值；候选循环里只做一次 dict/元组取值。
+    fund_scores_normal: dict[str, tuple[float, float, float, float]] = {}
+    for code in codes:
+        _scores = compute_fundamental_or_neutral(fund_map.get(code, {}))
+        fund_scores_normal[code] = (
+            _scores["value_score"],
+            _scores["growth_score"],
+            _scores["quality_score"],
+            fundamental_composite(_scores),
+        )
+    _neutral_scores = compute_fundamental_or_neutral({})
+    fund_scores_neutral = (
+        _neutral_scores["value_score"],
+        _neutral_scores["growth_score"],
+        _neutral_scores["quality_score"],
+        fundamental_composite(_neutral_scores),
+    )
 
     # 大盘代理：**等权收益指数**（用于大盘择时）
     # 原实现是 closes.mean(axis=1) —— 对原始股价直接取平均，有两个方法学问题：
@@ -283,7 +523,9 @@ def run_backtest(
 
     for day in trading_days:
         ts = pd.Timestamp(day)
-        ts_val = np.datetime64(day)
+        # 当日在因子表里的表示：int64 纳秒（与 _FactorTable.dates 同口径），
+        # 指针比较用整数比 datetime64 快；与改造前的 np.datetime64(day) 等价。
+        ts_int = ts.value
         # ---------- 1. 检查持仓：止盈 / 止损 / 持仓天数 / 行情终结 ----------
         for code in list(positions.keys()):
             pos = positions[code]
@@ -334,11 +576,13 @@ def run_backtest(
             last_rebalance_week = week_key
 
         candidates = []
-        for code in codes:
-            dates = code_dates[code]
+        # 财务前视修正按天判一次（等价于原实现每个候选都做的 ts.date() < _fund_as_of）
+        _use_neutral_fund = _fund_as_of is not None and day < _fund_as_of
+        for code, table in code_items:
+            dates = table.dates
             p = code_ptr[code]
             # 单调推进指针：找到最后一个日期 <= 当天的行
-            while p + 1 < len(dates) and dates[p + 1] <= ts_val:
+            while p + 1 < len(dates) and dates[p + 1] <= ts_int:
                 p += 1
             code_ptr[code] = p
             if p < 59:  # 至少 60 根 K 线历史
@@ -347,64 +591,71 @@ def run_backtest(
             # 不加这一条的话，已退市股票的指针会停在最后一根 K 线上、带着过期数据
             # 一直参与打分并占住 top_n 名额 —— 买入环节虽然会跳过它们（当天无 K 线），
             # 但那天就少买了一只，等于被"僵尸候选"挤掉仓位。
-            if dates[p] != ts_val:
+            if dates[p] != ts_int:
                 continue
-            last = factor_index[code].iloc[p]
-            if last["volume"] == 0:
+            data = table.data
+            row = data[p]
+            if row[_C_VOLUME] == 0:
                 continue
-            fund = fund_map.get(code, {})
-            # 财务因子前视修正（2026-10-28）：`fundamentals` 表每个 code 只有 1 行、
-            # 没有报告期，`updated_at` 只是抓取日（实测全表同一批）。若在快照日**之前**
-            # 的交易日就用这份数据打分，等于提前看到了未来才公布的财务指标。所以
-            # 快照日之前把财务因子一律中性化（空 dict → 各因子取中位 50）。
-            if _fund_as_of is not None and ts.date() < _fund_as_of:
-                fund = {}
-            # 原始财务指标 → 三个分数（空 dict 得中性 50 分）。
-            # 2026-10-28 修正：此前直接把原始 dict 交给 fundamental_composite，
-            # 它读的是分数键、读不到就回退 50，导致财务因子在回测里恒为 50。
-            _fund_scores = compute_fundamental_or_neutral(fund)
+            if _use_neutral_fund:
+                value_score, growth_score, quality_score, fund_score = fund_scores_neutral
+            else:
+                value_score, growth_score, quality_score, fund_score = fund_scores_normal[code]
             # 近 20 日动量（供动量策略使用）
             mom_ret = 0.0
             if p >= 20:
-                mom_ret = last["close"] / factor_index[code].iloc[p - 20]["close"] - 1
+                mom_ret = row[_C_CLOSE] / data[p - 20, _C_CLOSE] - 1
             # 近 20 日新高偏离（供突破策略使用）
-            high20 = last.get("high20")
-            if pd.notna(high20) and high20 > 0:
-                high20_ratio = last["close"] / high20 - 1
+            high20 = row[_C_HIGH20]
+            if not np.isnan(high20) and high20 > 0:
+                high20_ratio = row[_C_CLOSE] / high20 - 1
             else:
                 high20_ratio = 0.0
             candidates.append(
                 {
                     "code": code,
-                    "close": last["close"],
-                    "atr14": last["atr14"],
-                    "ma20": last["ma20"],
-                    "ma60": last["ma60"],
-                    "rsi14": last["rsi14"],
-                    "vol_ratio": last["vol_ratio"],
+                    "close": row[_C_CLOSE],
+                    "atr14": row[_C_ATR14],
+                    "ma20": row[_C_MA20],
+                    "ma60": row[_C_MA60],
+                    "rsi14": row[_C_RSI14],
+                    "vol_ratio": row[_C_VOL_RATIO],
                     "mom_ret": mom_ret,
                     "high20_ratio": high20_ratio,
                     # 以下三列原先只在「今日信号」路径里有，导致自定义策略的
                     # 流动性下限与 MACD 条件在**回测**中被静默跳过（不一致是双向的）。
                     # 现与 build_factor_rows 对齐，并由 tests/test_factor_parity.py 锁死。
-                    "avg_amount20": float(last.get("avg_amount20"))
-                    if pd.notna(last.get("avg_amount20"))
-                    else float("nan"),
-                    "macd": last["macd"],
-                    "macd_signal": last["macd_signal"],
-                    "value_score": _fund_scores["value_score"],
-                    "growth_score": _fund_scores["growth_score"],
-                    "quality_score": _fund_scores["quality_score"],
-                    "trend_score": last["trend_score"],
-                    "fund_score": fundamental_composite(_fund_scores),
-                    **{
-                        f"ma{_p}": float(last.get(f"ma{_p}"))
-                        for _p in (5, 7, 10, 30)
-                    },
+                    # avg_amount20：缺 amount 列时表中该列为 NaN，float(nan) 与原实现
+                    # `last.get(...) is NaN → float("nan")` 逐值相同。
+                    "avg_amount20": float(row[_C_AVG_AMT20]),
+                    "macd": row[_C_MACD],
+                    "macd_signal": row[_C_MACD_SIGNAL],
+                    "value_score": value_score,
+                    "growth_score": growth_score,
+                    "quality_score": quality_score,
+                    "trend_score": row[_C_TREND],
+                    "fund_score": fund_score,
+                    "ma5": float(row[_C_MA5]),
+                    "ma7": float(row[_C_MA7]),
+                    "ma10": float(row[_C_MA10]),
+                    "ma30": float(row[_C_MA30]),
+                    # 均线收敛因子（2026-10-29）：整列已在因子表里预计算，这里按「当日行」
+                    # 取值，与 build_factor_rows 的末行口径一致；无未来函数（rolling 只回看）。
+                    "conv_pcf": float(row[_C_CONV_PCF]),
+                    "conv_vcf": float(row[_C_CONV_VCF]),
+                    "conv_acf": float(row[_C_CONV_ACF]),
+                    "conv_trcf": float(row[_C_CONV_TRCF]),
+                    # 动量方向修正（2026-10-29）：MA_L/close，越小越强（研报口径）。
+                    "ma_ratio_20": float(row[_C_RATIO20]),
+                    "ma_ratio_60": float(row[_C_RATIO60]),
+                    "ma_ratio_120": float(row[_C_RATIO120]),
+                    "ma_ratio_240": float(row[_C_RATIO240]),
                 }
             )
         if candidates:
             df = pd.DataFrame(candidates)
+            # 截面合成列：PCF、VCF 各自 z-score 后再相加（研报口径，见 compose_pvcf）
+            df["conv_pvcf"] = compose_pvcf(df)
             df["score"] = strategy.score(df)
             df = df.sort_values("score", ascending=False)
             # 买入 Top N（跳过已持仓与涨停）

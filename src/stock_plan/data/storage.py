@@ -12,17 +12,27 @@
 Revision History:
     2026-09-04  add load_market_maps windowed loader for backtest/signal
     2026-10-15  在 load_bars 里剔除"零值占位行"（见 _sanitize_bars）
+    2026-10-29  (phase 12) add share-capital/disclosure accessors for B-tier fields
+    2026-10-29  (phase 15) parallelise load_market_maps reads; push date/price filters into pyarrow
 """
 from __future__ import annotations
 
 import os
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pandas as pd
 
 # 项目根目录（src/stock_plan/data/storage.py 向上 3 级 = 项目根）
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+# load_market_maps 的 parquet 读取并发度。
+# 为什么是 8：本机 8 物理核 / 16 逻辑核。单个 parquet 的耗时主要是
+# pyarrow 解码（在 C++ 侧释放 GIL）+ Python 侧 DataFrame 装配，并发 8
+# 已是实测拐点：再往上加线程会与 pyarrow 自身的线程池抢核，不再变快。
+# 保持有界（而不是按文件数开线程）是为了兼容云端 2 GB 轻量容器。
+_BARS_LOAD_WORKERS = 8
 
 
 def _sanitize_bars(df: pd.DataFrame) -> pd.DataFrame:
@@ -55,8 +65,90 @@ def _sanitize_bars(df: pd.DataFrame) -> pd.DataFrame:
     if not bad.any():
         return df
     return df.loc[~bad].reset_index(drop=True)
+
+
+def _read_bar_window_frame(
+    path: Path,
+    lo: pd.Timestamp | None,
+    hi: pd.Timestamp | None,
+) -> pd.DataFrame | None:
+    """读取单个日线 parquet，裁剪到 [lo, hi] 并剔除非法价位行。
+
+    为什么不直接 `load_bars` + pandas 过滤（Phase 15 实测结论）：`load_bars`
+    每只股票都要做一次 `pd.to_datetime` 和 pandas 级布尔过滤，这些是
+    Python/GIL 绑定的工作，放进线程池也并行不起来（8 线程实测只快约 8%）。
+    这里把「日期窗口过滤」和「剔除 open/high/low ≤ 0 的占位行」下推到
+    pyarrow 计算层（C++ 执行、释放 GIL），线程池才有真实并行度。
+
+    语义与 `_sanitize_bars(load_bars(code))` 再按 pandas 过滤窗口**逐值等价**：
+    - 窗口：pandas 里 `date >= lo` 会丢掉 NaT，这里 timestamp 比较后 `Table.filter`
+      同样丢弃 null 掩码行；
+    - 占位行：pandas 里 `open/high/low <= 0`（NaN 比较为 False → 保留），
+      这里 `pc.less_equal` + `fill_null(False)`，NaN 不会被误删；
+    - 输出列顺序/数值/index 与串行实现一致（index 统一 reset）。
+
+    返回 None 表示「窗口内没有任何行」，对应串行实现里跳过该 code。
+    """
+    import numpy as np
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(path)
+    date_type = table["date"].type if "date" in table.column_names else None
+    if date_type is None or not pa.types.is_timestamp(date_type) or date_type.tz is not None:
+        # 非标准 schema（正常管线不会出现）：回退 pandas 路径，语义与 load_bars 一致
+        frame = table.to_pandas()
+        frame["date"] = pd.to_datetime(frame["date"])
+        frame = _sanitize_bars(frame)
+        if lo is not None:
+            frame = frame[frame["date"] >= lo]
+        if hi is not None:
+            frame = frame[frame["date"] <= hi]
+        if frame.empty:
+            return None
+        return frame.reset_index(drop=True)
+
+    date_idx = table.column_names.index("date")
+    # 统一升到 timestamp[ns] 再比较：毫秒/微秒/纳秒列都能与 ns 标量对齐，也无精度损失
+    dates_ns = pc.cast(table["date"], pa.timestamp("ns"))
+    mask = None
+    if lo is not None:
+        mask = pc.greater_equal(
+            dates_ns, pa.scalar(np.datetime64(lo.value, "ns"), type=pa.timestamp("ns"))
+        )
+    if hi is not None:
+        hi_mask = pc.less_equal(
+            dates_ns, pa.scalar(np.datetime64(hi.value, "ns"), type=pa.timestamp("ns"))
+        )
+        mask = hi_mask if mask is None else pc.and_(mask, hi_mask)
+
+    bad = None
+    for name in ("open", "high", "low"):
+        if name in table.column_names:
+            col = table[name]
+            if not pa.types.is_floating(col.type):
+                col = pc.cast(col, pa.float64())
+            is_bad = pc.fill_null(pc.less_equal(col, pa.scalar(0.0)), False)
+            bad = is_bad if bad is None else pc.or_(bad, is_bad)
+    if bad is not None:
+        keep = pc.invert(bad)
+        mask = keep if mask is None else pc.and_(mask, keep)
+
+    if mask is not None:
+        table = table.filter(mask)
+        # 把日期列还原成文件原本的时间单位（如 timestamp[ms]），保证 dtype 一致
+        table = table.set_column(date_idx, "date", pc.cast(table["date"], date_type))
+    frame = table.to_pandas()
+    if frame.empty:
+        return None
+    return frame.reset_index(drop=True)
+
+
 BARS_DIR = PROJECT_ROOT / "data" / "processed" / "bars"
 DB_PATH = PROJECT_ROOT / "data" / "db" / "meta.db"
+# 股本/市值快照与历史表目录（B 档字段；实现在 data/share_capital.py）
+SHARES_DIR = PROJECT_ROOT / "data" / "processed" / "shares"
 
 # 日线标准字段（与 fetcher.get_daily_bars 返回一致）
 BAR_COLUMNS = ["date", "open", "high", "low", "close", "volume", "amount", "turnover"]
@@ -218,6 +310,31 @@ class Storage:
         out["is_st"] = 0
         return out[cols].reset_index(drop=True)
 
+    def _load_bars_for_window(
+        self,
+        code: str,
+        lo: pd.Timestamp | None,
+        hi: pd.Timestamp | None,
+    ) -> tuple[str, pd.DataFrame | None]:
+        """读取单只股票的日线并裁剪到 [lo, hi]，供 load_market_maps 线程池调用。
+
+        **线程安全约束**：只读 `self.bars_dir`；每个线程各自用
+        `pyarrow.parquet.read_table` 打开/关闭自己的文件句柄，不共享任何可变
+        状态（SQLite 连接、缓存对象都不在这里用）。pyarrow 的 C++ 读取实现
+        本身是线程安全的，因此 8 个线程并发读不同文件不会互相干扰。
+
+        返回 `(code, None)` 表示「无缓存 / 空数据 / 窗口内无行」，与串行实现里
+        `continue` 跳过该 code 的语义一一对应；读取/清洗逻辑见
+        `_read_bar_window_frame`。
+        """
+        path = self._bars_path(code)
+        if not path.exists():
+            return code, None
+        frame = _read_bar_window_frame(path, lo, hi)
+        if frame is None:
+            return code, None
+        return code, frame
+
     def load_market_maps(
         self,
         start: pd.Timestamp | str | None = None,
@@ -236,6 +353,15 @@ class Storage:
         - 数量上限：max_codes 生效时对代码等间隔抽样（云端轻量模式使用）。
 
         start/end 为 None 时加载全历史，行为与旧版全量加载一致。
+
+        并发读取（Phase 15）：逐 code 的 parquet 读取走有界线程池（见
+        `_BARS_LOAD_WORKERS`），单文件的窗口过滤/价位清洗下推到 pyarrow 计算层，
+        但对外语义与串行实现完全相同 ——
+        - `bars_map` 的键顺序严格按 `codes` 顺序，内容逐值相同（与
+          `load_bars` + pandas 窗口过滤的结果一致，测试里逐值对拍）；
+        - 无缓存文件的 code 照旧跳过（文件不存在即跳过），不报错；
+        - 文件损坏照旧抛出原始异常（**不**改成静默跳过，避免把数据损坏藏起来）；
+        - 每个线程只读自己的文件、不共享可变对象，pyarrow 单文件读取线程安全。
 
         include_delisted=True 时把**已退市股票**也纳入样本（暂时需求 5c）。默认关闭，
         因为这会显著改变回测结果（原先的系统性高估被去掉），历史调参结论需要重跑。
@@ -269,19 +395,28 @@ class Storage:
         lo = pd.Timestamp(start) - pd.Timedelta(days=lead_days) if start is not None else None
         hi = pd.Timestamp(end) if end is not None else None
         bars_map: dict[str, pd.DataFrame] = {}
-        for code in codes:
-            if not self.cache_exists(code):
-                continue
-            df = self.load_bars(code)
-            if df.empty:
-                continue
-            if lo is not None:
-                df = df[df["date"] >= lo]
-            if hi is not None:
-                df = df[df["date"] <= hi]
-            if df.empty:
-                continue
-            bars_map[code] = df.reset_index(drop=True)
+        if codes:
+            # 逐文件读取是 I/O + 解码密集、且每只股票互不依赖，用有界线程池并发；
+            # 结果仍按 codes 顺序写入 bars_map（dict 插入顺序 = 串行实现完全一致）。
+            workers = min(_BARS_LOAD_WORKERS, len(codes))
+            with ThreadPoolExecutor(
+                max_workers=workers, thread_name_prefix="bars-load"
+            ) as pool:
+                futures = [
+                    pool.submit(self._load_bars_for_window, code, lo, hi) for code in codes
+                ]
+                try:
+                    for future in futures:
+                        code, df = future.result()
+                        if df is not None:
+                            bars_map[code] = df
+                except BaseException:
+                    # 串行实现的语义是「第一个坏文件直接抛异常」，这里保持：
+                    # 按 codes 顺序取结果，谁的读取失败就在谁的次序位置抛出；
+                    # 绝不把坏文件静默跳过（那会把数据损坏藏起来）。
+                    for fut in futures:
+                        fut.cancel()
+                    raise
 
         # 退市股要出现在 stock_list 里，策略的 filter_universe 才会把它们当候选
         if not extra_list.empty:
@@ -291,6 +426,50 @@ class Storage:
 
         fund_map = {c: f for c in bars_map if (f := self.load_fundamentals(c)) is not None}
         return stock_list, bars_map, fund_map
+
+    # ---------- B 档字段：股本 / 市值 / 披露日（Phase 12） ----------
+    def load_shares(
+        self,
+        kind: str = "snapshot",
+        month: str | None = None,
+        out_dir: Path | str | None = None,
+    ) -> pd.DataFrame:
+        """读股本数据。`kind`：`snapshot`（当月快照）/ `float` / `total`（历史长表）。
+
+        缺文件时返回空 DataFrame（不抛错），由 data/fields.py 统一转成降级说明。
+        """
+        from stock_plan.data import share_capital as shares
+
+        base = Path(out_dir) if out_dir else SHARES_DIR
+        if kind == "snapshot":
+            return shares.load_snapshot(base, month=month)
+        if kind in {"float", "total"}:
+            return shares.load_history(kind, base)
+        raise ValueError(f"未知股本数据类别：{kind!r}（应为 snapshot/float/total）")
+
+    def load_total_mv(self, code: str | None = None) -> pd.DataFrame:
+        """总市值历史长表（`date, code, total_shares, total_mv, source`，总股本为外推口径）。"""
+        frame = self.load_shares("total")
+        if code and not frame.empty:
+            frame = frame[frame["code"].astype(str) == str(code)]
+        return frame.reset_index(drop=True)
+
+    def load_float_mv(self, code: str | None = None) -> pd.DataFrame:
+        """流通市值历史长表（`date, code, close, float_shares, float_mv`，由成交额÷换手率反推）。"""
+        frame = self.load_shares("float")
+        if code and not frame.empty:
+            frame = frame[frame["code"].astype(str) == str(code)]
+        return frame.reset_index(drop=True)
+
+    def load_disclosure(
+        self,
+        period: str | None = None,
+        codes: list[str] | None = None,
+    ) -> pd.DataFrame:
+        """读财报披露日（`report_disclosure` 表）；无记录返回空表。"""
+        from stock_plan.data import disclosure
+
+        return disclosure.load_disclosure(period, codes, db_path=self.db_path)
 
     # ---------- 退市股元数据（暂时需求 5c） ----------
     def save_delisted(self, rows: list[dict]) -> int:
