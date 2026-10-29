@@ -89,10 +89,12 @@
 3. `storage.load_market_maps` 改 `ThreadPoolExecutor(8)` 读 parquet，保持错误处理（坏文件跳过）与输出顺序。
 
 完成标准：
-- [ ] 预计算复用前后，单策略结果逐值一致（同一基线对拍）
-- [ ] 对比页 7 策略 × 1 年 ≤ 3 min（含加载）
-- [ ] `load_market_maps` 15.7 s → ≤ 8 s，返回的 `bars_map` 内容逐值一致（抽样 200 只 hash 比对）
-- [ ] commit：`(phase 15) reuse prepared factor tables across strategies and parallelise bar loading`
+- [x] 预计算复用前后，单策略结果逐值一致（同一基线对拍）：21 arm（prepared）vs HEAD 同数据基线 **21/21 一致、0 字段差异**；5 年全市场趋势跟随 prepared vs plain `equity_curve.equals=True`、`trades.equals=True`
+- [x] 对比页 7 策略 × 1 年 ≤ 3 min（含加载）：实测 load 6.23 s + prepare 80.88 s + 7 策略 run 合计 76.27 s = **163.38 s**（全市场 5378 只；对照不复用 551.41 s，约 3.4x）
+- [x] `load_market_maps` 15.7 s → ≤ 8 s，返回的 `bars_map` 内容逐值一致（抽样 200 只 hash 比对）：实测 5 年全市场 6.375 s 中位（背景负载 6.698 s）；workers=1 vs 8 的 200 只 `assert_frame_equal(check_exact=True)` 一致
+- [x] commit：`(phase 15) reuse prepared factor tables across strategies and parallelise bar loading`
+
+实测补充（2026-10-29 09:41，空载）：5 年全市场单策略 plain run 87.38 s（load 另计 6.23 s）；prepared 路径 prepare 83.60 s + run 35.81 s = 119.42 s —— **单策略场景 prepared 不占优**（prepare 对全部 5378 只建表，plain 只为通过 `filter_universe` 的约 4130 只建表），收益来自跨策略/跨窗口复用与 Phase 16 结果缓存。内存：prepare 后 RSS 1813.7 MB（Δ +1224.0 MB），prepared 回测峰值 2009.0 MB；`PREPARED_MAX_ENTRIES=2` 时两份全市场因子表约 2.35 GB（R3，Phase 17 报告与 README 需注明）。
 
 ### Phase 16 — UI 缓存与进度反馈
 
@@ -114,7 +116,7 @@
 完成标准：
 - [ ] 全量测试 ≥ 547 passed
 - [ ] 性能报告含「5 年单策略 / 1 年单策略 / 7 策略对比」三行前后对比
-- [ ] 7 策略终验数字与 Phase 13 终验报告逐值一致
+- [ ] 7 策略终验数字与「同数据 HEAD 基线」逐值一致（数据刷新前的 Phase 13 终验数字不可复现，口径变更见 §1.2）
 - [ ] 工作区干净，commit：`(phase 17) document backtest performance optimisation and regression results`
 
 ## 4. 测试策略

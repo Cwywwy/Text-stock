@@ -17,9 +17,11 @@
 
 Revision History:
     2026-10-29  (phase 14) add legacy-vs-numpy engine parity tests, synthetic edge cases and seven-strategy entry
+    2026-10-29  (phase 15) extend parity tests to prepared reuse: read-only containers, lazy build, sub-window
 """
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError, replace
 from datetime import date
 from typing import Any
 
@@ -31,10 +33,12 @@ from stock_plan.backtest.engine import (
     _FACTOR_COLUMNS,
     BacktestConfig,
     BacktestResult,
+    PreparedBacktest,
     _FactorTable,
     _build_factor_table,
     _price_limit,
     equal_weight_benchmark,
+    prepare_backtest,
     run_backtest,
 )
 from stock_plan.factors.convergence import (
@@ -961,3 +965,125 @@ def test_real_market_small_window_matches_legacy(real_market, strategy_name: str
     )
     _assert_candidate_frames_match(new_captured, legacy_captured)
     _assert_results_match(new_result, legacy_result, f"真实数据/{strategy_name}")
+
+
+# ---------------------------------------------------------------- Phase 15：准备层复用
+
+
+def _prepared_universe() -> tuple[
+    pd.DataFrame, dict[str, pd.DataFrame], dict[str, dict], BacktestConfig, PreparedBacktest
+]:
+    """合成边界股票池 + 整段行情一次 prepare 的只读快照。"""
+    stock_list, bars_map, fund_map = _distressed_universe()
+    config = _daily_config(bars_map)
+    prepared = prepare_backtest(bars_map, fund_map, stock_list, config)
+    return stock_list, bars_map, fund_map, config, prepared
+
+
+def test_prepare_backtest_readonly_and_shallow_copy() -> None:
+    """PreparedBacktest 冻结、容器只读且为浅拷贝：外部增删 key 不影响已制备快照。"""
+    stock_list, bars_map, fund_map, config, prepared = _prepared_universe()
+
+    assert isinstance(prepared, PreparedBacktest)
+    assert prepared.config is config
+    assert type(prepared.bars_map).__name__ == "mappingproxy"
+    assert type(prepared.fund_map).__name__ == "mappingproxy"
+    assert type(prepared.factor_tables).__name__ == "mappingproxy"
+    # 浅拷贝：容器是新的，内部元素不复制（同一 DataFrame / dict / _FactorTable 对象）。
+    assert prepared.bars_map is not bars_map
+    assert prepared.bars_map["600000"] is bars_map["600000"]
+    assert prepared.fund_map["600000"] is fund_map["600000"]
+    assert isinstance(prepared.factor_tables["600000"], _FactorTable)
+    assert prepared.factor_tables["600000"].data.flags.writeable is False
+    assert set(prepared.factor_tables) == set(bars_map)
+
+    # 外部 dict 增删 key 不影响已制备快照（构造时已浅拷贝容器）。
+    trimmed_bars = dict(bars_map)
+    trimmed_bars.pop("600011")
+    trimmed_prepared = prepare_backtest(trimmed_bars, fund_map, stock_list, config)
+    assert "600011" not in trimmed_prepared.bars_map
+    assert "600011" in prepared.bars_map
+
+    with pytest.raises(TypeError):
+        prepared.bars_map["600000"] = bars_map["600000"]
+    with pytest.raises(TypeError):
+        prepared.fund_map["600000"] = {}
+    with pytest.raises(TypeError):
+        prepared.factor_tables["600000"] = prepared.factor_tables["600000"]
+    with pytest.raises(FrozenInstanceError):
+        prepared.config = config
+
+
+@pytest.mark.parametrize("strategy_name", STRATEGY_NAMES, ids=STRATEGY_NAMES)
+def test_prepared_reuse_matches_plain(strategy_name: str) -> None:
+    """7 个内置策略：prepared 复用与每次重建因子表的结果逐值一致。"""
+    stock_list, bars_map, fund_map, config, prepared = _prepared_universe()
+    plain_result = run_backtest(
+        create_strategy(strategy_name), config, bars_map, fund_map, stock_list
+    )
+    prepared_result = run_backtest(
+        create_strategy(strategy_name), config, None, None, None, prepared=prepared
+    )
+    _assert_results_match(plain_result, prepared_result, f"prepared/{strategy_name}")
+
+
+def test_prepared_ignores_caller_data_snapshot() -> None:
+    """传 prepared 时内部以 prepared 的数据快照为准，忽略调用方传入的 bars/fund/stock_list。"""
+    stock_list, bars_map, fund_map, config, prepared = _prepared_universe()
+    expected = run_backtest(create_strategy("趋势跟随策略"), config, bars_map, fund_map, stock_list)
+    overridden = run_backtest(
+        create_strategy("趋势跟随策略"),
+        config,
+        {},  # 故意传空行情
+        {},  # 故意传空财务
+        pd.DataFrame({"code": [], "name": [], "is_st": [], "board": []}),
+        prepared=prepared,
+    )
+    _assert_results_match(expected, overridden, "prepared 覆盖调用方数据")
+
+
+def test_prepared_reuse_works_for_sub_window() -> None:
+    """因子表按整段行情预计算，子窗口回测（walk-forward 场景）仍与不复用逐值一致。"""
+    stock_list, bars_map, fund_map, config, prepared = _prepared_universe()
+    dates = bars_map["600000"]["date"]
+    sub_config = replace(
+        config,
+        start=dates.iloc[90].date(),
+        end=dates.iloc[140].date(),
+        rebalance_freq="weekly",
+        market_timing=True,
+    )
+    plain_result = run_backtest(
+        create_strategy("趋势跟随策略"), sub_config, bars_map, fund_map, stock_list
+    )
+    prepared_result = run_backtest(
+        create_strategy("趋势跟随策略"), sub_config, None, None, None, prepared=prepared
+    )
+    _assert_results_match(plain_result, prepared_result, "prepared 子窗口")
+
+
+def test_prepared_missing_code_is_lazily_built_without_mutation() -> None:
+    """prepared 缺某 code 时惰性补建，结果不变且不修改 prepared 本身。"""
+    stock_list, bars_map, fund_map, config, prepared = _prepared_universe()
+    tables = {code: table for code, table in prepared.factor_tables.items() if code != "600000"}
+    trimmed = PreparedBacktest(
+        factor_tables=tables,
+        stock_list=prepared.stock_list,
+        fund_map=prepared.fund_map,
+        bars_map=prepared.bars_map,
+        config=prepared.config,
+    )
+    assert "600000" not in trimmed.factor_tables
+
+    expected = run_backtest(
+        create_strategy("趋势跟随策略"), config, bars_map, fund_map, stock_list
+    )
+    result = run_backtest(
+        create_strategy("趋势跟随策略"), config, None, None, None, prepared=trimmed
+    )
+    _assert_results_match(expected, result, "惰性补建缺 code")
+
+    # 惰性补建只写入本次调用内部的字典，不得回写 prepared 的只读视图。
+    assert "600000" not in trimmed.factor_tables
+    assert len(trimmed.factor_tables) == len(tables)
+

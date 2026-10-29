@@ -13,14 +13,17 @@
 - 涨跌停：涨停无法买入、跌停无法卖出（简化判断）
 
 Revision History:
+    2026-10-29  (phase 15) add PreparedBacktest and prepare_backtest; run_backtest reuses prepared factor tables
     2026-10-29  (phase 14) flatten per-code factor frames into numpy factor tables; drop per-row Series lookups
     2026-10-29  (phase 7) inject convergence factor columns (conv_pcf/vcf/acf/trcf/pvcf) into candidates
     2026-10-28  (phase 1) expose equal-weight benchmark on BacktestResult
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
@@ -254,12 +257,92 @@ def _build_factor_table(bars: pd.DataFrame) -> _FactorTable:
     return _FactorTable(_FACTOR_COLUMNS, data, dates)
 
 
+@dataclass(frozen=True)
+class PreparedBacktest:
+    """回测准备层：一次算好的只读数据快照，供同一批行情上多次 run_backtest 复用。
+
+    Phase 15 性能目标：7 策略 × 1 年对比时，因子表构建（全市场约 50~70s）只做一次，
+    各策略只跑主循环；UI 对比页 / walk-forward / 今日信号路径共用同一份快照。
+
+    只读约定（R4）：
+        - 构造时浅拷贝三个容器（bars_map/fund_map/factor_tables），并用
+          MappingProxyType 包成只读视图，避免调用方后续增删 key 影响已制备结果。
+        - 容器内的 DataFrame / _FactorTable / dict **不深拷贝**，调用方不得原地改写；
+          `_FactorTable.data` 已是 write=False 的 numpy 数组。
+
+    不缓存的内容：
+        - `trading_days`、`benchmark`、候选池（`filter_universe` 结果）都依赖策略与
+          回测区间，每次 run_backtest 按传入的 config 与策略重新计算，数值语义与
+          不传 prepared 时完全一致。
+        - `config` 只是制备时的配置快照，便于 UI 侧校验/展示；run_backtest 仍以
+          调用时传入的 config 为准（窗口可不同，因子表按整段行情预计算）。
+
+    字段：
+        factor_tables: {code: _FactorTable}，prepare_backtest 一次算好。
+        stock_list:    制表时的股票列表快照（用于 filter_universe）。
+        fund_map:      制表时的财务快照。
+        bars_map:      制表时的行情快照（run_backtest 传 prepared 时以此为准）。
+        config:        制备时的回测配置快照。
+    """
+
+    factor_tables: Mapping[str, _FactorTable]
+    stock_list: pd.DataFrame
+    fund_map: Mapping[str, dict]
+    bars_map: Mapping[str, pd.DataFrame]
+    config: BacktestConfig
+
+    def __post_init__(self) -> None:
+        # 浅拷贝容器 + 只读视图：外部 dict 增删 key 不影响本对象（R4）
+        object.__setattr__(self, "factor_tables", MappingProxyType(dict(self.factor_tables)))
+        object.__setattr__(self, "fund_map", MappingProxyType(dict(self.fund_map)))
+        object.__setattr__(self, "bars_map", MappingProxyType(dict(self.bars_map)))
+
+
+def prepare_backtest(
+    bars_map: Mapping[str, pd.DataFrame],
+    fund_map: Mapping[str, dict],
+    stock_list: pd.DataFrame,
+    config: BacktestConfig,
+) -> PreparedBacktest:
+    """一次算好全部 code 的因子表，返回只读快照供多次 run_backtest 复用。
+
+    参数：
+        bars_map:  {code: 日线 DataFrame}（建议传整段回测区间，各窗口复用）。
+        fund_map:  {code: 财务指标 dict}。
+        stock_list: 全 A 股列表（用于策略 filter_universe）。
+        config:    制备时的回测配置（仅作快照/校验；run_backtest 以调用时 config 为准）。
+
+    返回：
+        PreparedBacktest（只读）。
+
+    注意：
+        - 本函数不跑策略、不截断候选池，因此不做 filter_universe —— 因子表对同一
+          code 是整段行情上的滚动结果，与回测窗口无关；run_backtest 仍会按
+          config.start 截断后再做策略过滤。
+        - 缺 K 线/None 的 code 直接跳过（不写入 factor_tables），run_backtest 遇到
+          候选池里的缺失 code 会惰性补建（仅影响性能，不影响结果）。
+    """
+    factor_tables = {
+        code: _build_factor_table(bars)
+        for code, bars in bars_map.items()
+        if bars is not None
+    }
+    return PreparedBacktest(
+        factor_tables=factor_tables,
+        stock_list=stock_list,
+        fund_map=fund_map,
+        bars_map=bars_map,
+        config=config,
+    )
+
+
 def run_backtest(
     strategy: Strategy,
     config: BacktestConfig,
     bars_map: dict[str, pd.DataFrame],
     fund_map: dict[str, dict],
     stock_list: pd.DataFrame,
+    prepared: PreparedBacktest | None = None,
 ) -> BacktestResult:
     """执行回测。
 
@@ -269,10 +352,27 @@ def run_backtest(
         bars_map:  {code: 日线 DataFrame}。
         fund_map:  {code: 财务指标 dict}。
         stock_list: 全 A 股列表（用于硬过滤）。
+        prepared:  可选。Phase 15 准备层快照（prepare_backtest 的返回值）。提供时：
+                   - 内部**以 prepared 的 bars_map/fund_map/stock_list 为准**，忽略
+                     本次调用传进来的这三个位置参数，避免调用方混用不同数据快照
+                     造成静默错值；
+                   - 复用 prepared.factor_tables 中已有的因子表，缺某 code 时惰性
+                     补建（不修改 prepared 本身）；
+                   - codes / trading_days / benchmark / 候选池仍按策略与 config
+                     重新计算，数值语义与不传 prepared 时完全一致。
+                   不传时行为与历史版本完全相同（向后兼容）。
 
     返回：
         BacktestResult（资金曲线 + 交易明细 + 指标）。
     """
+    # Phase 15：prepared 提供时以它的数据快照为准（只读视图，不复制容器）。
+    _prepared_tables: Mapping[str, _FactorTable] | None = None
+    if prepared is not None:
+        bars_map = prepared.bars_map  # type: ignore[assignment]
+        fund_map = prepared.fund_map  # type: ignore[assignment]
+        stock_list = prepared.stock_list
+        _prepared_tables = prepared.factor_tables
+
     # 候选股票：硬过滤。
     # ⚠️ 必须**先把行情截到回测开始日**再交给策略过滤（2026-10-28 修正）。
     # 原因：`filter_universe` 内部会做 `tail(20)` / `iloc[-1]` 之类的"近期形态"判断，
@@ -310,7 +410,11 @@ def run_backtest(
     # 相比逐日对每只股票重新 compute_technical，可大幅提升回测速度。
     # Phase 14：因子帧压平成 numpy 矩阵（见 _FactorTable），主循环不再逐行构造 Series；
     # 列顺序、取值语义与改造前的 factor_index 逐值相同。
-    factor_tables = {code: _build_factor_table(bars_map[code]) for code in codes}
+    # Phase 15：prepared 提供时复用已有因子表（缺 code 惰性补建，不修改 prepared）。
+    factor_tables: dict[str, _FactorTable] = {}
+    for code in codes:
+        _table = _prepared_tables.get(code) if _prepared_tables is not None else None
+        factor_tables[code] = _table if _table is not None else _build_factor_table(bars_map[code])
     # 主循环的 (code, table) 配对：避免每个交易日对 5379 只股票重复做 dict 查找。
     code_items = tuple((code, factor_tables[code]) for code in codes)
     # 每只股票的日期数组（int64 纳秒），配合指针做单调递增查找

@@ -19,6 +19,9 @@
     .venv/Scripts/python.exe scripts/measure_factor_ab.py --worker --strategy 趋势跟随策略 \
         --start 2022-03-07 --end 2026-10-28 --lead-days 400 --max-codes 800
 
+    # 全市场（不抽样）：--max-codes 0
+    .venv/Scripts/python.exe scripts/measure_factor_ab.py --baseline --jobs 4 --max-codes 0
+
 spec 每项字段
 -------------
     label       必填，报告里的口径名（如 "趋势跟随/conv0.2"）
@@ -33,6 +36,7 @@ spec 每项字段
 ----------
 `--max-codes` 用 `codes[::step]` 等间隔抽样（storage 内部实现），顺序由股票列表决定，
 **同一参数下每次抽样完全相同**。因此同一批 arm 必须传同一个 max_codes，否则不可比。
+`--max-codes 0` 表示不抽样（全市场）；报告与 RESULT 里记作 null。
 报告里必须写明样本规模（计划 §3.1 第 4 条：同策略、同区间、同配置）。
 """
 from __future__ import annotations
@@ -85,11 +89,13 @@ def worker(args: argparse.Namespace) -> int:
 
     t0 = time.time()
     storage = Storage()
+    # --max-codes 0 = 不抽样（全市场）；报告里记作 null，语义与存储层一致。
+    max_codes = args.max_codes if args.max_codes > 0 else None
     stock_list, bars_map, fund_map = storage.load_market_maps(
         start=args.start,
         end=args.end,
         lead_days=args.lead_days,
-        max_codes=args.max_codes,
+        max_codes=max_codes,
     )
     if not bars_map:
         print("ERROR 没有可用行情，检查 --start/--end/--max-codes")
@@ -132,7 +138,7 @@ def worker(args: argparse.Namespace) -> int:
         "start": args.start,
         "end": args.end,
         "lead_days": args.lead_days,
-        "max_codes": args.max_codes,
+        "max_codes": max_codes,
         "codes": len(bars_map),
         "equity_points": int(len(res.equity_curve)),
         "metrics": metrics,
@@ -149,6 +155,7 @@ def worker(args: argparse.Namespace) -> int:
 def _run_arm(arm: dict, defaults: dict) -> dict | None:
     """跑一个 arm（子进程），返回解析后的结果；失败返回 None 并打印原因。"""
     label = arm.get("label") or arm["strategy"]
+    arm_max_codes = arm.get("max_codes", defaults.get("max_codes"))
     cmd = [
         str(PY),
         str(SCRIPT),
@@ -162,7 +169,7 @@ def _run_arm(arm: dict, defaults: dict) -> dict | None:
         "--lead-days",
         str(arm.get("lead_days", defaults.get("lead_days", 0))),
         "--max-codes",
-        str(arm.get("max_codes", defaults.get("max_codes"))),
+        str(arm_max_codes if arm_max_codes else 0),
         "--label",
         label,
     ]
@@ -191,7 +198,7 @@ def _write_markdown(runs: list[dict], path: Path, title: str, defaults: dict) ->
     lines = [f"# {title}", "", f"- 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}"]
 
     lines += [
-        f"- 样本：等间隔抽样 max_codes={defaults.get('max_codes')}（各 arm 同一样本）",
+        f"- 样本：{('等间隔抽样 max_codes=' + str(defaults.get('max_codes'))) if defaults.get('max_codes') else '全市场（不抽样）'}（各 arm 同一口径）",
         "- 配置：BacktestConfig 默认（top_n=5, max_hold_days=20, daily, market_timing=False, "
         "fundamental_as_of=None, min_commission=5.0）",
         "",
@@ -262,7 +269,7 @@ def main() -> int:
     ap.add_argument("--start")
     ap.add_argument("--end")
     ap.add_argument("--lead-days", type=int, default=0)
-    ap.add_argument("--max-codes", type=int, default=800)
+    ap.add_argument("--max-codes", type=int, default=800, help="等间隔抽样股票数；0 = 全市场（不抽样）")
     ap.add_argument("--params", default="")
     ap.add_argument("--config", default="")
     ap.add_argument("--label", default="")
