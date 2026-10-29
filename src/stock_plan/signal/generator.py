@@ -21,12 +21,14 @@ Revision History:
     2026-10-28  (phase 2) share one scoring pass between signals and report
     2026-10-29  (phase 11) report carries degraded rules (missing columns no longer silent)
     2026-10-29  (phase 14) report scoring passes enabled=True to reuse penalty collection switch (values unchanged)
+    2026-10-29  (phase 15b) accept prepared factor tables: skip market-map load and per-code factor recompute
 """
 from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -44,6 +46,9 @@ from stock_plan.signal.report import (
 )
 from stock_plan.strategy.base import Strategy
 from stock_plan.strategy.builtin import TrendFollowingStrategy, build_factor_rows
+
+if TYPE_CHECKING:
+    from stock_plan.backtest.engine import PreparedBacktest
 
 
 @dataclass
@@ -273,23 +278,34 @@ def _collect_ranked(
     exclude_st: bool,
     industries: list[str] | None,
     industry_level: str,
+    prepared: PreparedBacktest | None = None,
 ) -> _RankedFacts:
-    """加载数据、硬过滤、算因子、打分排名 —— 报告与信号共用的一次性开销。"""
+    """加载数据、硬过滤、算因子、打分排名 —— 报告与信号共用的一次性开销。
+
+    prepared 非空时复用其只读行情/财务快照与因子表，跳过 load_market_maps 与
+    逐 code 重算因子表（Phase 15b）；调用方负责保证快照与过滤口径一致。
+    """
     storage = storage or Storage()
     strategy_name = str(getattr(strategy, "name", type(strategy).__name__))
 
     # 1. 加载数据（窗口与 generate_signals 一致：最近 180 个日历日）
+    #    Phase 15b：传 prepared 时直接用它的快照，不再重复加载行情。
     from datetime import timedelta
 
     from stock_plan.data.snapshot import CLOUD_MAX_CODES, is_cloud
 
-    end = date.today()
-    start = end - timedelta(days=180)
-    stock_list, bars_map, fund_map = storage.load_market_maps(
-        start=start, end=end,
-        boards=boards, exclude_st=exclude_st,
-        max_codes=CLOUD_MAX_CODES if is_cloud() else None,
-    )
+    if prepared is not None:
+        stock_list = prepared.stock_list
+        bars_map = prepared.bars_map
+        fund_map = prepared.fund_map
+    else:
+        end = date.today()
+        start = end - timedelta(days=180)
+        stock_list, bars_map, fund_map = storage.load_market_maps(
+            start=start, end=end,
+            boards=boards, exclude_st=exclude_st,
+            max_codes=CLOUD_MAX_CODES if is_cloud() else None,
+        )
 
     warnings: list[str] = [
         "硬过滤使用的 ST 判据是「今天」的 ST 状态，不是历史时点。",
@@ -331,7 +347,9 @@ def _collect_ranked(
             warnings.append("行业筛选后没有候选股。")
 
     # 3. 构建因子行 + 打分
-    factor_rows = build_factor_rows(codes, bars_map, fund_map) if codes else pd.DataFrame()
+    factor_rows = (
+        build_factor_rows(codes, bars_map, fund_map, prepared=prepared) if codes else pd.DataFrame()
+    )
     penalties_map: dict[str, list[Penalty]] = {}
     if factor_rows.empty:
         warnings.append("没有股票能算出因子（日线不足或指标计算失败）。")
@@ -484,6 +502,7 @@ def generate_signal_report(
     exclude_st: bool = True,
     industries: list[str] | None = None,
     industry_level: str = "sw_l1",
+    prepared: PreparedBacktest | None = None,
 ) -> SignalReport:
     """生成信号解释报告：入选者为什么入选、紧随者差在哪、硬过滤淘汰了谁。
 
@@ -501,6 +520,8 @@ def generate_signal_report(
         exclude_st:          是否剔除 ST/*ST（默认 True）。
         industries:          保留的行业名列表；None/空 = 不过滤。
         industry_level:      行业名匹配级别，默认申万一级。
+        prepared:            可选只读准备层（Phase 15b）：传入时跳过行情加载与逐 code
+                             因子表重算，报告数值与不传时逐值一致。
 
     返回：
         SignalReport（`to_dict()` 给页面/缓存，`to_facts_text()` 给大模型）。
@@ -514,6 +535,7 @@ def generate_signal_report(
         exclude_st=exclude_st,
         industries=industries,
         industry_level=industry_level,
+        prepared=prepared,
     )
     return _build_report(
         facts,
@@ -564,10 +586,12 @@ def generate_signals_with_report(
     exclude_st: bool = True,
     industries: list[str] | None = None,
     industry_level: str = "sw_l1",
+    prepared: PreparedBacktest | None = None,
 ) -> tuple[list[Signal], SignalReport]:
     """一次打分同时产出「今日信号」与「信号解释报告」。
 
-    参数与 `generate_signal_report()` 相同。之所以单独提供这个入口、而不是让页面
+    参数与 `generate_signal_report()` 相同（含 prepared：跳过行情加载与逐 code
+    因子表重算，Phase 15b）。之所以单独提供这个入口、而不是让页面
     分别调 `generate_signals()` + `generate_signal_report()`：两次调用会把
     「加载 5576 只 + 算 4130 只指标」这 40 多秒重复一遍，冷启动从 46 秒变 92 秒。
     这里只跑一次，信号与报告必然同源同名次（见同一批 `ranked` 行）。
@@ -583,6 +607,7 @@ def generate_signals_with_report(
         exclude_st=exclude_st,
         industries=industries,
         industry_level=industry_level,
+        prepared=prepared,
     )
     signals = _signals_from_ranked(
         facts.ranked,

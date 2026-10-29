@@ -6,6 +6,9 @@
 3. 汇总所有测试段结果，得到策略的真实样本外表现
 
 相比单次回测，Walk-Forward 能避免"过拟合历史"的假象。
+
+修订记录：
+2026-10-29  (phase 15b) prepare factor tables once over the whole span and reuse across windows
 """
 from __future__ import annotations
 
@@ -14,7 +17,12 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from stock_plan.backtest.engine import BacktestConfig, run_backtest
+from stock_plan.backtest.engine import (
+    BacktestConfig,
+    PreparedBacktest,
+    prepare_backtest,
+    run_backtest,
+)
 from stock_plan.backtest.metrics import calc_metrics
 from stock_plan.strategy.base import Strategy
 
@@ -40,6 +48,7 @@ def walk_forward(
     test_days: int = 90,
     param_grid: list[dict] | None = None,
     base_config: BacktestConfig | None = None,
+    prepared: PreparedBacktest | None = None,
 ) -> WalkForwardResult:
     """执行 Walk-Forward 滚动验证。
 
@@ -53,6 +62,10 @@ def walk_forward(
         test_days:        测试段长度（自然日）。
         param_grid:       训练段参数寻优的候选参数列表（每项是 params dict）。
         base_config:      基础回测配置（不含 start/end，会按窗口覆盖）。
+        prepared:         可选只读准备层。传入时各窗口 run_backtest 直接复用其因子表；
+                          不传时本函数在整段行情上 prepare_backtest 一次（Phase 15b），
+                          两种方式的 windows / oos_* 完全一致。窗口切分、每窗口的
+                          filter_universe / 交易日 / 基准仍按窗口各自重算。
 
     返回：
         WalkForwardResult（窗口结果 + 样本外汇总）。
@@ -68,6 +81,9 @@ def walk_forward(
         base_config = BacktestConfig(
             start=start, end=end, rebalance_freq="weekly", market_timing=True
         )
+    if prepared is None:
+        # Phase 15b：整段行情只构一次因子表，各窗口 / 各参数组合共用。
+        prepared = prepare_backtest(bars_map, fund_map, stock_list, base_config)
 
     windows: list[dict] = []
     oos_equity_parts: list[pd.Series] = []
@@ -91,7 +107,9 @@ def walk_forward(
                 end=train_end,
                 max_hold_days=params.get("hold_days", base_config.max_hold_days),
             )
-            result = run_backtest(strat, cfg, bars_map, fund_map, stock_list)
+            result = run_backtest(
+                strat, cfg, bars_map, fund_map, stock_list, prepared=prepared
+            )
             metrics = calc_metrics(result.equity_curve, result.trades)
             if metrics and metrics["total_return"] > best_ret:
                 best_ret = metrics["total_return"]
@@ -107,7 +125,9 @@ def walk_forward(
             end=test_end,
             max_hold_days=(best_params or {}).get("hold_days", base_config.max_hold_days),
         )
-        result = run_backtest(strat, cfg, bars_map, fund_map, stock_list)
+        result = run_backtest(
+            strat, cfg, bars_map, fund_map, stock_list, prepared=prepared
+        )
         metrics = calc_metrics(result.equity_curve, result.trades)
 
         windows.append(

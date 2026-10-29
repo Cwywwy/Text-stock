@@ -263,3 +263,65 @@ def test_factor_values_match_between_paths() -> None:
         if a != pytest.approx(b, rel=1e-9, abs=1e-9):
             diffs.append(f"{col}: 回测={a} 实盘={b}")
     assert not diffs, "两条路径的因子数值不一致：\n  " + "\n  ".join(diffs)
+
+
+# ---------------------------------------------------------------------------
+# Phase 15b：build_factor_rows 复用 prepared 因子表（今日信号路径）
+# ---------------------------------------------------------------------------
+
+
+def _prepared_parity_universe() -> tuple[list[str], dict, dict, object]:
+    """覆盖边界语义的合成物料：长历史 / 恰好 20 根 / <20 根 / 恰好 21 根 / 极短 /
+    缺 amount 列 / 含 NaN factor，供 prepared 与逐 code 重算两条路径对拍。
+    """
+    from datetime import date
+
+    from stock_plan.backtest.engine import BacktestConfig, prepare_backtest
+
+    bars_map = {
+        "600000": _bars(n=240, seed=1),
+        "600001": _bars(n=20, seed=2),   # 恰好 20 根：high20/avg_amount20 正常口径
+        "600002": _bars(n=19, seed=3),   # <20 根：high20 回退为末日收盘、ratio=0
+        "600003": _bars(n=21, seed=4),   # 恰好 21 根：mom_ret 首次可用
+        "600004": _bars(n=5, seed=5),    # 极短：多数滚动因子为 NaN
+        "600006": _bars(n=240, seed=6),  # 含 NaN 收盘价（因子出现 NaN）
+    }
+    bars_map["600006"].loc[100, "close"] = np.nan
+    bars_map["600005"] = _bars(n=240, seed=7).drop(columns=["amount"])  # 缺 amount 列
+
+    codes = list(bars_map)
+    stock_list = _stock_list(codes)
+    fund_map = {
+        # 原始指标 → compute_fundamental 换算路径
+        "600000": {
+            "pe": 12.0, "pb": 1.2, "roe": 15.0, "revenue_growth": 0.10,
+            "net_profit_growth": 0.20, "gross_margin": 0.40, "debt_ratio": 0.50,
+        },
+        # 已算好的三项分数 → 原样返回值路径
+        "600001": {"value_score": 66.0, "growth_score": 55.0, "quality_score": 77.0},
+    }
+    config = BacktestConfig(start=date(2025, 1, 1), end=date(2026, 12, 31))
+    prepared = prepare_backtest(bars_map, fund_map, stock_list, config)
+    return codes, bars_map, fund_map, prepared
+
+
+def test_build_factor_rows_prepared_matches_plain() -> None:
+    """build_factor_rows 复用 prepared 因子表：列集/顺序/数值与逐 code 重算逐值一致。"""
+    codes, bars_map, fund_map, prepared = _prepared_parity_universe()
+
+    plain = build_factor_rows(codes, bars_map, fund_map)
+    reused = build_factor_rows(codes, bars_map, fund_map, prepared=prepared)
+
+    assert list(reused.columns) == list(plain.columns), "两条路径的因子列集/顺序必须完全一致"
+    assert list(reused["code"]) == list(plain["code"])
+    pd.testing.assert_frame_equal(reused, plain, check_exact=True)
+
+    # 边界语义抽查：<20 根 high20_ratio 回退 0；缺 amount 列 avg_amount20 为 NaN。
+    assert reused.loc[reused["code"] == "600002", "high20_ratio"].iloc[0] == 0.0
+    assert reused.loc[reused["code"] == "600002", "avg_amount20"].iloc[0] == pytest.approx(
+        plain.loc[plain["code"] == "600002", "avg_amount20"].iloc[0]
+    )
+    assert np.isnan(reused.loc[reused["code"] == "600005", "avg_amount20"].iloc[0])
+    # <21 根 mom_ret 回落 0.0（与逐 code 路径同口径）。
+    assert reused.loc[reused["code"] == "600002", "mom_ret"].iloc[0] == 0.0
+

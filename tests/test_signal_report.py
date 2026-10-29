@@ -485,3 +485,44 @@ def test_universe_facts_roundtrip():
     )
     assert universe.to_dict()["passed"] == 6
     assert universe.to_dict()["st_is_current"] is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 15b：今日信号路径复用只读 prepared（不再重复加载 / 重算因子表）
+# ---------------------------------------------------------------------------
+
+
+def test_combined_call_with_prepared_matches_plain():
+    """generate_signals_with_report 接受 prepared：跳过行情加载与逐 code 重算因子表，
+    信号与报告与普通路径逐值一致；prepared 路径不得再调用 load_market_maps。"""
+    from datetime import date
+
+    from stock_plan.backtest.engine import BacktestConfig, prepare_backtest
+
+    stock_list, bars_map, fund_map = _market()
+    storage = _FakeStorage(stock_list, bars_map, fund_map)
+    plain_signals, plain_report = generate_signals_with_report(
+        strategy=TrendFollowingStrategy(), storage=storage, top_n=5
+    )
+
+    prepared = prepare_backtest(
+        bars_map,
+        fund_map,
+        stock_list,
+        BacktestConfig(start=date(2025, 1, 1), end=date(2026, 12, 31)),
+    )
+
+    class _NoLoadStorage:
+        """prepared 已带行情快照，再加载一次就是浪费（也说明参数被忽略才安全）。"""
+
+        def load_market_maps(self, **kwargs):
+            raise AssertionError("prepared 路径不应再调用 load_market_maps")
+
+    reused_signals, reused_report = generate_signals_with_report(
+        strategy=TrendFollowingStrategy(), storage=_NoLoadStorage(), top_n=5, prepared=prepared
+    )
+
+    assert reused_signals == plain_signals
+    # cache_payload 故意去掉 generated_at（生成本身含时间），其余字段逐值相等。
+    assert reused_report.cache_payload() == plain_report.cache_payload()
+

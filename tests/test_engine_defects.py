@@ -270,7 +270,7 @@ def test_walkforward_透传资金与成本配置(monkeypatch):
     """
     captured: list[BacktestConfig] = []
 
-    def fake_run_backtest(strategy, cfg, bars_map, fund_map, stock_list):
+    def fake_run_backtest(strategy, cfg, bars_map, fund_map, stock_list, prepared=None):
         from stock_plan.backtest.engine import BacktestResult
 
         captured.append(cfg)
